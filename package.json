@@ -1,0 +1,33 @@
+{
+  "name": "crashout-circuit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:clients\"",
+    "dev:server": "node --watch --experimental-specifier-resolution=node dist/server/index.js",
+    "dev:clients": "vite",
+    "build": "npm run build:server && npm run build:clients",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build:clients": "vite build",
+    "start": "node dist/server/index.js",
+    "typecheck": "tsc --noEmit",
+    "test:acceptance": "tsx scripts/acceptance.ts"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.5",
+    "@types/ws": "^8.5.13",
+    "concurrently": "^9.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
+  }
+}

@@ -1,0 +1,912 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "Initialiser le projet Node.js TypeScript à la racine de `crashout-circuit/` avec Vite et `ws`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205582812
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205610775
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791206070443
+      }
+    ],
+    "Créer `server/index.ts` : serveur HTTP + WebSocket sur le port 3000, servant les dossiers `client-table/`, `client-pilot/`, `client-oz/` sur des routes distinctes (`/`, `/pilot`, `/oz`).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205583928
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791206078933
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791206190362
+      }
+    ],
+    "Créer `server/config.ts` chargeant `config.json` avec toutes les valeurs par défaut (section 14 du context.md).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205584130
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791206203805
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791206306991
+      }
+    ],
+    "Créer `server/types.ts` avec toutes les interfaces (`Vec2`, `Car`, `Wall`, `GameState`, messages…).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205584410
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791206320341
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791206400326
+      }
+    ],
+    "Créer `server/GameServer.ts` gérant le registre des connexions WS, l'attribution des rôles et le broadcast.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205584659
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791206414867
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791206529705
+      }
+    ],
+    "Implémenter la phase `LOBBY` : attente des connexions, génération du QR code URL, `PhaseChange → MAP` quand les 4 joueurs sont connectés.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205584791
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791206543899
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791206870828
+      }
+    ],
+    "Vérifier que tous les clients reçoivent bien les messages broadcast avec `type` et `t`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205584902
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791206886731
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791207009434
+      }
+    ],
+    "Créer `server/MapGenerator.ts` avec la fonction `generate(strokeA, strokeB): TrackGeometry`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205585008
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791207024415
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791207192783
+      }
+    ],
+    "Implémenter `validate(stroke)` : longueur ≥ 300 px, touche les deux points cibles (rayon 60 px).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205585189
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791207198472
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791207295063
+      }
+    ],
+    "Implémenter `resample(pts, step)` : rééchantillonnage à pas constant.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205585288
+      },
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791207309980
+      }
+    ],
+    "Implémenter `oneEuroFilter(pts)` : filtre 1€ (paramètres β=0.007, fCmin=1.0, dCutoff=1.0).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205585393
+      }
+    ],
+    "Implémenter `autofill(stroke, P1, P2, κ)` : fermeture en haricot (miroir + mise à l'échelle κ ∈ [0.6, 1.0]).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205585526
+      }
+    ],
+    "Implémenter `mergeLoops(A, B)` : rééchantillonnage N=256, recherche du décalage optimal (256 essais), moyennage 0.5/0.5.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205585629
+      }
+    ],
+    "Implémenter `catmullRom(pts)` : lissage Catmull-Rom centripète.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205585723
+      }
+    ],
+    "Implémenter `computeGeometry(center)` : calcul des bords extérieur/intérieur par la normale, largeur variable (140 px ±30 px selon courbure, min 90 px), colliders.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205585820
+      }
+    ],
+    "Implémenter `placeFeatures(geo)` : 8 checkpoints uniformément répartis, ligne de départ sur le segment le plus rectiligne, 2 positions de départ (±20 px), 4 emplacements pickups.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205585916
+      }
+    ],
+    "Implémenter `validateGeometry(geo)` : rayon de courbure min, largeur > 24 px, pas d'auto-intersection.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205586009
+      }
+    ],
+    "Implémenter la logique de repli (poids 0.4/0.6, puis boucle A seule).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205586110
+      }
+    ],
+    "Connecter au serveur : en phase `MAP`, recevoir deux `StrokeDraw`, appeler `generate()`, stocker dans `GameState.track`, passer en phase `RACE`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205586212
+      }
+    ],
+    "Créer `client-pilot/index.html` + `client-pilot/main.ts`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205586311
+      }
+    ],
+    "Implémenter la connexion WebSocket avec paramètre `?team=A` ou `?team=B` dans l'URL, envoi de `PilotJoin`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205586413
+      }
+    ],
+    "Créer `client-pilot/Controls.ts` : pédale (slider vertical, rappel à 0 au `pointerup`, envoie `throttle ∈ [-1, 1]`), joystick (slider horizontal, rappel à 0, envoie `steer ∈ [-1, 1]`), bouton UseItem (envoie `UseItem`).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205586526
+      }
+    ],
+    "Throttler l'envoi `PilotInput` à 60 Hz max (rAF ou setInterval).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205586675
+      }
+    ],
+    "Afficher le rôle et la couleur d'équipe clairement (cyan / rose).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205586778
+      }
+    ],
+    "Générer et afficher le QR code sur la table côté `client-table/QRDisplay.ts` (phase LOBBY) pointant vers `/pilot?team=A` et `/pilot?team=B`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205586954
+      }
+    ],
+    "Créer `client-table/index.html` + `client-table/main.ts` : canvas plein écran, connexion WS, boucle `requestAnimationFrame`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205587096
+      }
+    ],
+    "Créer `client-table/Renderer.ts` avec méthode `render(state: GameState)`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205587216
+      }
+    ],
+    "Fond : bleu nuit avec grille carrée discrète (style prototype existant).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205587324
+      }
+    ],
+    "Piste : remplissage sombre, mur extérieur magenta lumineux (shadowBlur), mur intérieur cyan lumineux, ligne centrale en pointillés gris.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205587428
+      }
+    ],
+    "Voitures : flèches, cyan pour équipe A, rose pour équipe B.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205587528
+      }
+    ],
+    "Pickups : icônes distinctes (crosshair pour slingshot, compas pour boost) aux positions fixes.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205587633
+      }
+    ],
+    "Ligne de départ : trait blanc perpendiculaire à la piste.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205587719
+      }
+    ],
+    "Appliquer la mise à l'échelle 1920×1080 → 3840×2160 (DPR ×2) comme dans le prototype existant.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205587810
+      }
+    ],
+    "Créer `server/PhysicsLoop.ts` avec `start()` lançant un `setInterval` à 60 Hz.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205587913
+      }
+    ],
+    "Intégrer les `PilotInput` (throttle, steer) pour chaque équipe : accélération, rotation, déplacement (voir paramètres config).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205588014
+      }
+    ],
+    "Implémenter la détection de collision avec les bords de piste (polygone bord extérieur + intérieur) → rebond ×0.6, pas de dégâts.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205588138
+      }
+    ],
+    "Implémenter les HP : initialisation à `hpMax`, gestion `disabled`, `invulnUntil`, `stunUntil`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205588230
+      }
+    ],
+    "Implémenter la détection de franchissement de checkpoint dans l'ordre → incrémenter `checkpointIndex`, puis `lap`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205588364
+      }
+    ],
+    "Implémenter la logique de victoire (lap ≥ `lapsToWin`) et timeout (`sessionMaxSeconds`) → `PhaseChange(RESULT)`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205588512
+      }
+    ],
+    "Diffuser `GameState` à 30 Hz (toutes les 2 ticks).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205588610
+      }
+    ],
+    "Afficher les voitures et leurs HP dans le `Renderer` (Task 4).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205588705
+      }
+    ],
+    "Créer `client-table/HUD.ts` avec les 4 panneaux de coin (orientés vers leur bord), incluant les pads de réparation (disques 160 px).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205588842
+      }
+    ],
+    "Implémenter la détection `PadHold` dans `GestureRecognizer` : un toucher dans la zone du pad → envoyer `PadHold(team, role, on: true/false)`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205588945
+      }
+    ],
+    "Côté serveur : si `repairPads['A-pilot'].held && repairPads['A-copilot'].held`, incrémenter jauge (0 → 100% en `repairHoldS`=2s). Si l'un lâche, réinitialiser la jauge.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205589047
+      }
+    ],
+    "À 100% : restaurer HP à `repairHpRestore`=60, repositionner au dernier checkpoint, `disabled=false`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205589143
+      }
+    ],
+    "Afficher la progression de la jauge sur les deux pads simultanément (anneau qui se remplit).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205589232
+      }
+    ],
+    "Afficher la barre HP dans le panneau Pilote.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205589346
+      }
+    ],
+    "Placer 4 pickups aux positions définies par `TrackGeometry.pickupPositions`, type aléatoire (`slingshot` ou `boost`).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205589477
+      }
+    ],
+    "Détecter le passage d'une voiture sur un pickup (rayon de détection 30 px) → ramassage si `heldItem === null` ; pickup désactivé pendant `pickupRespawnS`=15s.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205589598
+      }
+    ],
+    "Implémenter `UseItem` : si `heldItem !== null`, passer `itemArmed=true`, stocker `itemArmExpiry = now + armWindowS*1000`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205589698
+      }
+    ],
+    "Expirer l'armement si `itemArmExpiry` est dépassé sans geste Copilote → `heldItem=null, itemArmed=false`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205589879
+      }
+    ],
+    "Afficher les pickups sur la piste (icônes crosshair/compas).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205589980
+      }
+    ],
+    "Afficher le halo « objet armé » sur le panneau Copilote (5 s, décompte visible).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205590079
+      }
+    ],
+    "Afficher l'icône de l'objet en stock sur le panneau Pilote.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205590178
+      }
+    ],
+    "Dans `GestureRecognizer` : détecter un cluster de 3 contacts actifs dont le centroïde est dans un rayon ≤ 150 px → envoyer `Slingshot(x, y)` (seulement si l'équipe a `itemArmed=true` avec `heldItem='slingshot'`).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205590286
+      }
+    ],
+    "Côté serveur : créer une `Stone { target, impactAt: now + stoneTelegraphS*1000, team }`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205590395
+      }
+    ],
+    "Côté rendu : afficher un cercle rouge d'avertissement animé pendant `stoneTelegraphS`=0.8s au point cible, orienté vers le joueur adverse le plus proche.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205590511
+      }
+    ],
+    "À `impactAt` : tester si une voiture adverse est dans `stoneRadiusPx`=60px → appliquer −25 HP + `stunUntil = now + stunStoneS*1000`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205590611
+      }
+    ],
+    "Retirer la pierre de l'état après impact.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205590711
+      }
+    ],
+    "Dans `GestureRecognizer` : détecter 2 contacts actifs écartés de 100 à 400 px → envoyer `BoostGate(a, b)` (si l'équipe a `itemArmed=true` avec `heldItem='boost'`).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205590833
+      }
+    ],
+    "Côté serveur : créer `BoostGate { a, b, expiresAt: now + boostGateLifeS*1000, team }`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205590943
+      }
+    ],
+    "Afficher le segment jaune avec extrémités en anneau, semi-transparent pour l'équipe posant le boost.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205591132
+      }
+    ],
+    "Dans `PhysicsLoop` : détecter le franchissement du segment par la voiture alliée → appliquer `v *= (1 + boostGain * k)` pendant `boostDurationS`s, où `k = clamp(dist(a,b) / boostLenMaxPx, 0.3, 1.0)`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205591245
+      }
+    ],
+    "Expirer le portail après `boostGateLifeS`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205591351
+      }
+    ],
+    "Ajouter le bouton Fantôme dans le panneau Copilote avec anneau de recharge.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205591451
+      }
+    ],
+    "Détecter le tap sur ce bouton dans `GestureRecognizer` → envoyer `Ability(team, kind='ghost')`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205591574
+      }
+    ],
+    "Côté serveur : si cooldown écoulé, passer `ghostUntil = now + ghostS*1000`, démarrer cooldown `ghostCooldownS`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205591704
+      }
+    ],
+    "Dans `PhysicsLoop` : si `ghostUntil > now`, ignorer les collisions avec murs, poteaux et arcs adverses.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205591813
+      }
+    ],
+    "Afficher la voiture semi-transparente / halo violet pendant le mode fantôme.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205591916
+      }
+    ],
+    "Afficher la progression du cooldown sur l'anneau du bouton.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205592016
+      }
+    ],
+    "Ajouter le bouton Détruire Mur dans le panneau Copilote avec anneau de recharge.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205592119
+      }
+    ],
+    "Détecter le tap sur ce bouton → activer le mode « ciblage » pendant 3 s (feedback visuel sur la table).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205592226
+      }
+    ],
+    "En mode ciblage, détecter un toucher sur un segment de mur adverse → identifier le `wallId` le plus proche (rayon 40 px) → envoyer `Ability(team, kind='destroy', targetId=wallId)`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205592330
+      }
+    ],
+    "Côté serveur : passer `wall.disabledUntil = now + destroyDisableS*1000`, démarrer cooldown.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205592430
+      }
+    ],
+    "Afficher le mur désactivé en pointillés gris.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205592556
+      }
+    ],
+    "Créer `client-oz/index.html` + `client-oz/main.ts`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205592684
+      }
+    ],
+    "Créer `client-oz/OzMap.ts` : miniature de la piste cliquable (Canvas 400 px), clic → envoyer `TangibleMoved(id, x, y, angle)` (coordonnées normalisées 0–1).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205592795
+      }
+    ],
+    "Ajouter sélecteur d'id 1–4, slider d'angle (0–360°), bouton « Retirer » par poteau actif → envoyer `TangibleRemoved(id)`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205592913
+      }
+    ],
+    "Côté serveur (`GameRules.ts`) : recevoir `TangibleMoved` → créer/mettre à jour `Wall(id, team, pos, angle, lengthPx=120)` ; si 2 poteaux de même équipe à ≤ `arcMaxDistPx`=500 px → créer `ArcElectric`, supprimer les deux `Wall`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205593022
+      }
+    ],
+    "Recevoir `TangibleRemoved` → supprimer le mur/arc correspondant.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205593124
+      }
+    ],
+    "Dans `PhysicsLoop` : mur adverse → −10 HP + rebond + `invulnUntil` ; arc adverse → −10 HP + vitesse ×0.5 pendant 1.5s.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205593225
+      }
+    ],
+    "Afficher les murs (segments rouges) et arcs (segments jaunes animés) sur la table.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205593385
+      }
+    ],
+    "Vérifier R-09 : éléments de l'équipe non affectent pas sa propre voiture (semi-transparents pour elle).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205593519
+      }
+    ],
+    "Finaliser `client-table/HUD.ts` avec les 4 panneaux orientés vers leur bord de table.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205593631
+      }
+    ],
+    "Panneau Pilote : barre HP animée, icône objet en stock, pad de réparation.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205593735
+      }
+    ],
+    "Panneau Copilote : boutons Fantôme + Détruire avec anneaux de recharge SVG animés, pad de réparation, halo objet armé avec décompte.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205593833
+      }
+    ],
+    "Implémenter les alertes `Feedback` : pierre en approche → cercle rouge animé orienté vers le joueur adverse le plus proche ; véhicule hors d'usage → texte clignotant sur le panneau.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205593933
+      }
+    ],
+    "S'assurer que les panneaux ne recouvrent jamais la piste (R-22).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205594042
+      }
+    ],
+    "Créer `client-table/GestureRecognizer.ts` unifié gérant le `Map<pointerId, contact>`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205594155
+      }
+    ],
+    "Implémenter l'attribution d'équipe (R-03) : zone pad → équipe station ; geste libre → équipe armée ; si les deux armées → station la plus proche.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205594266
+      }
+    ],
+    "S'assurer que le budget est ≤ 10 points simultanés (rejeter les contacts au-delà de 10).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205594368
+      }
+    ],
+    "Éviter les faux positifs : un geste à 3 doigts ne doit pas déclencher simultanément un geste à 2 doigts.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205594472
+      }
+    ],
+    "Tester manuellement avec 2 joueurs simultanés.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205594606
+      }
+    ],
+    "Créer `client-oz/OzLog.ts` : écrire chaque événement émis dans un tableau `{ t, type, params }`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205594742
+      }
+    ],
+    "Afficher le journal en temps réel dans la console (dernières 50 entrées, défilant).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205594843
+      }
+    ],
+    "Bouton « Export JSON » : télécharger le journal complet.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205595223
+      }
+    ],
+    "Bouton « Rejouer » : lire le journal exporté, réémettre les événements avec les délais originaux via `setTimeout`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205595405
+      }
+    ],
+    "Côté serveur : stocker également un log complet de tous les `TangibleMoved`/`TangibleRemoved` avec horodatage.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205595528
+      }
+    ],
+    "Dans `GestureRecognizer` : détecter un doigt posé sur un bord de piste (distance < 20 px du bord) tiré vers l'extérieur de 20 à 60 px → envoyer `BorderPull(x, y, dx, dy)`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205595632
+      }
+    ],
+    "Côté serveur : modifier localement `TrackGeometry.widths` sur les 5 points les plus proches, recalculer les colliders.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205595719
+      }
+    ],
+    "Démarrer cooldown `borderPull` = 20 s après utilisation.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205595818
+      }
+    ],
+    "Afficher l'élargissement (bord s'écarte visuellement).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205595908
+      }
+    ],
+    "Ajouter un bouton de secours dans la console Oz pour déclencher un élargissement.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205596003
+      }
+    ],
+    "Affiner les effets néon (shadowBlur groupés par couleur pour la performance).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205596102
+      }
+    ],
+    "Ajouter des particules ou flash à l'impact d'une pierre.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205596276
+      }
+    ],
+    "Ajouter un flash à la désactivation d'un mur.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205596544
+      }
+    ],
+    "Implémenter des sons Web Audio API minimalistes : impact pierre, activation fantôme, boost, réparation terminée.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205596664
+      }
+    ],
+    "S'assurer que le canvas tient 60 fps sur la table réelle (profiler et optimiser si nécessaire ; fallback rendu 1080p upscalé).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205596777
+      }
+    ],
+    "Revoir l'écran `RESULT` : affichage du vainqueur, bouton nouvelle partie.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205597144
+      }
+    ],
+    "Vérifier T-01 à T-11 avec au moins 2 joueurs réels sur la table.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205597257
+      }
+    ],
+    "Mesurer la latence doigt→rendu (objectif < 50 ms) avec `PointerEvent.timeStamp` vs `performance.now()` dans le Renderer.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205597396
+      }
+    ],
+    "Mesurer la latence smartphone→rendu (objectif < 80 ms).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205597523
+      }
+    ],
+    "Tester le budget tactile : valider que 10 contacts simultanés ne causent pas de crashs.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205597656
+      }
+    ],
+    "Tester la palm rejection (bras posés sur la table pendant la réparation).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205597761
+      }
+    ],
+    "Mesurer et déclarer la latence de réaction de l'opérateur Oz (R-16).": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205597871
+      }
+    ],
+    "Documenter les résultats dans `AGENTS.md` ou un fichier `measures.md`.": [
+      {
+        "executionId": "3581e4cf-43bc-429a-8c09-24f6694b87c3",
+        "chatSessionId": "sess_7efc7ee2-f61c-47b5-9766-0bfb0256574d",
+        "timestamp": 1791205597987
+      }
+    ]
+  }
+}

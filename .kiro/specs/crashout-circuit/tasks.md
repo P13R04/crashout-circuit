@@ -13,13 +13,13 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Objectif** : Avoir un serveur Node.js opérationnel avec WebSocket, servant les quatre clients (table, pilote×2, Oz) depuis le même processus.
 
 **Sous-tâches** :
-- [ ] Initialiser le projet Node.js TypeScript à la racine de `crashout-circuit/` avec Vite et `ws`.
-- [ ] Créer `server/index.ts` : serveur HTTP + WebSocket sur le port 3000, servant les dossiers `client-table/`, `client-pilot/`, `client-oz/` sur des routes distinctes (`/`, `/pilot`, `/oz`).
-- [ ] Créer `server/config.ts` chargeant `config.json` avec toutes les valeurs par défaut (section 14 du context.md).
-- [ ] Créer `server/types.ts` avec toutes les interfaces (`Vec2`, `Car`, `Wall`, `GameState`, messages…).
-- [ ] Créer `server/GameServer.ts` gérant le registre des connexions WS, l'attribution des rôles et le broadcast.
-- [ ] Implémenter la phase `LOBBY` : attente des connexions, génération du QR code URL, `PhaseChange → MAP` quand les 4 joueurs sont connectés.
-- [ ] Vérifier que tous les clients reçoivent bien les messages broadcast avec `type` et `t`.
+- [x] Initialiser le projet Node.js TypeScript à la racine de `crashout-circuit/` avec Vite et `ws`.
+- [x] Créer `server/index.ts` : serveur HTTP + WebSocket sur le port 3000, servant les dossiers `client-table/`, `client-pilot/`, `client-oz/` sur des routes distinctes (`/`, `/pilot`, `/oz`).
+- [x] Créer `server/config.ts` chargeant `config.json` avec toutes les valeurs par défaut (section 14 du context.md).
+- [x] Créer `server/types.ts` avec toutes les interfaces (`Vec2`, `Car`, `Wall`, `GameState`, messages…).
+- [x] Créer `server/GameServer.ts` gérant le registre des connexions WS, l'attribution des rôles et le broadcast.
+- [x] Implémenter la phase `LOBBY` : attente des connexions, génération du QR code URL, `PhaseChange → MAP` quand les 4 joueurs sont connectés.
+- [x] Vérifier que tous les clients reçoivent bien les messages broadcast avec `type` et `t`.
 
 **Critères** :
 - Le serveur démarre sans erreur.
@@ -34,18 +34,18 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 1 (types partagés)
 
 **Sous-tâches** :
-- [ ] Créer `server/MapGenerator.ts` avec la fonction `generate(strokeA, strokeB): TrackGeometry`.
-- [ ] Implémenter `validate(stroke)` : longueur ≥ 300 px, touche les deux points cibles (rayon 60 px).
-- [ ] Implémenter `resample(pts, step)` : rééchantillonnage à pas constant.
-- [ ] Implémenter `oneEuroFilter(pts)` : filtre 1€ (paramètres β=0.007, fCmin=1.0, dCutoff=1.0).
-- [ ] Implémenter `autofill(stroke, P1, P2, κ)` : fermeture en haricot (miroir + mise à l'échelle κ ∈ [0.6, 1.0]).
-- [ ] Implémenter `mergeLoops(A, B)` : rééchantillonnage N=256, recherche du décalage optimal (256 essais), moyennage 0.5/0.5.
-- [ ] Implémenter `catmullRom(pts)` : lissage Catmull-Rom centripète.
-- [ ] Implémenter `computeGeometry(center)` : calcul des bords extérieur/intérieur par la normale, largeur variable (140 px ±30 px selon courbure, min 90 px), colliders.
-- [ ] Implémenter `placeFeatures(geo)` : 8 checkpoints uniformément répartis, ligne de départ sur le segment le plus rectiligne, 2 positions de départ (±20 px), 4 emplacements pickups.
-- [ ] Implémenter `validateGeometry(geo)` : rayon de courbure min, largeur > 24 px, pas d'auto-intersection.
-- [ ] Implémenter la logique de repli (poids 0.4/0.6, puis boucle A seule).
-- [ ] Connecter au serveur : en phase `MAP`, recevoir deux `StrokeDraw`, appeler `generate()`, stocker dans `GameState.track`, passer en phase `RACE`.
+- [x] Créer `server/MapGenerator.ts` avec la fonction `generate(strokeA, strokeB): TrackGeometry`.
+- [x] Implémenter `validate(stroke)` : longueur ≥ 300 px, touche les deux points cibles (rayon 60 px).
+- [x] Implémenter `resample(pts, step)` : rééchantillonnage à pas constant.
+- [x] Implémenter `oneEuroFilter(pts)` : filtre 1€ (paramètres β=0.007, fCmin=1.0, dCutoff=1.0).
+- [x] Implémenter `autofill(stroke, P1, P2, κ)` : fermeture en haricot (miroir + mise à l'échelle κ ∈ [0.6, 1.0]).
+- [x] Implémenter `mergeLoops(A, B)` : rééchantillonnage N=256, recherche du décalage optimal (256 essais), moyennage 0.5/0.5.
+- [x] Implémenter `catmullRom(pts)` : lissage Catmull-Rom centripète.
+- [x] Implémenter `computeGeometry(center)` : calcul des bords extérieur/intérieur par la normale, largeur variable (140 px ±30 px selon courbure, min 90 px), colliders.
+- [x] Implémenter `placeFeatures(geo)` : 8 checkpoints uniformément répartis, ligne de départ sur le segment le plus rectiligne, 2 positions de départ (±20 px), 4 emplacements pickups.
+- [x] Implémenter `validateGeometry(geo)` : rayon de courbure min, largeur > 24 px, pas d'auto-intersection.
+- [x] Implémenter la logique de repli (poids 0.4/0.6, puis boucle A seule).
+- [x] Connecter au serveur : en phase `MAP`, recevoir deux `StrokeDraw`, appeler `generate()`, stocker dans `GameState.track`, passer en phase `RACE`.
 
 **Critères** :
 - T-01 : deux tracés → circuit valide en < 3 s.
@@ -80,14 +80,14 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 2 (TrackGeometry)
 
 **Sous-tâches** :
-- [ ] Créer `client-table/index.html` + `client-table/main.ts` : canvas plein écran, connexion WS, boucle `requestAnimationFrame`.
-- [ ] Créer `client-table/Renderer.ts` avec méthode `render(state: GameState)`.
-- [ ] Fond : bleu nuit avec grille carrée discrète (style prototype existant).
-- [ ] Piste : remplissage sombre, mur extérieur magenta lumineux (shadowBlur), mur intérieur cyan lumineux, ligne centrale en pointillés gris.
-- [ ] Voitures : flèches, cyan pour équipe A, rose pour équipe B.
-- [ ] Pickups : icônes distinctes (crosshair pour slingshot, compas pour boost) aux positions fixes.
-- [ ] Ligne de départ : trait blanc perpendiculaire à la piste.
-- [ ] Appliquer la mise à l'échelle 1920×1080 → 3840×2160 (DPR ×2) comme dans le prototype existant.
+- [x] Créer `client-table/index.html` + `client-table/main.ts` : canvas plein écran, connexion WS, boucle `requestAnimationFrame`.
+- [x] Créer `client-table/Renderer.ts` avec méthode `render(state: GameState)`.
+- [x] Fond : bleu nuit avec grille carrée discrète (style prototype existant).
+- [x] Piste : remplissage sombre, mur extérieur magenta lumineux (shadowBlur), mur intérieur cyan lumineux, ligne centrale en pointillés gris.
+- [x] Voitures : flèches, cyan pour équipe A, rose pour équipe B.
+- [x] Pickups : icônes distinctes (crosshair pour slingshot, compas pour boost) aux positions fixes.
+- [x] Ligne de départ : trait blanc perpendiculaire à la piste.
+- [x] Appliquer la mise à l'échelle 1920×1080 → 3840×2160 (DPR ×2) comme dans le prototype existant.
 
 **Critères** :
 - Le circuit s'affiche correctement après la phase MAP.
@@ -102,14 +102,14 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 1, Task 2
 
 **Sous-tâches** :
-- [ ] Créer `server/PhysicsLoop.ts` avec `start()` lançant un `setInterval` à 60 Hz.
-- [ ] Intégrer les `PilotInput` (throttle, steer) pour chaque équipe : accélération, rotation, déplacement (voir paramètres config).
-- [ ] Implémenter la détection de collision avec les bords de piste (polygone bord extérieur + intérieur) → rebond ×0.6, pas de dégâts.
-- [ ] Implémenter les HP : initialisation à `hpMax`, gestion `disabled`, `invulnUntil`, `stunUntil`.
-- [ ] Implémenter la détection de franchissement de checkpoint dans l'ordre → incrémenter `checkpointIndex`, puis `lap`.
-- [ ] Implémenter la logique de victoire (lap ≥ `lapsToWin`) et timeout (`sessionMaxSeconds`) → `PhaseChange(RESULT)`.
-- [ ] Diffuser `GameState` à 30 Hz (toutes les 2 ticks).
-- [ ] Afficher les voitures et leurs HP dans le `Renderer` (Task 4).
+- [x] Créer `server/PhysicsLoop.ts` avec `start()` lançant un `setInterval` à 60 Hz.
+- [x] Intégrer les `PilotInput` (throttle, steer) pour chaque équipe : accélération, rotation, déplacement (voir paramètres config).
+- [x] Implémenter la détection de collision avec les bords de piste (polygone bord extérieur + intérieur) → rebond ×0.6, pas de dégâts.
+- [x] Implémenter les HP : initialisation à `hpMax`, gestion `disabled`, `invulnUntil`, `stunUntil`.
+- [x] Implémenter la détection de franchissement de checkpoint dans l'ordre → incrémenter `checkpointIndex`, puis `lap`.
+- [x] Implémenter la logique de victoire (lap ≥ `lapsToWin`) et timeout (`sessionMaxSeconds`) → `PhaseChange(RESULT)`.
+- [x] Diffuser `GameState` à 30 Hz (toutes les 2 ticks).
+- [x] Afficher les voitures et leurs HP dans le `Renderer` (Task 4).
 
 **Critères** :
 - Une voiture suit les inputs du Pilote avec la physique configurée.
@@ -124,12 +124,12 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 4, Task 5
 
 **Sous-tâches** :
-- [ ] Créer `client-table/HUD.ts` avec les 4 panneaux de coin (orientés vers leur bord), incluant les pads de réparation (disques 160 px).
-- [ ] Implémenter la détection `PadHold` dans `GestureRecognizer` : un toucher dans la zone du pad → envoyer `PadHold(team, role, on: true/false)`.
-- [ ] Côté serveur : si `repairPads['A-pilot'].held && repairPads['A-copilot'].held`, incrémenter jauge (0 → 100% en `repairHoldS`=2s). Si l'un lâche, réinitialiser la jauge.
-- [ ] À 100% : restaurer HP à `repairHpRestore`=60, repositionner au dernier checkpoint, `disabled=false`.
-- [ ] Afficher la progression de la jauge sur les deux pads simultanément (anneau qui se remplit).
-- [ ] Afficher la barre HP dans le panneau Pilote.
+- [x] Créer `client-table/HUD.ts` avec les 4 panneaux de coin (orientés vers leur bord), incluant les pads de réparation (disques 160 px).
+- [x] Implémenter la détection `PadHold` dans `GestureRecognizer` : un toucher dans la zone du pad → envoyer `PadHold(team, role, on: true/false)`.
+- [x] Côté serveur : si `repairPads['A-pilot'].held && repairPads['A-copilot'].held`, incrémenter jauge (0 → 100% en `repairHoldS`=2s). Si l'un lâche, réinitialiser la jauge.
+- [x] À 100% : restaurer HP à `repairHpRestore`=60, repositionner au dernier checkpoint, `disabled=false`.
+- [x] Afficher la progression de la jauge sur les deux pads simultanément (anneau qui se remplit).
+- [x] Afficher la barre HP dans le panneau Pilote.
 
 **Critères** :
 - T-09 : la réparation ne s'enclenche que si les deux doigts sont sur leur pad.
@@ -146,13 +146,13 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 5
 
 **Sous-tâches** :
-- [ ] Placer 4 pickups aux positions définies par `TrackGeometry.pickupPositions`, type aléatoire (`slingshot` ou `boost`).
-- [ ] Détecter le passage d'une voiture sur un pickup (rayon de détection 30 px) → ramassage si `heldItem === null` ; pickup désactivé pendant `pickupRespawnS`=15s.
-- [ ] Implémenter `UseItem` : si `heldItem !== null`, passer `itemArmed=true`, stocker `itemArmExpiry = now + armWindowS*1000`.
-- [ ] Expirer l'armement si `itemArmExpiry` est dépassé sans geste Copilote → `heldItem=null, itemArmed=false`.
-- [ ] Afficher les pickups sur la piste (icônes crosshair/compas).
-- [ ] Afficher le halo « objet armé » sur le panneau Copilote (5 s, décompte visible).
-- [ ] Afficher l'icône de l'objet en stock sur le panneau Pilote.
+- [x] Placer 4 pickups aux positions définies par `TrackGeometry.pickupPositions`, type aléatoire (`slingshot` ou `boost`).
+- [x] Détecter le passage d'une voiture sur un pickup (rayon de détection 30 px) → ramassage si `heldItem === null` ; pickup désactivé pendant `pickupRespawnS`=15s.
+- [x] Implémenter `UseItem` : si `heldItem !== null`, passer `itemArmed=true`, stocker `itemArmExpiry = now + armWindowS*1000`.
+- [x] Expirer l'armement si `itemArmExpiry` est dépassé sans geste Copilote → `heldItem=null, itemArmed=false`.
+- [x] Afficher les pickups sur la piste (icônes crosshair/compas).
+- [x] Afficher le halo « objet armé » sur le panneau Copilote (5 s, décompte visible).
+- [x] Afficher l'icône de l'objet en stock sur le panneau Pilote.
 
 **Critères** :
 - T-05 : objet armé sans geste dans les 5 s → perdu.
@@ -167,11 +167,11 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 7
 
 **Sous-tâches** :
-- [ ] Dans `GestureRecognizer` : détecter un cluster de 3 contacts actifs dont le centroïde est dans un rayon ≤ 150 px → envoyer `Slingshot(x, y)` (seulement si l'équipe a `itemArmed=true` avec `heldItem='slingshot'`).
-- [ ] Côté serveur : créer une `Stone { target, impactAt: now + stoneTelegraphS*1000, team }`.
-- [ ] Côté rendu : afficher un cercle rouge d'avertissement animé pendant `stoneTelegraphS`=0.8s au point cible, orienté vers le joueur adverse le plus proche.
-- [ ] À `impactAt` : tester si une voiture adverse est dans `stoneRadiusPx`=60px → appliquer −25 HP + `stunUntil = now + stunStoneS*1000`.
-- [ ] Retirer la pierre de l'état après impact.
+- [x] Dans `GestureRecognizer` : détecter un cluster de 3 contacts actifs dont le centroïde est dans un rayon ≤ 150 px → envoyer `Slingshot(x, y)` (seulement si l'équipe a `itemArmed=true` avec `heldItem='slingshot'`).
+- [x] Côté serveur : créer une `Stone { target, impactAt: now + stoneTelegraphS*1000, team }`.
+- [x] Côté rendu : afficher un cercle rouge d'avertissement animé pendant `stoneTelegraphS`=0.8s au point cible, orienté vers le joueur adverse le plus proche.
+- [x] À `impactAt` : tester si une voiture adverse est dans `stoneRadiusPx`=60px → appliquer −25 HP + `stunUntil = now + stunStoneS*1000`.
+- [x] Retirer la pierre de l'état après impact.
 
 **Critères** :
 - T-06 : avertissement visible 0.8 s avant impact.
@@ -186,11 +186,11 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 7
 
 **Sous-tâches** :
-- [ ] Dans `GestureRecognizer` : détecter 2 contacts actifs écartés de 100 à 400 px → envoyer `BoostGate(a, b)` (si l'équipe a `itemArmed=true` avec `heldItem='boost'`).
-- [ ] Côté serveur : créer `BoostGate { a, b, expiresAt: now + boostGateLifeS*1000, team }`.
-- [ ] Afficher le segment jaune avec extrémités en anneau, semi-transparent pour l'équipe posant le boost.
-- [ ] Dans `PhysicsLoop` : détecter le franchissement du segment par la voiture alliée → appliquer `v *= (1 + boostGain * k)` pendant `boostDurationS`s, où `k = clamp(dist(a,b) / boostLenMaxPx, 0.3, 1.0)`.
-- [ ] Expirer le portail après `boostGateLifeS`.
+- [x] Dans `GestureRecognizer` : détecter 2 contacts actifs écartés de 100 à 400 px → envoyer `BoostGate(a, b)` (si l'équipe a `itemArmed=true` avec `heldItem='boost'`).
+- [x] Côté serveur : créer `BoostGate { a, b, expiresAt: now + boostGateLifeS*1000, team }`.
+- [x] Afficher le segment jaune avec extrémités en anneau, semi-transparent pour l'équipe posant le boost.
+- [x] Dans `PhysicsLoop` : détecter le franchissement du segment par la voiture alliée → appliquer `v *= (1 + boostGain * k)` pendant `boostDurationS`s, où `k = clamp(dist(a,b) / boostLenMaxPx, 0.3, 1.0)`.
+- [x] Expirer le portail après `boostGateLifeS`.
 
 **Critères** :
 - T-07 : portail plus long → effet plus fort (vérifiable visuellement).
@@ -204,12 +204,12 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 6 (HUD)
 
 **Sous-tâches** :
-- [ ] Ajouter le bouton Fantôme dans le panneau Copilote avec anneau de recharge.
-- [ ] Détecter le tap sur ce bouton dans `GestureRecognizer` → envoyer `Ability(team, kind='ghost')`.
-- [ ] Côté serveur : si cooldown écoulé, passer `ghostUntil = now + ghostS*1000`, démarrer cooldown `ghostCooldownS`.
-- [ ] Dans `PhysicsLoop` : si `ghostUntil > now`, ignorer les collisions avec murs, poteaux et arcs adverses.
-- [ ] Afficher la voiture semi-transparente / halo violet pendant le mode fantôme.
-- [ ] Afficher la progression du cooldown sur l'anneau du bouton.
+- [x] Ajouter le bouton Fantôme dans le panneau Copilote avec anneau de recharge.
+- [x] Détecter le tap sur ce bouton dans `GestureRecognizer` → envoyer `Ability(team, kind='ghost')`.
+- [x] Côté serveur : si cooldown écoulé, passer `ghostUntil = now + ghostS*1000`, démarrer cooldown `ghostCooldownS`.
+- [x] Dans `PhysicsLoop` : si `ghostUntil > now`, ignorer les collisions avec murs, poteaux et arcs adverses.
+- [x] Afficher la voiture semi-transparente / halo violet pendant le mode fantôme.
+- [x] Afficher la progression du cooldown sur l'anneau du bouton.
 
 **Critères** :
 - T-08 : la voiture traverse les obstacles adverses pendant 3 s, puis recharge 20 s.
@@ -223,11 +223,11 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 6 (HUD)
 
 **Sous-tâches** :
-- [ ] Ajouter le bouton Détruire Mur dans le panneau Copilote avec anneau de recharge.
-- [ ] Détecter le tap sur ce bouton → activer le mode « ciblage » pendant 3 s (feedback visuel sur la table).
-- [ ] En mode ciblage, détecter un toucher sur un segment de mur adverse → identifier le `wallId` le plus proche (rayon 40 px) → envoyer `Ability(team, kind='destroy', targetId=wallId)`.
-- [ ] Côté serveur : passer `wall.disabledUntil = now + destroyDisableS*1000`, démarrer cooldown.
-- [ ] Afficher le mur désactivé en pointillés gris.
+- [x] Ajouter le bouton Détruire Mur dans le panneau Copilote avec anneau de recharge.
+- [x] Détecter le tap sur ce bouton → activer le mode « ciblage » pendant 3 s (feedback visuel sur la table).
+- [x] En mode ciblage, détecter un toucher sur un segment de mur adverse → identifier le `wallId` le plus proche (rayon 40 px) → envoyer `Ability(team, kind='destroy', targetId=wallId)`.
+- [x] Côté serveur : passer `wall.disabledUntil = now + destroyDisableS*1000`, démarrer cooldown.
+- [x] Afficher le mur désactivé en pointillés gris.
 
 **Critères** :
 - Le mur ciblé est désactivé 10 s.
@@ -242,14 +242,14 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 1
 
 **Sous-tâches** :
-- [ ] Créer `client-oz/index.html` + `client-oz/main.ts`.
-- [ ] Créer `client-oz/OzMap.ts` : miniature de la piste cliquable (Canvas 400 px), clic → envoyer `TangibleMoved(id, x, y, angle)` (coordonnées normalisées 0–1).
-- [ ] Ajouter sélecteur d'id 1–4, slider d'angle (0–360°), bouton « Retirer » par poteau actif → envoyer `TangibleRemoved(id)`.
-- [ ] Côté serveur (`GameRules.ts`) : recevoir `TangibleMoved` → créer/mettre à jour `Wall(id, team, pos, angle, lengthPx=120)` ; si 2 poteaux de même équipe à ≤ `arcMaxDistPx`=500 px → créer `ArcElectric`, supprimer les deux `Wall`.
-- [ ] Recevoir `TangibleRemoved` → supprimer le mur/arc correspondant.
-- [ ] Dans `PhysicsLoop` : mur adverse → −10 HP + rebond + `invulnUntil` ; arc adverse → −10 HP + vitesse ×0.5 pendant 1.5s.
-- [ ] Afficher les murs (segments rouges) et arcs (segments jaunes animés) sur la table.
-- [ ] Vérifier R-09 : éléments de l'équipe non affectent pas sa propre voiture (semi-transparents pour elle).
+- [x] Créer `client-oz/index.html` + `client-oz/main.ts`.
+- [x] Créer `client-oz/OzMap.ts` : miniature de la piste cliquable (Canvas 400 px), clic → envoyer `TangibleMoved(id, x, y, angle)` (coordonnées normalisées 0–1).
+- [x] Ajouter sélecteur d'id 1–4, slider d'angle (0–360°), bouton « Retirer » par poteau actif → envoyer `TangibleRemoved(id)`.
+- [x] Côté serveur (`GameRules.ts`) : recevoir `TangibleMoved` → créer/mettre à jour `Wall(id, team, pos, angle, lengthPx=120)` ; si 2 poteaux de même équipe à ≤ `arcMaxDistPx`=500 px → créer `ArcElectric`, supprimer les deux `Wall`.
+- [x] Recevoir `TangibleRemoved` → supprimer le mur/arc correspondant.
+- [x] Dans `PhysicsLoop` : mur adverse → −10 HP + rebond + `invulnUntil` ; arc adverse → −10 HP + vitesse ×0.5 pendant 1.5s.
+- [x] Afficher les murs (segments rouges) et arcs (segments jaunes animés) sur la table.
+- [x] Vérifier R-09 : éléments de l'équipe non affectent pas sa propre voiture (semi-transparents pour elle).
 
 **Critères** :
 - T-03 : mur adverse → −10 HP + 1 s d'invulnérabilité.
@@ -265,11 +265,11 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 6, Task 7, Task 10, Task 11, Task 12
 
 **Sous-tâches** :
-- [ ] Finaliser `client-table/HUD.ts` avec les 4 panneaux orientés vers leur bord de table.
-- [ ] Panneau Pilote : barre HP animée, icône objet en stock, pad de réparation.
-- [ ] Panneau Copilote : boutons Fantôme + Détruire avec anneaux de recharge SVG animés, pad de réparation, halo objet armé avec décompte.
-- [ ] Implémenter les alertes `Feedback` : pierre en approche → cercle rouge animé orienté vers le joueur adverse le plus proche ; véhicule hors d'usage → texte clignotant sur le panneau.
-- [ ] S'assurer que les panneaux ne recouvrent jamais la piste (R-22).
+- [x] Finaliser `client-table/HUD.ts` avec les 4 panneaux orientés vers leur bord de table.
+- [x] Panneau Pilote : barre HP animée, icône objet en stock, pad de réparation.
+- [x] Panneau Copilote : boutons Fantôme + Détruire avec anneaux de recharge SVG animés, pad de réparation, halo objet armé avec décompte.
+- [x] Implémenter les alertes `Feedback` : pierre en approche → cercle rouge animé orienté vers le joueur adverse le plus proche ; véhicule hors d'usage → texte clignotant sur le panneau.
+- [x] S'assurer que les panneaux ne recouvrent jamais la piste (R-22).
 
 **Critères** :
 - Les 4 coins sont lisibles depuis leur bord respectif.
@@ -284,11 +284,11 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 8, Task 9, Task 11
 
 **Sous-tâches** :
-- [ ] Créer `client-table/GestureRecognizer.ts` unifié gérant le `Map<pointerId, contact>`.
-- [ ] Implémenter l'attribution d'équipe (R-03) : zone pad → équipe station ; geste libre → équipe armée ; si les deux armées → station la plus proche.
-- [ ] S'assurer que le budget est ≤ 10 points simultanés (rejeter les contacts au-delà de 10).
-- [ ] Éviter les faux positifs : un geste à 3 doigts ne doit pas déclencher simultanément un geste à 2 doigts.
-- [ ] Tester manuellement avec 2 joueurs simultanés.
+- [x] Créer `client-table/GestureRecognizer.ts` unifié gérant le `Map<pointerId, contact>`.
+- [x] Implémenter l'attribution d'équipe (R-03) : zone pad → équipe station ; geste libre → équipe armée ; si les deux armées → station la plus proche.
+- [x] S'assurer que le budget est ≤ 10 points simultanés (rejeter les contacts au-delà de 10).
+- [x] Éviter les faux positifs : un geste à 3 doigts ne doit pas déclencher simultanément un geste à 2 doigts.
+- [ ] Tester manuellement avec 2 joueurs simultanés. *(à faire sur la vraie table — la reconnaissance a été vérifiée avec événements souris simulés via CDP, pas en multitouch réel)*
 
 **Critères** :
 - T-09 confirmé : les pads de réparation sont indépendants des gestes de jeu.
@@ -305,11 +305,11 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 12
 
 **Sous-tâches** :
-- [ ] Créer `client-oz/OzLog.ts` : écrire chaque événement émis dans un tableau `{ t, type, params }`.
-- [ ] Afficher le journal en temps réel dans la console (dernières 50 entrées, défilant).
-- [ ] Bouton « Export JSON » : télécharger le journal complet.
-- [ ] Bouton « Rejouer » : lire le journal exporté, réémettre les événements avec les délais originaux via `setTimeout`.
-- [ ] Côté serveur : stocker également un log complet de tous les `TangibleMoved`/`TangibleRemoved` avec horodatage.
+- [x] Créer `client-oz/OzLog.ts` : écrire chaque événement émis dans un tableau `{ t, type, params }`.
+- [x] Afficher le journal en temps réel dans la console (dernières 50 entrées, défilant).
+- [x] Bouton « Export JSON » : télécharger le journal complet.
+- [x] Bouton « Rejouer » : lire le journal exporté, réémettre les événements avec les délais originaux via `setTimeout`.
+- [x] Côté serveur : stocker également un log complet de tous les `TangibleMoved`/`TangibleRemoved` avec horodatage.
 
 **Critères** :
 - T-11 : un journal exporté, rechargé et rejoué, produit la même séquence de `State` côté serveur.
@@ -323,11 +323,11 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : Task 4, Task 5
 
 **Sous-tâches** :
-- [ ] Dans `GestureRecognizer` : détecter un doigt posé sur un bord de piste (distance < 20 px du bord) tiré vers l'extérieur de 20 à 60 px → envoyer `BorderPull(x, y, dx, dy)`.
-- [ ] Côté serveur : modifier localement `TrackGeometry.widths` sur les 5 points les plus proches, recalculer les colliders.
-- [ ] Démarrer cooldown `borderPull` = 20 s après utilisation.
-- [ ] Afficher l'élargissement (bord s'écarte visuellement).
-- [ ] Ajouter un bouton de secours dans la console Oz pour déclencher un élargissement.
+- [x] Dans `GestureRecognizer` : détecter un doigt posé sur un bord de piste (distance < 20 px du bord) tiré vers l'extérieur de 20 à 60 px → envoyer `BorderPull(x, y, dx, dy)`.
+- [x] Côté serveur : modifier localement `TrackGeometry.widths` sur les 5 points les plus proches, recalculer les colliders.
+- [x] Démarrer cooldown `borderPull` = 20 s après utilisation.
+- [x] Afficher l'élargissement (bord s'écarte visuellement).
+- [x] Ajouter un bouton de secours dans la console Oz pour déclencher un élargissement.
 
 **Critères** :
 - Le bord de piste s'élargit localement après le geste.
@@ -342,12 +342,12 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Dépend de** : toutes les tâches P0 et P1
 
 **Sous-tâches** :
-- [ ] Affiner les effets néon (shadowBlur groupés par couleur pour la performance).
-- [ ] Ajouter des particules ou flash à l'impact d'une pierre.
-- [ ] Ajouter un flash à la désactivation d'un mur.
-- [ ] Implémenter des sons Web Audio API minimalistes : impact pierre, activation fantôme, boost, réparation terminée.
+- [x] Affiner les effets néon (shadowBlur groupés par couleur pour la performance).
+- [x] Ajouter des particules ou flash à l'impact d'une pierre.
+- [x] Ajouter un flash à la désactivation d'un mur.
+- [x] Implémenter des sons Web Audio API minimalistes : impact pierre, activation fantôme, boost, réparation terminée.
 - [ ] S'assurer que le canvas tient 60 fps sur la table réelle (profiler et optimiser si nécessaire ; fallback rendu 1080p upscalé).
-- [ ] Revoir l'écran `RESULT` : affichage du vainqueur, bouton nouvelle partie.
+- [x] Revoir l'écran `RESULT` : affichage du vainqueur, bouton nouvelle partie.
 
 **Critères** :
 - 60 fps sur Chrome/Windows avec 2 voitures + tous les effets actifs.
@@ -360,6 +360,8 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Objectif** : Valider tous les critères T-01 à T-11 et mesurer les seuils techniques.
 
 **Dépend de** : toutes les tâches
+
+> État : les critères T-01, T-03 à T-11 sont couverts par `npm run test:acceptance` (côté serveur). T-02, les mesures de latence et la palm rejection exigent la table et des joueurs réels : voir `measures.md` (outils d'instrumentation prêts : overlay `?debug=1`, Ping/Pong, test de réaction Oz).
 
 **Sous-tâches** :
 - [ ] Vérifier T-01 à T-11 avec au moins 2 joueurs réels sur la table.

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Crashout Circuit — Pilote</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #04081f;
+      color: #fff;
+      font-family: monospace;
+      overflow: hidden;
+      user-select: none;
+    }
+    #loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-size: 18px;
+      color: #666;
+    }
+    #app { display: none; height: 100vh; flex-direction: column; }
+    #app.ready { display: flex; }
+  </style>
+</head>
+<body>
+  <div id="loading">Connexion…</div>
+  <div id="app"></div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

@@ -1,0 +1,272 @@
+import { WebSocket, WebSocketServer } from 'ws';
+import { IncomingMessage } from 'http';
+import type {
+  GameState,
+  LobbyUrls,
+  Team,
+  Phase,
+  ClientMessage,
+  ServerMessage,
+  PilotJoinMsg,
+  PhaseChangeMsg,
+  FeedbackMsg,
+  PongMsg,
+  StateMsg,
+} from './types.js';
+import { config } from './config.js';
+import { GameRules, createInitialState } from './GameRules.js';
+import type { RulesHost } from './GameRules.js';
+import { PhysicsLoop } from './PhysicsLoop.js';
+
+export type ClientRole = 'table' | 'pilot-A' | 'pilot-B' | 'oz' | 'unknown';
+
+interface ConnectedClient {
+  ws: WebSocket;
+  role: ClientRole;
+  connectedAt: number;
+}
+
+export class GameServer {
+  private wss: WebSocketServer;
+  private clients: Set<ConnectedClient> = new Set();
+  private state: GameState;
+  readonly rules: GameRules;
+  readonly physics: PhysicsLoop;
+
+  constructor(wss: WebSocketServer) {
+    this.wss = wss;
+    this.state = createInitialState();
+    const host: RulesHost = {
+      feedback: (kind, x, y, team) =>
+        this.broadcast({ type: 'Feedback', t: Date.now(), kind, x, y, team } satisfies FeedbackMsg),
+      transition: (phase, data) => this.transitionTo(phase, data),
+      broadcastFull: () => this.broadcastFull(),
+    };
+    this.rules = new GameRules(this.state, host);
+    this.physics = new PhysicsLoop(this.state, this.rules, () => this.broadcastTick());
+    this.wss.on('connection', this.onConnection.bind(this));
+    this.physics.start();
+    console.log('[GameServer] Initialized');
+  }
+
+  private onConnection(ws: WebSocket, req: IncomingMessage): void {
+    const url = new URL(req.url ?? '/', `http://localhost`);
+    const role = this.resolveRole(url);
+
+    const client: ConnectedClient = { ws, role, connectedAt: Date.now() };
+    this.clients.add(client);
+    console.log(`[GameServer] Client connected: ${role} (total: ${this.clients.size})`);
+
+    // Update lobby status for table connection
+    if (role === 'table') {
+      this.state.lobbyStatus = { ...this.state.lobbyStatus, table: true };
+      this.broadcastLobbyStatus();
+    }
+
+    // Send current state immediately
+    this.sendTo(ws, {
+      type: 'State',
+      t: Date.now(),
+      state: this.state,
+    } satisfies StateMsg);
+
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString()) as ClientMessage;
+        this.handleMessage(client, msg);
+      } catch (err) {
+        console.warn('[GameServer] Malformed message:', err);
+      }
+    });
+
+    ws.on('close', () => {
+      this.clients.delete(client);
+      console.log(`[GameServer] Client disconnected: ${client.role} (total: ${this.clients.size})`);
+      if (client.role === 'table') this.rules.releaseAllPads();
+      // Recompute lobby status on disconnect
+      this.recomputeLobbyStatus();
+    });
+
+    ws.on('error', (err) => {
+      console.error(`[GameServer] WS error (${role}):`, err.message);
+    });
+  }
+
+  private resolveRole(url: URL): ClientRole {
+    const path = url.pathname.replace(/^\/ws(?=\/|$)/, '') || '/';
+    const team = url.searchParams.get('team') as Team | null;
+
+    if (path.startsWith('/pilot')) {
+      return team === 'B' ? 'pilot-B' : 'pilot-A';
+    }
+    if (path.startsWith('/oz')) return 'oz';
+    return 'table';
+  }
+
+  private handleMessage(client: ConnectedClient, msg: ClientMessage): void {
+    const fromTable = client.role === 'table';
+    const fromOz = client.role === 'oz';
+    const pilotTeam: Team | null =
+      client.role === 'pilot-A' ? 'A' : client.role === 'pilot-B' ? 'B' : null;
+
+    switch (msg.type) {
+      case 'PilotJoin':
+        this.handlePilotJoin(client, msg);
+        break;
+      case 'Ping':
+        this.sendTo(client.ws, { type: 'Pong', t: Date.now(), clientT: msg.t } satisfies PongMsg);
+        break;
+      // Pilot → server (team comes from the connection, not from the payload)
+      case 'PilotInput':
+        if (pilotTeam) this.rules.onPilotInput(pilotTeam, msg);
+        break;
+      case 'UseItem':
+        if (pilotTeam) this.rules.onUseItem(pilotTeam, msg);
+        break;
+      // Table → server
+      case 'StrokeDraw':
+        if (fromTable) this.rules.onStrokeDraw(msg);
+        break;
+      case 'PadHold':
+        if (fromTable) this.rules.onPadHold(msg);
+        break;
+      case 'Slingshot':
+        if (fromTable) this.rules.onSlingshot(msg);
+        break;
+      case 'BoostGate':
+        if (fromTable) this.rules.onBoostGate(msg);
+        break;
+      case 'Ability':
+        if (fromTable) this.rules.onAbility(msg);
+        break;
+      case 'BorderPull':
+        if (fromTable) this.rules.onBorderPull(msg);
+        break;
+      case 'NewGame':
+        if (fromTable && this.state.phase === 'RESULT') {
+          this.rules.resetToLobby();
+          this.checkLobbyTransition();
+        }
+        break;
+      // Oz console (or a future TUIO bridge on the table) → server
+      case 'TangibleMoved':
+        if (fromOz || fromTable) this.rules.onTangibleMoved(msg);
+        break;
+      case 'TangibleRemoved':
+        if (fromOz || fromTable) this.rules.onTangibleRemoved(msg);
+        break;
+      case 'OzTrigger':
+        if (fromOz) {
+          this.rules.onOzTrigger(msg);
+          if (msg.kind === 'newGame') this.checkLobbyTransition();
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  private handlePilotJoin(client: ConnectedClient, msg: PilotJoinMsg): void {
+    const role: ClientRole = msg.team === 'B' ? 'pilot-B' : 'pilot-A';
+    client.role = role;
+    console.log(`[GameServer] Pilot joined team ${msg.team}`);
+
+    // Update lobby status
+    if (msg.team === 'A') {
+      this.state.lobbyStatus = { ...this.state.lobbyStatus, pilotA: true };
+    } else {
+      this.state.lobbyStatus = { ...this.state.lobbyStatus, pilotB: true };
+    }
+    this.broadcastLobbyStatus();
+    this.checkLobbyTransition();
+  }
+
+  private recomputeLobbyStatus(): void {
+    const pilotA = [...this.clients].some((c) => c.role === 'pilot-A');
+    const pilotB = [...this.clients].some((c) => c.role === 'pilot-B');
+    const table  = [...this.clients].some((c) => c.role === 'table');
+    this.state.lobbyStatus = { pilotA, pilotB, table };
+    this.broadcastLobbyStatus();
+  }
+
+  private broadcastLobbyStatus(): void {
+    // Broadcast updated state so table can reflect connection progress
+    this.broadcast({
+      type: 'State',
+      t: Date.now(),
+      state: this.state,
+    } satisfies StateMsg);
+  }
+
+  /** Called from index.ts once the server knows its network IP and QR data URLs. */
+  setLobbyUrls(urls: LobbyUrls): void {
+    this.state.lobbyUrls = urls;
+    // Broadcast updated state to any already-connected clients (e.g. table)
+    this.broadcastLobbyStatus();
+  }
+
+  private checkLobbyTransition(): void {
+    if (this.state.phase !== 'LOBBY') return;
+    const { pilotA, pilotB, table } = this.state.lobbyStatus;
+    if (pilotA && pilotB && table) {
+      this.rules.enterMap();
+    }
+  }
+
+  transitionTo(phase: Phase, data?: unknown): void {
+    this.state.phase = phase;
+    console.log(`[GameServer] Phase → ${phase}`);
+    this.broadcast({
+      type: 'PhaseChange',
+      t: Date.now(),
+      phase,
+      ...(data !== undefined ? { data } : {}),
+    } satisfies PhaseChangeMsg);
+  }
+
+  /** 30 Hz tick: the heavy fields (track, QR images) are omitted; clients keep the last copy. */
+  private broadcastTick(): void {
+    this.broadcast({
+      type: 'State',
+      t: Date.now(),
+      state: { ...this.state, track: null, lobbyUrls: null },
+    } satisfies StateMsg);
+  }
+
+  /** Full state, including the track and QR data (on phase/track changes and connections). */
+  broadcastFull(): void {
+    this.broadcast({ type: 'State', t: Date.now(), state: this.state } satisfies StateMsg);
+  }
+
+  getState(): GameState {
+    return this.state;
+  }
+
+  setState(partial: Partial<GameState>): void {
+    Object.assign(this.state, partial);
+  }
+
+  broadcast(msg: ServerMessage): void {
+    const payload = JSON.stringify(msg);
+    for (const client of this.clients) {
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(payload);
+      }
+    }
+  }
+
+  sendToRole(role: ClientRole, msg: ServerMessage): void {
+    const payload = JSON.stringify(msg);
+    for (const client of this.clients) {
+      if (client.role === role && client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(payload);
+      }
+    }
+  }
+
+  private sendTo(ws: WebSocket, msg: ServerMessage): void {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg));
+    }
+  }
+}

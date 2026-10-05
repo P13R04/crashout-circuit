@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crashout Circuit — Console Oz</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0f1e;
+      color: #ccc;
+      font-family: monospace;
+    }
+    header {
+      padding: 10px 16px;
+      background: #111827;
+      border-bottom: 1px solid #1e2a40;
+      font-size: 14px;
+      letter-spacing: 2px;
+      color: #e2e8f0;
+    }
+    #status {
+      display: inline-block;
+      margin-left: 16px;
+      font-size: 11px;
+      color: #6b7280;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 12px;
+      padding: 12px;
+      min-height: calc(100vh - 40px);
+    }
+    #map-panel { border: 1px solid #1e2a40; border-radius: 4px; padding: 8px; }
+    #controls-panel { border: 1px solid #1e2a40; border-radius: 4px; padding: 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    CRASHOUT · CONSOLE OZ
+    <span id="status">Déconnecté</span>
+  </header>
+  <main>
+    <div id="map-panel">
+      <canvas id="oz-map" width="400" height="225" style="width:400px;height:225px;display:block"></canvas>
+      <p style="color:#6b7280;font-size:11px;margin-top:8px">Clic = poser le poteau sélectionné · glisser = déplacer</p>
+    </div>
+    <div id="controls-panel">
+    </div>
+  </main>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
