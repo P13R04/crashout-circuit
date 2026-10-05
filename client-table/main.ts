@@ -1,4 +1,4 @@
-import type { ServerMessage, GameState } from '../server/types.js';
+import type { ServerMessage } from '../server/types.js';
 import { StateSync, connectWs } from '../client-shared/net.js';
 import { createView } from './view.js';
 import { Renderer } from './Renderer.js';
@@ -37,6 +37,29 @@ const conn = connectWs('/ws', {
   onMessage: handleMessage,
 });
 const gestures = new GestureRecognizer(canvas, view, (m) => conn.send(m));
+
+// PC testing: buttons that stand in for the 3- and 2-finger gestures (shown with a mouse or ?sim=1)
+const simBar = document.getElementById('sim') as HTMLDivElement;
+const sim3 = document.getElementById('sim3') as HTMLButtonElement;
+const sim2 = document.getElementById('sim2') as HTMLButtonElement;
+const simHint = document.getElementById('sim-hint') as HTMLSpanElement;
+if (urlParams.get('sim') === '1' || window.matchMedia('(pointer: fine)').matches) simBar.classList.add('on');
+let simKind: 'slingshot' | 'boost' | null = null;
+const setSim = (k: 'slingshot' | 'boost' | null): void => {
+  simKind = simKind === k ? null : k;
+  sim3.classList.toggle('armed', simKind === 'slingshot');
+  sim2.classList.toggle('armed', simKind === 'boost');
+  gestures.simulate(simKind);
+};
+sim3.addEventListener('click', () => setSim('slingshot'));
+sim2.addEventListener('click', () => setSim('boost'));
+gestures.onSimChange = (hint) => {
+  simHint.textContent = hint;
+  // The gesture was consumed (or failed): leave simulation mode
+  if (!hint || hint.startsWith('Aucune') || hint.startsWith('Écart')) {
+    simKind = null; sim3.classList.remove('armed'); sim2.classList.remove('armed');
+  }
+};
 
 window.addEventListener('pointerdown', unlock, { once: true });
 window.addEventListener('keydown', (e) => { if (e.key === 'd' || e.key === 'D') view.debug.on = !view.debug.on; });
@@ -111,8 +134,7 @@ function drawFrame(now: number): void {
   ctx.save();
   ctx.scale(dpr, dpr);
   drawBackground();
-  if (view.state?.phase === 'LOBBY') drawLobby(view.state);
-  else renderer.render(view);
+  renderer.render(view);
   if (view.debug.on) drawDebug();
   ctx.restore();
 
@@ -155,169 +177,6 @@ function drawBackground(): void {
     ctx.stroke();
   }
 }
-
-// ── Pre-loaded QR code images (cached as HTMLImageElement) ─────────────────────
-let qrImageA: HTMLImageElement | null = null;
-let qrImageB: HTMLImageElement | null = null;
-let lastQrAUrl = '';
-let lastQrBUrl = '';
-
-function ensureQrImages(state: GameState): void {
-  const urls = state.lobbyUrls;
-  if (!urls) return;
-
-  if (urls.pilotAQr !== lastQrAUrl) {
-    lastQrAUrl = urls.pilotAQr;
-    const img = new Image();
-    img.src = urls.pilotAQr;
-    qrImageA = img;
-  }
-  if (urls.pilotBQr !== lastQrBUrl) {
-    lastQrBUrl = urls.pilotBQr;
-    const img = new Image();
-    img.src = urls.pilotBQr;
-    qrImageB = img;
-  }
-}
-
-function drawLobby(state: GameState): void {
-  ensureQrImages(state);
-
-  const cx = LOGICAL_W / 2;
-  const cy = LOGICAL_H / 2;
-
-  // Title
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 64px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('CRASHOUT CIRCUIT', cx, 120);
-
-  ctx.font = '28px monospace';
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.fillText('En attente des joueurs…', cx, 170);
-
-  // ── QR Code panels ────────────────────────────────────────────────────────
-  const qrSize = 280;
-  const qrY = 240;
-  const labelY = qrY + qrSize + 36;
-  const urlY = labelY + 36;
-
-  // Panel A — left side
-  const aX = cx - 520 - qrSize / 2;
-  drawQrPanel(
-    aX, qrY, qrSize,
-    qrImageA,
-    state.lobbyUrls?.pilotA ?? null,
-    'PILOTE A', '#00e5ff',
-    state.lobbyStatus.pilotA,
-  );
-
-  // Panel B — right side
-  const bX = cx + 520 - qrSize / 2;
-  drawQrPanel(
-    bX, qrY, qrSize,
-    qrImageB,
-    state.lobbyUrls?.pilotB ?? null,
-    'PILOTE B', '#ff4c4c',
-    state.lobbyStatus.pilotB,
-  );
-
-  void labelY; void urlY; // used inside drawQrPanel
-
-  // ── Connection status bar ─────────────────────────────────────────────────
-  drawConnectionStatus(state, cx, cy + 260);
-}
-
-function drawQrPanel(
-  x: number, y: number, size: number,
-  img: HTMLImageElement | null,
-  url: string | null,
-  label: string,
-  color: string,
-  connected: boolean,
-): void {
-  const padding = 12;
-
-  // Background card
-  ctx.fillStyle = connected ? 'rgba(0,50,30,0.7)' : 'rgba(10,10,30,0.7)';
-  ctx.strokeStyle = connected ? '#00ff88' : color;
-  ctx.lineWidth = connected ? 3 : 1.5;
-  ctx.beginPath();
-  ctx.roundRect(x - padding, y - padding, size + padding * 2, size + padding * 2 + 100, 16);
-  ctx.fill();
-  ctx.stroke();
-
-  if (img && img.complete && img.naturalWidth > 0) {
-    ctx.drawImage(img, x, y, size, size);
-  } else if (url) {
-    // Fallback: show URL text
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.font = '14px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('QR en cours de chargement…', x + size / 2, y + size / 2);
-  } else {
-    // No URL yet — server not ready
-    ctx.fillStyle = 'rgba(255,255,255,0.2)';
-    ctx.font = '16px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('Démarrage serveur…', x + size / 2, y + size / 2);
-  }
-
-  // Label
-  ctx.font = 'bold 28px monospace';
-  ctx.fillStyle = connected ? '#00ff88' : color;
-  ctx.textAlign = 'center';
-  ctx.fillText(label, x + size / 2, y + size + 44);
-
-  // Connection indicator
-  const statusText = connected ? '✓ CONNECTÉ' : 'Scannez le QR';
-  ctx.font = '20px monospace';
-  ctx.fillStyle = connected ? '#00ff88' : 'rgba(255,255,255,0.4)';
-  ctx.fillText(statusText, x + size / 2, y + size + 78);
-
-  // URL below the label (small)
-  if (url) {
-    ctx.font = '14px monospace';
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
-    ctx.fillText(url, x + size / 2, y + size + 100);
-  }
-}
-
-function drawConnectionStatus(state: GameState, cx: number, y: number): void {
-  const items: Array<{ label: string; ok: boolean }> = [
-    { label: 'Table', ok: state.lobbyStatus.table },
-    { label: 'Pilote A', ok: state.lobbyStatus.pilotA },
-    { label: 'Pilote B', ok: state.lobbyStatus.pilotB },
-  ];
-
-  const boxW = 220;
-  const boxH = 60;
-  const gap = 20;
-  const totalW = items.length * boxW + (items.length - 1) * gap;
-  let startX = cx - totalW / 2;
-
-  ctx.font = 'bold 22px monospace';
-  ctx.textAlign = 'center';
-
-  for (const item of items) {
-    const bx = startX;
-    const by = y;
-
-    ctx.fillStyle = item.ok ? 'rgba(0,80,40,0.8)' : 'rgba(30,30,60,0.6)';
-    ctx.strokeStyle = item.ok ? '#00ff88' : 'rgba(255,255,255,0.15)';
-    ctx.lineWidth = item.ok ? 2 : 1;
-    ctx.beginPath();
-    ctx.roundRect(bx, by, boxW, boxH, 10);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = item.ok ? '#00ff88' : 'rgba(255,255,255,0.4)';
-    ctx.fillText(`${item.ok ? '✓' : '○'} ${item.label}`, bx + boxW / 2, by + 38);
-
-    startX += boxW + gap;
-  }
-}
-
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────────
 requestAnimationFrame(drawFrame);

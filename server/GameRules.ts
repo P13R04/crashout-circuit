@@ -94,8 +94,6 @@ export function createInitialState(): GameState {
     track: null,
     winner: null,
     sessionStartAt: Date.now(),
-    lobbyStatus: { pilotA: false, pilotB: false, table: false },
-    lobbyUrls: null,
     mapTargets: null,
     mapStrokes: { A: false, B: false },
     mapDeadline: 0,
@@ -595,6 +593,12 @@ export class GameRules {
         const a = { x: spot.p.x + spot.normal.x * spot.half * 0.9, y: spot.p.y + spot.normal.y * spot.half * 0.9 };
         const b = { x: spot.p.x - spot.normal.x * spot.half * 0.9, y: spot.p.y - spot.normal.y * spot.half * 0.9 };
         this.addBoostGate(team, a, b);
+        break;
+      }
+      case 'giveItem': { // test helper: put an item in the stock of `team`
+        const car = s.cars[team];
+        car.heldItem = params.item === 'boost' ? 'boost' : 'slingshot';
+        car.itemArmed = false;
         break;
       }
       case 'breakdown': { // instant breakdown of the car of `team`

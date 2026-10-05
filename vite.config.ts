@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
-// Multi-page app: table (root), pilot (/pilot), oz (/oz)
+// Multi-page app: table (root), oz (/oz)
 export default defineConfig({
   root: '.',
   build: {
@@ -9,8 +9,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         table:  resolve(__dirname, 'client-table/index.html'),
-        pilot:  resolve(__dirname, 'client-pilot/index.html'),
-        oz:     resolve(__dirname, 'client-oz/index.html'),
+              oz:     resolve(__dirname, 'client-oz/index.html'),
       },
     },
   },

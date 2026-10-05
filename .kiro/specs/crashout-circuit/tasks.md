@@ -18,7 +18,7 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 - [x] Créer `server/config.ts` chargeant `config.json` avec toutes les valeurs par défaut (section 14 du context.md).
 - [x] Créer `server/types.ts` avec toutes les interfaces (`Vec2`, `Car`, `Wall`, `GameState`, messages…).
 - [x] Créer `server/GameServer.ts` gérant le registre des connexions WS, l'attribution des rôles et le broadcast.
-- [x] Implémenter la phase `LOBBY` : attente des connexions, génération du QR code URL, `PhaseChange → MAP` quand les 4 joueurs sont connectés.
+- [x] Implémenter la phase `LOBBY` : attente des connexions, bouton « Commencer » sur la table (`StartGame`) → `PhaseChange → MAP` *(QR code / pilotes smartphone supprimés)*.
 - [x] Vérifier que tous les clients reçoivent bien les messages broadcast avec `type` et `t`.
 
 **Critères** :
@@ -53,23 +53,9 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 
 ---
 
-### Task 3 — Application Pilote (smartphone)
+### Task 3 — ~~Application Pilote (smartphone)~~ — SUPPRIMÉE
 
-**Objectif** : Page web mobile accessible via QR code permettant de piloter la voiture.
-
-**Dépend de** : Task 1
-
-**Sous-tâches** :
-- [ ] Créer `client-pilot/index.html` + `client-pilot/main.ts`.
-- [ ] Implémenter la connexion WebSocket avec paramètre `?team=A` ou `?team=B` dans l'URL, envoi de `PilotJoin`.
-- [ ] Créer `client-pilot/Controls.ts` : pédale (slider vertical, rappel à 0 au `pointerup`, envoie `throttle ∈ [-1, 1]`), joystick (slider horizontal, rappel à 0, envoie `steer ∈ [-1, 1]`), bouton UseItem (envoie `UseItem`).
-- [ ] Throttler l'envoi `PilotInput` à 60 Hz max (rAF ou setInterval).
-- [ ] Afficher le rôle et la couleur d'équipe clairement (cyan / rose).
-- [ ] Générer et afficher le QR code sur la table côté `client-table/QRDisplay.ts` (phase LOBBY) pointant vers `/pilot?team=A` et `/pilot?team=B`.
-
-**Critères** :
-- T-02 : connexion sans installation, latence < 80 ms sur réseau local.
-- Le rappel à 0 fonctionne au relâchement du doigt.
+**Décision** : plus aucun smartphone. Le pilote conduit directement sur la table avec un joystick tactile (panneau de coin : haut/bas = accélérateur/marche arrière, gauche/droite = direction) et un bouton « Utiliser objet ». Messages `PilotInput` / `UseItem` envoyés par la table ; plus de `PilotJoin`, de QR code ni de route `/pilot`. Le lobby se réduit à un bouton « Commencer » (`StartGame`).
 
 ---
 
@@ -366,7 +352,7 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 **Sous-tâches** :
 - [ ] Vérifier T-01 à T-11 avec au moins 2 joueurs réels sur la table.
 - [ ] Mesurer la latence doigt→rendu (objectif < 50 ms) avec `PointerEvent.timeStamp` vs `performance.now()` dans le Renderer.
-- [ ] Mesurer la latence smartphone→rendu (objectif < 80 ms).
+- [ ] Mesurer la latence joystick tactile→mouvement de la voiture (objectif < 50 ms).
 - [ ] Tester le budget tactile : valider que 10 contacts simultanés ne causent pas de crashs.
 - [ ] Tester la palm rejection (bras posés sur la table pendant la réparation).
 - [ ] Mesurer et déclarer la latence de réaction de l'opérateur Oz (R-16).
@@ -384,7 +370,7 @@ Les tâches suivent les priorités P0 → P1 → P2 définies dans le context.md
 |---|---|---|
 | Task 1 — Serveur Node.js + WS | P0 | — |
 | Task 2 — MapGenerator | P0 | 1 |
-| Task 3 — App Pilote smartphone | P0 | 1 |
+| ~~Task 3 — App Pilote smartphone~~ (supprimée : joystick sur la table) | — | — |
 | Task 4 — Rendu piste | P0 | 2 |
 | Task 5 — Physique véhicule + HP | P0 | 1, 2 |
 | Task 6 — Réparation synchrone | P0 | 4, 5 |

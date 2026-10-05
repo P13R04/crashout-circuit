@@ -28,6 +28,8 @@ export interface View {
   /** Destroy-wall targeting mode, deadline in local Date.now() ms. */
   targeting: { team: Team; until: number } | null;
   strokes: Map<number, LocalStroke>;
+  /** Joystick knob per team, normalized to the base radius (x right, y down), as drawn. */
+  sticks: Record<Team, { x: number; y: number; active: boolean }>;
   /** Smoothed HP shown on the bars. */
   hpShown: Record<Team, number>;
   /** Last mapError per team (performance.now()). */
@@ -46,6 +48,7 @@ export function createView(now: () => number): View {
     localPads: {},
     targeting: null,
     strokes: new Map(),
+    sticks: { A: { x: 0, y: 0, active: false }, B: { x: 0, y: 0, active: false } },
     hpShown: { A: 100, B: 100 },
     mapErrorAt: { A: -1e9, B: -1e9 },
     debug: { on: false, fps: 0, frameMs: 0, rtt: 0, touchMs: 0, contacts: 0 },

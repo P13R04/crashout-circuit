@@ -101,19 +101,6 @@ export interface MapTargets {
   B: [Vec2, Vec2];
 }
 
-export interface LobbyStatus {
-  pilotA: boolean;
-  pilotB: boolean;
-  table: boolean;
-}
-
-export interface LobbyUrls {
-  pilotA: string; // full HTTP URL for Pilot A QR code
-  pilotB: string; // full HTTP URL for Pilot B QR code
-  pilotAQr: string; // base64 PNG data URL for QR image
-  pilotBQr: string; // base64 PNG data URL for QR image
-}
-
 /** Subset of config.json the clients need to draw rings, timers and thresholds. */
 export interface GameParams {
   hpMax: number;
@@ -148,8 +135,6 @@ export interface GameState {
   track: TrackGeometry | null;
   winner: Team | 'draw' | null;
   sessionStartAt: number;
-  lobbyStatus: LobbyStatus;
-  lobbyUrls: LobbyUrls | null; // null until server generates them
   /** Imposed target points of each copilot, set on entering the MAP phase. */
   mapTargets: MapTargets | null;
   /** Which copilot strokes have been accepted so far. */
@@ -215,7 +200,7 @@ export interface BorderPullMsg extends BaseMsg {
   team?: Team;
 }
 
-// Smartphone → Server
+// Pilot joystick / item button on the table → Server
 export interface PilotInputMsg extends BaseMsg {
   type: 'PilotInput';
   team: Team;
@@ -228,9 +213,8 @@ export interface UseItemMsg extends BaseMsg {
   team: Team;
 }
 
-export interface PilotJoinMsg extends BaseMsg {
-  type: 'PilotJoin';
-  team: Team;
+export interface StartGameMsg extends BaseMsg {
+  type: 'StartGame';
 }
 
 // Console Oz → Server
@@ -295,7 +279,7 @@ export type ClientMessage =
   | BorderPullMsg
   | PilotInputMsg
   | UseItemMsg
-  | PilotJoinMsg
+  | StartGameMsg
   | TangibleMovedMsg
   | TangibleRemovedMsg
   | OzTriggerMsg

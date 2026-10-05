@@ -7,6 +7,8 @@
  * in multi-finger gestures, so the repair pads and the buttons stay independent
  * of gameplay gestures (T-09):
  *
+ *   joystick   pilot touchpad: up/down = throttle, left/right = steer → PilotInput
+ *   item       pilot's item button tap               → UseItem(team)
  *   pad        finger on a repair pad                → PadHold(team, role, on)
  *   ghost      tap on the Ghost button               → Ability(ghost)
  *   destroy    tap on Destroy, then touch a wall     → Ability(destroy, targetId)
@@ -20,11 +22,12 @@
  */
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import {
-  LOGICAL_W, LOGICAL_H, PANELS, PAD_LOCAL, GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL,
-  worldToLocal, insidePanel, nearestStationTeam, type Role,
+  LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, JOY_LOCAL, JOY_GRAB_R, ITEM_BTN_LOCAL,
+  GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL, worldToLocal, type PanelLayout,
+  insidePanel, nearestStationTeam, type Role,
 } from '../server/layout.js';
 import { distToSegment, nearestOnTrack } from '../server/geometry.js';
-import { RESULT_BUTTON } from './Renderer.js';
+import { RESULT_BUTTON, START_BUTTON } from './Renderer.js';
 import type { View } from './view.js';
 
 export const MAX_CONTACTS = 10;
@@ -39,7 +42,7 @@ const TARGET_RADIUS_PX = 40;
 const TARGETING_MS = 3000;
 const PALM_MAX_PX = 140;        // contacts wider than this (logical px) are palms/arms
 
-type Zone = 'pad' | 'ghost' | 'destroy' | 'stroke' | 'target' | 'result' | 'free' | 'rejected';
+type Zone = 'joystick' | 'item' | 'pad' | 'ghost' | 'destroy' | 'stroke' | 'target' | 'result' | 'free' | 'rejected';
 
 interface Contact {
   id: number;
@@ -48,6 +51,7 @@ interface Contact {
   zone: Zone;
   consumed: boolean;
   padKey?: string;
+  panel?: PanelLayout; // joystick contacts: the panel whose frame the stick is read in
   strokeTeam?: Team;
   outward?: Vec2; // border candidate: unit vector away from the centerline
 }
@@ -57,9 +61,47 @@ type Send = (msg: { type: string } & Record<string, unknown>) => void;
 export class GestureRecognizer {
   private contacts = new Map<number, Contact>();
   private padTouches = new Map<string, Set<number>>();
+  /** team → pointerId of the finger holding that team's joystick. */
+  private sticks = new Map<Team, number>();
+  private lastInput: Record<Team, { throttle: number; steer: number }> = {
+    A: { throttle: 0, steer: 0 }, B: { throttle: 0, steer: 0 },
+  };
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
   /** event.timeStamp of the latest pointerdown, to measure finger→frame latency. */
   lastDownTs = 0;
+
+  /**
+   * Mouse-friendly stand-ins for the multi-finger gestures: arm the simulation from a
+   * button, then click on the table — 1 click for the 3-finger slingshot, 2 clicks
+   * (the two fingers) for the boost gate. The normal armed-item rules still apply.
+   */
+  private sim: { kind: 'slingshot' | 'boost'; first?: Vec2 } | null = null;
+  onSimChange: (hint: string) => void = () => {};
+
+  simulate(kind: 'slingshot' | 'boost' | null): void {
+    this.sim = kind ? { kind } : null;
+    this.onSimChange(!kind ? '' : kind === 'slingshot' ? 'Cliquez sur la table : cible du lance-pierre (3 doigts)' : 'Cliquez 2 points (100–400 px) : portail de boost (2 doigts)');
+  }
+
+  private simClick(p: Vec2): void {
+    const sim = this.sim;
+    if (!sim) return;
+    if (sim.kind === 'slingshot') {
+      const team = this.armedTeam('slingshot', p);
+      if (team) { this.send({ type: 'Slingshot', x: p.x, y: p.y, team }); this.onSimChange(''); }
+      else this.onSimChange("Aucune équipe n'a armé de lance-pierre (UTILISER d'abord)");
+      this.sim = null;
+      return;
+    }
+    if (!sim.first) { sim.first = p; this.onSimChange('Cliquez le 2e point du portail'); return; }
+    const d = Math.hypot(p.x - sim.first.x, p.y - sim.first.y);
+    const mid = { x: (p.x + sim.first.x) / 2, y: (p.y + sim.first.y) / 2 };
+    const team = this.armedTeam('boost', mid);
+    if (!team) this.onSimChange("Aucune équipe n'a armé de boost (UTILISER d'abord)");
+    else if (d < 100 || d > 400) this.onSimChange(`Écart ${Math.round(d)} px : il doit être entre 100 et 400`);
+    else { this.send({ type: 'BoostGate', a: sim.first, b: p, team }); this.onSimChange(''); }
+    this.sim = null;
+  }
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -72,6 +114,8 @@ export class GestureRecognizer {
     canvas.addEventListener('pointerup', (e) => this.onUp(e), opts);
     canvas.addEventListener('pointercancel', (e) => this.onUp(e), opts);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Steering is streamed at up to 60 Hz while a joystick is held
+    setInterval(() => this.streamInputs(), 1000 / 60);
   }
 
   private get state(): GameState | null { return this.view.state; }
@@ -95,6 +139,16 @@ export class GestureRecognizer {
     const c: Contact = { id: e.pointerId, x: p.x, y: p.y, sx: p.x, sy: p.y, zone: 'free', consumed: false };
     this.contacts.set(c.id, c);
     this.view.debug.contacts = this.contacts.size;
+
+    // 0 — lobby: start button
+    if (state.phase === 'LOBBY') {
+      const b = START_BUTTON;
+      if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
+        c.zone = 'result';
+        this.send({ type: 'StartGame' });
+      } else c.zone = 'rejected';
+      return;
+    }
 
     // 1 — result screen button
     if (state.phase === 'RESULT') {
@@ -121,7 +175,24 @@ export class GestureRecognizer {
     // 3 — pads and buttons of the corner panels
     for (const panel of PANELS) {
       const l = worldToLocal(panel, p.x, p.y);
-      if (Math.hypot(l.x - PAD_LOCAL.x, l.y - PAD_LOCAL.y) <= PAD_LOCAL.r + 6) {
+      if (panel.role === 'pilot') {
+        if (Math.hypot(l.x - JOY_LOCAL.x, l.y - JOY_LOCAL.y) <= JOY_GRAB_R) {
+          // One finger per joystick; a second finger on it is ignored
+          if (this.sticks.has(panel.team)) { c.zone = 'rejected'; return; }
+          c.zone = 'joystick';
+          c.panel = panel;
+          this.sticks.set(panel.team, c.id);
+          this.updateStick(c);
+          return;
+        }
+        if (Math.hypot(l.x - ITEM_BTN_LOCAL.x, l.y - ITEM_BTN_LOCAL.y) <= ITEM_BTN_LOCAL.r + 6) {
+          c.zone = 'item';
+          this.send({ type: 'UseItem', team: panel.team });
+          return;
+        }
+      }
+      const pad = padLocal(panel.role);
+      if (Math.hypot(l.x - pad.x, l.y - pad.y) <= pad.r + 6) {
         c.zone = 'pad';
         c.padKey = `${panel.team}-${panel.role}`;
         this.padDown(c.padKey, panel.team, panel.role, c.id);
@@ -144,7 +215,14 @@ export class GestureRecognizer {
         }
       }
       // Rest of a panel: not a game surface
-      if (insidePanel(p) && Math.abs(l.x) <= 230 && Math.abs(l.y) <= 100) { c.zone = 'rejected'; return; }
+      if (Math.abs(l.x) <= panelWidth(panel.role) / 2 && Math.abs(l.y) <= PANEL_H / 2) { c.zone = 'rejected'; return; }
+    }
+
+    // 3b — PC testing: simulated multi-finger gesture (toolbar buttons)
+    if (this.sim) {
+      c.zone = 'target';
+      this.simClick(p);
+      return;
     }
 
     // 4 — palm / arm rejection for everything that is not a pad
@@ -181,7 +259,9 @@ export class GestureRecognizer {
     const p = this.toLogical(e);
     c.x = p.x; c.y = p.y;
 
-    if (c.zone === 'stroke') {
+    if (c.zone === 'joystick') {
+      this.updateStick(c);
+    } else if (c.zone === 'stroke') {
       const s = this.view.strokes.get(c.id);
       const last = s?.pts[s.pts.length - 1];
       if (s && last && Math.hypot(p.x - last.x, p.y - last.y) >= 2) s.pts.push(p);
@@ -197,6 +277,7 @@ export class GestureRecognizer {
     this.view.debug.contacts = this.contacts.size;
 
     if (c.zone === 'pad' && c.padKey) this.padUp(c.padKey, c.id);
+    if (c.zone === 'joystick' && c.panel) this.releaseStick(c.panel.team);
     if (c.zone === 'stroke') {
       const s = this.view.strokes.get(c.id);
       if (s) {
@@ -205,6 +286,47 @@ export class GestureRecognizer {
       }
     }
     if (c.zone === 'free') this.scheduleEvaluation();
+  }
+
+  // ─── Joystick ─────────────────────────────────────────────────────────────
+
+  /** Knob position from the finger, in the panel's frame (up = forward). */
+  private updateStick(c: Contact): void {
+    if (!c.panel) return;
+    const l = worldToLocal(c.panel, c.x, c.y);
+    let vx = (l.x - JOY_LOCAL.x) / JOY_LOCAL.r;
+    let vy = (l.y - JOY_LOCAL.y) / JOY_LOCAL.r;
+    const mag = Math.hypot(vx, vy);
+    if (mag > 1) { vx /= mag; vy /= mag; }
+    this.view.sticks[c.panel.team] = { x: vx, y: vy, active: true };
+  }
+
+  private releaseStick(team: Team): void {
+    this.sticks.delete(team);
+    this.view.sticks[team] = { x: 0, y: 0, active: false };
+    this.sendInput(team, 0, 0);
+  }
+
+  /** 10 % deadzone, rescaled so the full range is still reachable. */
+  private static axis(v: number): number {
+    const dz = 0.1;
+    const a = Math.abs(v);
+    return a < dz ? 0 : Math.sign(v) * Math.min(1, (a - dz) / (1 - dz));
+  }
+
+  private streamInputs(): void {
+    for (const team of ['A', 'B'] as Team[]) {
+      const st = this.view.sticks[team];
+      if (!st.active) continue;
+      this.sendInput(team, GestureRecognizer.axis(-st.y), GestureRecognizer.axis(st.x));
+    }
+  }
+
+  private sendInput(team: Team, throttle: number, steer: number): void {
+    const last = this.lastInput[team];
+    if (last.throttle === throttle && last.steer === steer) return;
+    this.lastInput[team] = { throttle, steer };
+    this.send({ type: 'PilotInput', team, throttle, steer });
   }
 
   // ─── Repair pads ──────────────────────────────────────────────────────────
@@ -239,6 +361,11 @@ export class GestureRecognizer {
       this.send({ type: 'PadHold', team, role, on: false });
     }
     this.padTouches.clear();
+    for (const team of ['A', 'B'] as Team[]) {
+      this.releaseStick(team);
+      this.lastInput[team] = { throttle: 1e9, steer: 1e9 }; // force the zero frame out
+      this.sendInput(team, 0, 0);
+    }
     this.contacts.clear();
     this.view.debug.contacts = 0;
   }

@@ -30,11 +30,11 @@ Ouvrir la table avec `http://<ip>:3000/?debug=1` (ou touche **D**) : l'overlay a
 | Mesure | Objectif | Méthode | Résultat |
 |---|---|---|---|
 | Doigt → rendu (REQ-9.2) | < 50 ms | `touch→frame` de l'overlay = `performance.now()` à la frame où le retour local est dessiné − `PointerEvent.timeStamp`. Ajouter le RTT affiché pour l'aller-retour serveur | _à remplir_ |
-| Smartphone → rendu (REQ-3.1.3) | < 80 ms | Le serveur répond à `Ping` par `Pong` pour tout client : faire mesurer le RTT au smartphone (RTT/2 ≈ aller simple) + latence de rendu table. Contrôle indépendant : filmer table + téléphone à 120 i/s | _à remplir_ |
+| Joystick → mouvement de la voiture | < 50 ms | Le joystick est sur la table : `touch→frame` + RTT de l'overlay. Contrôle indépendant : filmer la table à 120 i/s | _à remplir_ |
 | 60 fps en 4K (REQ-9.3) | ≥ 55 fps | Overlay `?debug=1`, 2 voitures + tous les effets actifs (arc, pierre, boost, fantôme). Repli si insuffisant : forcer un DPR de 1 | _à remplir_ |
 | Budget tactile (REQ-9.1) | 10 contacts sans erreur | Poser 10 doigts ; vérifier que la console navigateur ne signale rien et que le compteur `pts` plafonne à 10 | _à remplir_ |
 | Palm rejection | bras posés pendant la réparation sans geste parasite | Les contacts de largeur > 140 px logiques sont ignorés hors pads (`PALM_MAX_PX` dans `GestureRecognizer.ts`) ; seuil à ajuster selon ce que `PointerEvent.width` rapporte sur la dalle PCAP | _à remplir_ |
 | Latence de l'opérateur Oz (R-16) | à déclarer | Bouton « Test de réaction » de la console Oz : l'entrée `ReactionTime` est ajoutée au journal exportable. Faire ≥ 10 essais, déclarer médiane et écart | _à remplir_ |
-| T-02 | connexion sans installation, < 80 ms | Dépend de l'app Pilote (Task 3, non traitée) | _à faire_ |
+| T-02 | pilote sans installation, < 80 ms | Sans objet : le pilote joue sur la table (joystick tactile). Remplacé par la ligne précédente | — |
 
 Les critères T-01 à T-11 doivent encore être rejoués avec au moins deux joueurs réels pour valider l'ergonomie (distance des panneaux, taille des zones tactiles, lisibilité depuis chaque bord).

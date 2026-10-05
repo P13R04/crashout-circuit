@@ -12,6 +12,6 @@
     "isolatedModules": true,
     "useDefineForClassFields": true
   },
-  "include": ["client-table/**/*.ts", "client-pilot/**/*.ts", "client-oz/**/*.ts", "client-shared/**/*.ts", "scripts/**/*.ts"],
+  "include": ["client-table/**/*.ts", "client-oz/**/*.ts", "client-shared/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["node_modules", "dist", "server"]
 }

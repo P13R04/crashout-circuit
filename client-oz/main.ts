@@ -76,6 +76,8 @@ controlsEl.innerHTML = `
     <button data-oz="breakdown" class="danger">Panne</button>
     <button data-oz="widen">Élargir</button>
     <button data-oz="fallbackTrack">Circuit ↺</button>
+    <button data-oz="giveItem" data-item="slingshot">+ Lance-pierre</button>
+    <button data-oz="giveItem" data-item="boost">+ Boost</button>
   </div>
   <div class="row"><h3>JOURNAL</h3>
     <div id="journal"></div>
@@ -160,7 +162,7 @@ for (const t of ['A', 'B'] as Team[]) {
   });
 }
 controlsEl.querySelectorAll<HTMLButtonElement>('button[data-oz]').forEach((b) => {
-  b.addEventListener('click', () => emit('OzTrigger', { kind: b.dataset.oz!, params: { team: selectedTeam } }));
+  b.addEventListener('click', () => emit('OzTrigger', { kind: b.dataset.oz!, params: { team: selectedTeam, ...(b.dataset.item ? { item: b.dataset.item } : {}) } }));
 });
 
 // ── Journal, export, replay (task 15) ─────────────────────────────────────────

@@ -5,7 +5,7 @@
  */
 import type { GameState, Team, Car } from '../server/types.js';
 import {
-  PANELS, PANEL_W, PANEL_H, PAD_LOCAL, GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL,
+  PANELS, PANEL_H, panelWidth, padLocal, JOY_LOCAL, ITEM_BTN_LOCAL, GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL,
   type PanelLayout,
 } from '../server/layout.js';
 import { TEAM_COLOR, TEAM_NAME, type View } from './view.js';
@@ -63,6 +63,7 @@ export class HUD {
   }
 
   private drawFrame(ctx: Ctx, panel: PanelLayout): void {
+    const PANEL_W = panelWidth(panel.role);
     const color = TEAM_COLOR[panel.team];
     ctx.fillStyle = 'rgba(6,10,32,0.88)';
     ctx.strokeStyle = color;
@@ -74,46 +75,75 @@ export class HUD {
     ctx.fillStyle = color;
     ctx.font = 'bold 15px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText(`${panel.role === 'pilot' ? 'PILOTE' : 'COPILOTE'} · ${TEAM_NAME[panel.team]}`, -PANEL_W / 2 + 16, -PANEL_H / 2 + 24);
+    ctx.fillText(`${panel.role === 'pilot' ? 'PILOTE' : 'COPILOTE'} · ${TEAM_NAME[panel.team]}`, -PANEL_W / 2 + (panel.role === 'pilot' ? 190 : 16), -PANEL_H / 2 + 24);
   }
 
   private drawPilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
-    const car = state.cars[panel.team];
-    const color = TEAM_COLOR[panel.team];
+    const team = panel.team;
+    const car = state.cars[team];
+    const color = TEAM_COLOR[team];
+
     // HP bar (animated towards the real value by the main loop)
-    const shown = view.hpShown[panel.team];
-    const frac = Math.max(0, Math.min(1, shown / state.params.hpMax));
-    const bx = -PANEL_W / 2 + 16, by = -PANEL_H / 2 + 36, bw = 264, bh = 22; // stops left of the repair pad
+    const frac = Math.max(0, Math.min(1, view.hpShown[team] / state.params.hpMax));
+    const bx = -140, by = -62, bw = 290, bh = 22;
     ctx.fillStyle = 'rgba(255,255,255,0.1)';
     ctx.fillRect(bx, by, bw, bh);
     ctx.fillStyle = frac > 0.5 ? '#3ddc84' : frac > 0.25 ? '#ffb020' : '#ff4040';
     ctx.fillRect(bx, by, bw * frac, bh);
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'left';
     ctx.fillText(`HP ${Math.round(car.hp)}`, bx + 8, by + 17);
 
-    // Stocked item
-    const ix = -170, iy = 34;
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    // Touchpad joystick: base, deadzone mark, axis hints and the knob
+    const j = JOY_LOCAL;
+    const stick = view.sticks[team];
+    ctx.fillStyle = stick.active ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)';
+    ctx.strokeStyle = color;
     ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(ix, iy, 34, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(j.x, j.y, j.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.beginPath();
+    ctx.moveTo(j.x - j.r, j.y); ctx.lineTo(j.x + j.r, j.y);
+    ctx.moveTo(j.x, j.y - j.r); ctx.lineTo(j.x, j.y + j.r);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('AVANT', j.x, j.y - j.r + 14);
+    ctx.fillText('ARRIÈRE', j.x, j.y + j.r - 6);
+    const kx = j.x + stick.x * j.r, ky = j.y + stick.y * j.r;
+    ctx.fillStyle = stick.active ? color : 'rgba(255,255,255,0.25)';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = stick.active ? 16 : 0;
+    ctx.beginPath(); ctx.arc(kx, ky, 26, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Item button: stocked item, tap to arm it (then the copilot has 5 s for the gesture)
+    const b = ITEM_BTN_LOCAL;
+    const armed = car.itemArmed;
+    ctx.fillStyle = armed ? 'rgba(255,225,74,0.25)' : car.heldItem ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)';
+    ctx.strokeStyle = armed ? '#ffe14a' : car.heldItem ? '#ffffff' : 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.textAlign = 'center';
     if (car.heldItem) {
-      drawItemIcon(ctx, car.heldItem, ix, iy, 22, car.itemArmed ? '#ffe14a' : color);
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.font = '12px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(car.itemArmed ? 'ARMÉ' : 'UTILISER', ix, iy + 52);
+      drawItemIcon(ctx, car.heldItem, b.x, b.y - 6, 18, armed ? '#ffe14a' : color);
+      ctx.fillStyle = armed ? '#ffe14a' : 'rgba(255,255,255,0.8)';
+      ctx.font = 'bold 11px monospace';
+      ctx.fillText(armed ? 'ARMÉ' : 'UTILISER', b.x, b.y + 26);
     } else {
-      ctx.fillStyle = 'rgba(255,255,255,0.25)';
-      ctx.font = '12px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('aucun objet', ix, iy + 4);
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.font = '11px monospace';
+      ctx.fillText('aucun', b.x, b.y - 2);
+      ctx.fillText('objet', b.x, b.y + 12);
     }
     ctx.textAlign = 'left';
     void now;
   }
 
   private drawCopilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
+    const PANEL_W = panelWidth('copilot');
     const team = panel.team;
     const car = state.cars[team];
     const cd = state.cooldowns[team];
@@ -178,7 +208,7 @@ export class HUD {
     const held = view.localPads[key] || state.repairPads[key]?.held;
     const car: Car = state.cars[panel.team];
     const color = TEAM_COLOR[panel.team];
-    const { x, y, r } = PAD_LOCAL;
+    const { x, y, r } = padLocal(panel.role);
     ctx.fillStyle = held ? 'rgba(61,220,132,0.28)' : car.disabled ? 'rgba(255,64,64,0.2)' : 'rgba(255,255,255,0.05)';
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     ring(ctx, x, y, r - 5, state.repairProgress[panel.team], '#3ddc84', 10);
@@ -199,7 +229,7 @@ export class HUD {
       ctx.fillStyle = '#ff4040';
       ctx.font = 'bold 18px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText("HORS D'USAGE", -40, 46);
+      ctx.fillText("HORS D'USAGE", 95, 40);
       ctx.textAlign = 'left';
     }
   }

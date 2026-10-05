@@ -1,17 +1,16 @@
 /**
  * Client-side networking helpers shared by the table and the Oz console.
  *
- * - `StateSync` re-attaches the heavy fields (track, QR images) that the server only
+ * - `StateSync` re-attaches the heavy fields (track) that the server only
  *   sends on change, so every consumer sees a complete GameState.
  * - the server clock offset lets rings and timers use server timestamps even when
  *   the browser's clock differs.
  */
-import type { GameState, TrackGeometry, LobbyUrls, ServerMessage } from '../server/types.js';
+import type { GameState, TrackGeometry, ServerMessage } from '../server/types.js';
 
 export class StateSync {
   private track: TrackGeometry | null = null;
   private trackVersion = -1;
-  private lobbyUrls: LobbyUrls | null = null;
   /** serverTime − localTime (ms), smoothed; positive when the server clock is ahead. */
   private offset = 0;
   private haveOffset = false;
@@ -32,8 +31,6 @@ export class StateSync {
     } else {
       state.track = this.track;
     }
-    if (state.lobbyUrls) this.lobbyUrls = state.lobbyUrls;
-    else state.lobbyUrls = this.lobbyUrls;
     return state;
   }
 

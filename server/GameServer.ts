@@ -2,12 +2,10 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { IncomingMessage } from 'http';
 import type {
   GameState,
-  LobbyUrls,
   Team,
   Phase,
   ClientMessage,
   ServerMessage,
-  PilotJoinMsg,
   PhaseChangeMsg,
   FeedbackMsg,
   PongMsg,
@@ -18,7 +16,7 @@ import { GameRules, createInitialState } from './GameRules.js';
 import type { RulesHost } from './GameRules.js';
 import { PhysicsLoop } from './PhysicsLoop.js';
 
-export type ClientRole = 'table' | 'pilot-A' | 'pilot-B' | 'oz' | 'unknown';
+export type ClientRole = 'table' | 'oz';
 
 interface ConnectedClient {
   ws: WebSocket;
@@ -57,12 +55,6 @@ export class GameServer {
     this.clients.add(client);
     console.log(`[GameServer] Client connected: ${role} (total: ${this.clients.size})`);
 
-    // Update lobby status for table connection
-    if (role === 'table') {
-      this.state.lobbyStatus = { ...this.state.lobbyStatus, table: true };
-      this.broadcastLobbyStatus();
-    }
-
     // Send current state immediately
     this.sendTo(ws, {
       type: 'State',
@@ -82,9 +74,12 @@ export class GameServer {
     ws.on('close', () => {
       this.clients.delete(client);
       console.log(`[GameServer] Client disconnected: ${client.role} (total: ${this.clients.size})`);
-      if (client.role === 'table') this.rules.releaseAllPads();
-      // Recompute lobby status on disconnect
-      this.recomputeLobbyStatus();
+      if (client.role === 'table' && ![...this.clients].some((c) => c.role === 'table')) {
+        // No table left: nothing may stay pressed
+        this.rules.releaseAllPads();
+        this.rules.inputs.A = { throttle: 0, steer: 0 };
+        this.rules.inputs.B = { throttle: 0, steer: 0 };
+      }
     });
 
     ws.on('error', (err) => {
@@ -94,36 +89,27 @@ export class GameServer {
 
   private resolveRole(url: URL): ClientRole {
     const path = url.pathname.replace(/^\/ws(?=\/|$)/, '') || '/';
-    const team = url.searchParams.get('team') as Team | null;
-
-    if (path.startsWith('/pilot')) {
-      return team === 'B' ? 'pilot-B' : 'pilot-A';
-    }
-    if (path.startsWith('/oz')) return 'oz';
-    return 'table';
+    return path.startsWith('/oz') ? 'oz' : 'table';
   }
 
   private handleMessage(client: ConnectedClient, msg: ClientMessage): void {
     const fromTable = client.role === 'table';
     const fromOz = client.role === 'oz';
-    const pilotTeam: Team | null =
-      client.role === 'pilot-A' ? 'A' : client.role === 'pilot-B' ? 'B' : null;
 
     switch (msg.type) {
-      case 'PilotJoin':
-        this.handlePilotJoin(client, msg);
-        break;
       case 'Ping':
         this.sendTo(client.ws, { type: 'Pong', t: Date.now(), clientT: msg.t } satisfies PongMsg);
         break;
-      // Pilot → server (team comes from the connection, not from the payload)
+      // Table → server (the pilot joystick and item button live on the table)
       case 'PilotInput':
-        if (pilotTeam) this.rules.onPilotInput(pilotTeam, msg);
+        if (fromTable && (msg.team === 'A' || msg.team === 'B')) this.rules.onPilotInput(msg.team, msg);
         break;
       case 'UseItem':
-        if (pilotTeam) this.rules.onUseItem(pilotTeam, msg);
+        if (fromTable && (msg.team === 'A' || msg.team === 'B')) this.rules.onUseItem(msg.team, msg);
         break;
-      // Table → server
+      case 'StartGame':
+        if (fromTable && this.state.phase === 'LOBBY') this.rules.enterMap();
+        break;
       case 'StrokeDraw':
         if (fromTable) this.rules.onStrokeDraw(msg);
         break;
@@ -145,7 +131,6 @@ export class GameServer {
       case 'NewGame':
         if (fromTable && this.state.phase === 'RESULT') {
           this.rules.resetToLobby();
-          this.checkLobbyTransition();
         }
         break;
       // Oz console (or a future TUIO bridge on the table) → server
@@ -158,58 +143,10 @@ export class GameServer {
       case 'OzTrigger':
         if (fromOz) {
           this.rules.onOzTrigger(msg);
-          if (msg.kind === 'newGame') this.checkLobbyTransition();
         }
         break;
       default:
         break;
-    }
-  }
-
-  private handlePilotJoin(client: ConnectedClient, msg: PilotJoinMsg): void {
-    const role: ClientRole = msg.team === 'B' ? 'pilot-B' : 'pilot-A';
-    client.role = role;
-    console.log(`[GameServer] Pilot joined team ${msg.team}`);
-
-    // Update lobby status
-    if (msg.team === 'A') {
-      this.state.lobbyStatus = { ...this.state.lobbyStatus, pilotA: true };
-    } else {
-      this.state.lobbyStatus = { ...this.state.lobbyStatus, pilotB: true };
-    }
-    this.broadcastLobbyStatus();
-    this.checkLobbyTransition();
-  }
-
-  private recomputeLobbyStatus(): void {
-    const pilotA = [...this.clients].some((c) => c.role === 'pilot-A');
-    const pilotB = [...this.clients].some((c) => c.role === 'pilot-B');
-    const table  = [...this.clients].some((c) => c.role === 'table');
-    this.state.lobbyStatus = { pilotA, pilotB, table };
-    this.broadcastLobbyStatus();
-  }
-
-  private broadcastLobbyStatus(): void {
-    // Broadcast updated state so table can reflect connection progress
-    this.broadcast({
-      type: 'State',
-      t: Date.now(),
-      state: this.state,
-    } satisfies StateMsg);
-  }
-
-  /** Called from index.ts once the server knows its network IP and QR data URLs. */
-  setLobbyUrls(urls: LobbyUrls): void {
-    this.state.lobbyUrls = urls;
-    // Broadcast updated state to any already-connected clients (e.g. table)
-    this.broadcastLobbyStatus();
-  }
-
-  private checkLobbyTransition(): void {
-    if (this.state.phase !== 'LOBBY') return;
-    const { pilotA, pilotB, table } = this.state.lobbyStatus;
-    if (pilotA && pilotB && table) {
-      this.rules.enterMap();
     }
   }
 
@@ -224,16 +161,16 @@ export class GameServer {
     } satisfies PhaseChangeMsg);
   }
 
-  /** 30 Hz tick: the heavy fields (track, QR images) are omitted; clients keep the last copy. */
+  /** 30 Hz tick: the heavy field (the track) are omitted; clients keep the last copy. */
   private broadcastTick(): void {
     this.broadcast({
       type: 'State',
       t: Date.now(),
-      state: { ...this.state, track: null, lobbyUrls: null },
+      state: { ...this.state, track: null },
     } satisfies StateMsg);
   }
 
-  /** Full state, including the track and QR data (on phase/track changes and connections). */
+  /** Full state, including the track (on phase/track changes and connections). */
   broadcastFull(): void {
     this.broadcast({ type: 'State', t: Date.now(), state: this.state } satisfies StateMsg);
   }

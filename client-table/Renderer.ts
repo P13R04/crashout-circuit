@@ -18,6 +18,7 @@ const ARC_YELLOW = '#ffe14a';
 const OUTER_COLOR = '#ff2bd6'; // magenta outer wall
 const INNER_COLOR = '#00e5ff'; // cyan inner wall
 
+export const START_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 50, w: 520, h: 100 };
 export const RESULT_BUTTON = { x: LOGICAL_W / 2 - 200, y: LOGICAL_H / 2 - 45, w: 400, h: 90 };
 
 function wallEnds(pos: Vec2, angleDeg: number, len: number): [Vec2, Vec2] {
@@ -39,6 +40,7 @@ export class Renderer {
     if (!state) return;
     const ctx = this.ctx;
 
+    if (state.phase === 'LOBBY') { this.drawLobby(ctx); return; }
     if (state.phase === 'MAP') { this.drawMap(ctx, state, view); return; }
     if (state.phase !== 'RACE' && state.phase !== 'RESULT') return;
     const now = view.now();
@@ -55,6 +57,38 @@ export class Renderer {
     this.drawDisabledAlerts(ctx, state);
     if (state.phase === 'RACE') this.drawCountdown(ctx, state, now);
     if (state.phase === 'RESULT') this.drawResult(ctx, state);
+  }
+
+  // ─── Lobby ────────────────────────────────────────────────────────────────
+
+  private drawLobby(ctx: Ctx): void {
+    ctx.save();
+    ctx.textAlign = 'center';
+    for (const rot of [0, Math.PI]) { // readable from both long edges
+      ctx.save();
+      ctx.translate(LOGICAL_W / 2, LOGICAL_H / 2);
+      ctx.rotate(rot);
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = '#00e5ff';
+      ctx.shadowBlur = 24;
+      ctx.font = 'bold 84px monospace';
+      ctx.fillText('CRASHOUT CIRCUIT', 0, -250);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.font = '28px monospace';
+      ctx.fillText('Pilotes : joystick en bas du panneau · Copilotes : tracez, piégez, réparez', 0, -190);
+      ctx.restore();
+    }
+    const b = START_BUTTON;
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 400);
+    ctx.fillStyle = 'rgba(0,229,255,0.15)';
+    ctx.strokeStyle = `rgba(0,229,255,${0.6 + 0.4 * pulse})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 20); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 44px monospace';
+    ctx.fillText('COMMENCER', b.x + b.w / 2, b.y + 65);
+    ctx.restore();
   }
 
   // ─── Track ────────────────────────────────────────────────────────────────

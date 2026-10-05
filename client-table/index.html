@@ -24,10 +24,27 @@
       font-size: 13px;
       pointer-events: none;
     }
+    #sim {
+      position: fixed; bottom: 6px; left: 50%; transform: translateX(-50%);
+      display: none; gap: 8px; align-items: center;
+      font: 13px monospace; color: #cfd8e3;
+    }
+    #sim.on { display: flex; }
+    #sim button {
+      background: #12204a; color: #fff; border: 1px solid #00e5ff; border-radius: 6px;
+      padding: 8px 12px; font: inherit; cursor: pointer;
+    }
+    #sim button:hover { background: #1b3270; }
+    #sim button.armed { background: #00e5ff; color: #04081f; }
   </style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
+  <div id="sim">
+    <button id="sim3">✋ Simuler 3 doigts (lance-pierre)</button>
+    <button id="sim2">✌ Simuler 2 doigts (boost)</button>
+    <span id="sim-hint"></span>
+  </div>
   <div id="status">Connexion…</div>
   <script type="module" src="./main.ts"></script>
 </body>

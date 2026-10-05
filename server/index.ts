@@ -3,7 +3,6 @@ import { WebSocketServer } from 'ws';
 import { readFileSync, statSync } from 'fs';
 import { resolve, dirname, extname } from 'path';
 import { fileURLToPath } from 'url';
-import QRCode from 'qrcode';
 import { GameServer } from './GameServer.js';
 import { config } from './config.js';
 
@@ -55,9 +54,7 @@ const httpServer = http.createServer((req, res) => {
 
   // Route to the correct client dist folder
   let clientDir: string;
-  if (url.pathname.startsWith('/pilot')) {
-    clientDir = resolve(__dirname, '../../dist/clients/client-pilot');
-  } else if (url.pathname.startsWith('/oz')) {
+  if (url.pathname.startsWith('/oz')) {
     clientDir = resolve(__dirname, '../../dist/clients/client-oz');
   } else {
     clientDir = resolve(__dirname, '../../dist/clients/client-table');
@@ -65,7 +62,6 @@ const httpServer = http.createServer((req, res) => {
 
   // Strip route prefix to get the file path within the client folder
   let filePath = url.pathname;
-  if (url.pathname.startsWith('/pilot')) filePath = filePath.slice('/pilot'.length) || '/';
   if (url.pathname.startsWith('/oz'))    filePath = filePath.slice('/oz'.length) || '/';
 
   // Serve the file or fall back to index.html (SPA behaviour)
@@ -102,22 +98,6 @@ httpServer.listen(PORT, async () => {
   for (const ip of localIps) {
     console.log(`   Network: http://${ip}:${PORT}`);
     console.log(`   Oz:      http://${ip}:${PORT}/oz`);
-
-    const pilotAUrl = `http://${ip}:${PORT}/pilot?team=A`;
-    const pilotBUrl = `http://${ip}:${PORT}/pilot?team=B`;
-
-    console.log(`\n   Pilot A: ${pilotAUrl}`);
-    const qrA = await QRCode.toString(pilotAUrl, { type: 'terminal', small: true });
-    console.log(qrA);
-
-    console.log(`   Pilot B: ${pilotBUrl}`);
-    const qrB = await QRCode.toString(pilotBUrl, { type: 'terminal', small: true });
-    console.log(qrB);
-
-    // Generate base64 PNG data URLs so the table can render QR images
-    const pilotAQr = await QRCode.toDataURL(pilotAUrl, { errorCorrectionLevel: 'M', margin: 2 });
-    const pilotBQr = await QRCode.toDataURL(pilotBUrl, { errorCorrectionLevel: 'M', margin: 2 });
-    gameServer.setLobbyUrls({ pilotA: pilotAUrl, pilotB: pilotBUrl, pilotAQr, pilotBQr });
   }
 
   console.log(`   Config:  lapsToWin=${config.lapsToWin}, physicsHz=${config.physicsHz}\n`);
