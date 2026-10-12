@@ -261,6 +261,10 @@ export interface NewGameMsg extends BaseMsg {
   type: 'NewGame';
 }
 
+export interface ResetMsg extends BaseMsg {
+  type: 'Reset';
+}
+
 export interface PingMsg extends BaseMsg {
   type: 'Ping';
 }
@@ -314,6 +318,7 @@ export type ClientMessage =
   | TangibleRemovedMsg
   | OzTriggerMsg
   | PingMsg
-  | NewGameMsg;
+  | NewGameMsg
+  | ResetMsg;
 
 export type ServerMessage = StateMsg | FeedbackMsg | PhaseChangeMsg | PongMsg;

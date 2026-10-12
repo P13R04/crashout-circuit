@@ -319,9 +319,22 @@ export class GameRules {
     s.walls = []; s.arcs = []; s.boostGates = []; s.stones = []; s.pickups = [];
     s.mapTargets = null;
     s.mapDivider = null;
+    s.mapStrokes = { A: false, B: false };
     s.mapMode = null;
     s.mapDeadline = 0;
     this.generating = false;
+    this.strokes = { A: null, B: null };
+    this.pausedAt = 0;
+    this.releaseAllPads();
+    this.inputs.A = { throttle: 1, steer: 0 };
+    this.inputs.B = { throttle: 1, steer: 0 };
+    s.cars.A = makeCar('A');
+    s.cars.B = makeCar('B');
+    s.repairProgress = { A: 0, B: 0 };
+    s.cooldowns = {
+      A: { ghost: 0, destroy: 0, borderPull: 0 },
+      B: { ghost: 0, destroy: 0, borderPull: 0 },
+    };
     this.host.transition('LOBBY');
     this.host.broadcastFull();
   }

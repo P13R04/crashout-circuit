@@ -140,8 +140,13 @@ export class GameServer {
       case 'BorderPull':
         if (fromTable) this.rules.onBorderPull(msg);
         break;
+      case 'Reset':
+        if (fromTable || fromOz) {
+          this.rules.resetToLobby();
+        }
+        break;
       case 'NewGame':
-        if (fromTable && this.state.phase === 'RESULT') {
+        if (fromTable || fromOz) {
           this.rules.resetToLobby();
         }
         break;
