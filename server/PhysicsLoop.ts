@@ -2,7 +2,7 @@
  * PhysicsLoop — authoritative 60 Hz vehicle simulation.
  *
  * Per tick (Δt = 1/physicsHz): housekeeping, vehicle integration, track-edge
- * collision (rebound ×0.6, no damage), then game rules (pickups, gates, hostile
+ * fall detection, then game rules (pickups, gates, hostile
  * elements, checkpoints, stones, repair, victory). The state is broadcast every
  * `physicsHz / broadcastHz` ticks (30 Hz).
  */
@@ -12,7 +12,6 @@ import { nearestOnTrack } from './geometry.js';
 import { GameRules, CAR_RADIUS } from './GameRules.js';
 
 const TEAMS: Team[] = ['A', 'B'];
-const DRAG_DECEL = 300; // px/s² when the pedal is released
 
 export class PhysicsLoop {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -61,7 +60,7 @@ export class PhysicsLoop {
           const car = s.cars[team];
           const prev = { x: car.pos.x, y: car.pos.y };
           this.integrate(car, this.rules.inputs[team], now, dt);
-          this.collideTrack(car);
+          this.checkTrackFall(team, car, now);
           this.rules.afterMove(team, prev, now);
         }
         this.rules.updateStones(now);
@@ -81,7 +80,8 @@ export class PhysicsLoop {
       car.velocity = { x: 0, y: 0 };
       return;
     }
-    const throttle = stunned ? 0 : input.throttle;
+    // Remote-control feel: a healthy car drives forward continuously.
+    const throttle = stunned ? 0 : 1;
     const steer = stunned ? 0 : input.steer;
 
     const boost = now < car.boostUntil ? 1 + config.boostGain * car.boostK : 1;
@@ -90,7 +90,7 @@ export class PhysicsLoop {
     const maxRev = config.vMaxRev * slow;
 
     const target = throttle >= 0 ? throttle * maxFwd : throttle * maxRev;
-    const rate = throttle === 0 || stunned ? DRAG_DECEL : config.accel;
+    const rate = config.accel;
     const diff = target - car.speed;
     const stepV = rate * dt;
     car.speed += Math.abs(diff) <= stepV ? diff : Math.sign(diff) * stepV;
@@ -107,18 +107,13 @@ export class PhysicsLoop {
   }
 
   /** The drivable area is the band of local half-width around the centerline. */
-  private collideTrack(car: Car): void {
+  private checkTrackFall(team: Team, car: Car, now: number): void {
     const track = this.state.track;
     if (!track || car.disabled) return;
     const hit = nearestOnTrack(car.pos, track);
     const limit = hit.halfWidth - CAR_RADIUS;
     if (hit.distance <= limit) return;
 
-    // Push back inside and reflect about the edge (normal points to the centerline)
-    const nx = (hit.closest.x - car.pos.x) / (hit.distance || 1);
-    const ny = (hit.closest.y - car.pos.y) / (hit.distance || 1);
-    car.pos = { x: hit.closest.x - nx * limit, y: hit.closest.y - ny * limit };
-    this.rules.reflect(car, nx, ny);
-    car.velocity = { x: Math.cos(car.angle) * car.speed, y: Math.sin(car.angle) * car.speed };
+    this.rules.fallOffTrack(team, now);
   }
 }

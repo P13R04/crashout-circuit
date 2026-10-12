@@ -18,8 +18,12 @@ const ARC_YELLOW = '#ffe14a';
 const OUTER_COLOR = '#ff2bd6'; // magenta outer wall
 const INNER_COLOR = '#00e5ff'; // cyan inner wall
 
-export const START_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 50, w: 520, h: 100 };
+export const START_TABLE_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 82, w: 520, h: 72 };
+export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 20, w: 520, h: 72 };
 export const RESULT_BUTTON = { x: LOGICAL_W / 2 - 200, y: LOGICAL_H / 2 - 45, w: 400, h: 90 };
+export const PAUSE_BUTTON = { x: LOGICAL_W / 2 - 58, y: 14, w: 116, h: 38 };
+export const MAP_GENERATE_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
+export const RACE_START_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 
 function wallEnds(pos: Vec2, angleDeg: number, len: number): [Vec2, Vec2] {
   const a = (angleDeg * Math.PI) / 180;
@@ -42,7 +46,7 @@ export class Renderer {
 
     if (state.phase === 'LOBBY') { this.drawLobby(ctx); return; }
     if (state.phase === 'MAP') { this.drawMap(ctx, state, view); return; }
-    if (state.phase !== 'RACE' && state.phase !== 'RESULT') return;
+    if (state.phase !== 'READY' && state.phase !== 'RACE' && state.phase !== 'PAUSED' && state.phase !== 'RESULT') return;
     const now = view.now();
 
     if (state.track) this.drawTrack(ctx, state.track, state.trackVersion);
@@ -55,7 +59,9 @@ export class Renderer {
     this.drawEffects(ctx, view);
     this.hud.draw(ctx, state, view);
     this.drawDisabledAlerts(ctx, state);
-    if (state.phase === 'RACE') this.drawCountdown(ctx, state, now);
+    if (state.phase === 'READY') this.drawRaceReady(ctx);
+    if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); }
+    if (state.phase === 'PAUSED') { this.drawPauseButton(ctx, 'REPRENDRE'); this.drawPaused(ctx); }
     if (state.phase === 'RESULT') this.drawResult(ctx, state);
   }
 
@@ -76,18 +82,21 @@ export class Renderer {
       ctx.shadowBlur = 0;
       ctx.fillStyle = 'rgba(255,255,255,0.55)';
       ctx.font = '28px monospace';
-      ctx.fillText('Pilotes : joystick en bas du panneau · Copilotes : tracez, piégez, réparez', 0, -190);
+      ctx.fillText('Pilotes : direction continue · Copilotes : tracez, piégez, réparez', 0, -190);
       ctx.restore();
     }
-    const b = START_BUTTON;
     const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 400);
-    ctx.fillStyle = 'rgba(0,229,255,0.15)';
-    ctx.strokeStyle = `rgba(0,229,255,${0.6 + 0.4 * pulse})`;
-    ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 20); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 44px monospace';
-    ctx.fillText('COMMENCER', b.x + b.w / 2, b.y + 65);
+    for (const [button, label, detail, color] of [
+      [START_TABLE_BUTTON, 'JOUER SUR TABLE', '2 contacts simultanés pour partager le circuit', '#00e5ff'],
+      [START_PC_BUTTON, 'MODE PC · SÉQUENTIEL', 'clics et demi-tracés l’un après l’autre', '#ff4081'],
+    ] as const) {
+      ctx.fillStyle = `${color}22`; ctx.strokeStyle = color === '#00e5ff' ? `rgba(0,229,255,${0.6 + 0.4 * pulse})` : color;
+      ctx.lineWidth = 3; ctx.beginPath(); ctx.roundRect(button.x, button.y, button.w, button.h, 16); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 26px monospace';
+      ctx.fillText(label, button.x + button.w / 2, button.y + 33);
+      ctx.fillStyle = 'rgba(255,255,255,0.58)'; ctx.font = '14px monospace';
+      ctx.fillText(detail, button.x + button.w / 2, button.y + 57);
+    }
     ctx.restore();
   }
 
@@ -473,6 +482,30 @@ export class Renderer {
     ctx.restore();
   }
 
+  private drawPauseButton(ctx: Ctx, label: string): void {
+    const b = PAUSE_BUTTON;
+    ctx.save(); ctx.fillStyle = 'rgba(4,8,31,0.82)'; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 9); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(label, b.x + b.w / 2, b.y + 24); ctx.restore();
+  }
+
+  private drawRaceReady(ctx: Ctx): void {
+    const b = RACE_START_BUTTON;
+    ctx.save();
+    ctx.fillStyle = 'rgba(4,8,31,0.56)'; ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+    ctx.fillStyle = 'rgba(255,64,129,0.18)'; ctx.strokeStyle = '#ff4081'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 16); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 31px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('LANCER LA COURSE', b.x + b.w / 2, b.y + 55); ctx.restore();
+  }
+
+  private drawPaused(ctx: Ctx): void {
+    ctx.save(); ctx.fillStyle = 'rgba(4,8,31,0.68)'; ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 64px monospace'; ctx.textAlign = 'center';
+    ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 22; ctx.fillText('PAUSE', LOGICAL_W / 2, LOGICAL_H / 2); ctx.restore();
+  }
+
   private drawResult(ctx: Ctx, state: GameState): void {
     ctx.save();
     ctx.fillStyle = 'rgba(4,8,31,0.82)';
@@ -516,11 +549,32 @@ export class Renderer {
 
   private drawMap(ctx: Ctx, state: GameState, view: View): void {
     const targets = state.mapTargets;
-    if (!targets) return;
     const now = view.now();
     const t = performance.now();
 
-    // Imposed points with their 60 px tolerance
+    if (!targets) {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffffff'; ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 20;
+      ctx.font = 'bold 38px monospace';
+      ctx.fillText('POSEZ DEUX POINTS POUR PARTAGER LE CIRCUIT', LOGICAL_W / 2, LOGICAL_H / 2 - 10);
+      ctx.shadowBlur = 0;
+      ctx.font = '20px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillText(state.mapMode === 'pc' ? 'Mode PC : cliquez ces deux points l’un après l’autre.' : 'Puis chaque copilote trace sa moitié vers le point opposé.', LOGICAL_W / 2, LOGICAL_H / 2 + 34);
+      ctx.restore();
+      return;
+    }
+
+    // The initial line is the lasting boundary between the two simultaneous traces.
+    const divider = state.mapDivider;
+    if (divider) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 3; ctx.setLineDash([12, 10]);
+      ctx.beginPath(); ctx.moveTo(divider[0].x, divider[0].y); ctx.lineTo(divider[1].x, divider[1].y); ctx.stroke();
+      ctx.setLineDash([]); ctx.restore();
+    }
+
+    // Shared endpoints with a generous 95 px completion tolerance.
     for (const team of ['A', 'B'] as Team[]) {
       const color = TEAM_COLOR[team];
       targets[team].forEach((p, i) => {
@@ -530,13 +584,13 @@ export class Renderer {
         ctx.shadowColor = color; ctx.shadowBlur = 18;
         ctx.lineWidth = 3;
         ctx.setLineDash([6, 8]);
-        ctx.beginPath(); ctx.arc(0, 0, 60, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, 95, 0, Math.PI * 2); ctx.stroke();
         ctx.setLineDash([]);
         ctx.beginPath(); ctx.arc(0, 0, 14 + 3 * Math.sin(t / 250), 0, Math.PI * 2); ctx.fill();
         ctx.shadowBlur = 0;
         ctx.fillStyle = '#04081f';
         ctx.font = 'bold 16px monospace'; ctx.textAlign = 'center';
-        ctx.fillText(String(i + 1), 0, 6);
+        ctx.fillText(i === 0 ? 'D' : 'A', 0, 6);
         ctx.restore();
       });
     }
@@ -570,19 +624,24 @@ export class Renderer {
       ctx.fillText(`COPILOTE ${TEAM_NAME[team]}`, 0, -40);
       ctx.font = '20px monospace';
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillText('relie ① → ② du doigt', 0, -8);
+      ctx.fillText(state.mapMode === 'pc' ? 'trace D → A, puis laisse l’autre moitié' : 'trace D → A dans ta moitié', 0, -8);
       if (state.mapStrokes[team]) { ctx.fillStyle = '#3ddc84'; ctx.fillText('✓ tracé accepté', 0, 30); }
       else if (t - view.mapErrorAt[team] < 2500) { ctx.fillStyle = '#ff4040'; ctx.fillText('tracé invalide — recommence', 0, 30); }
       ctx.restore();
     }
-    const left = Math.max(0, Math.ceil((state.mapDeadline - now) / 1000));
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 64px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(String(left), LOGICAL_W / 2, LOGICAL_H / 2 + 20);
-    ctx.font = '22px monospace';
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.fillText('DESSINEZ LE CIRCUIT', LOGICAL_W / 2, LOGICAL_H / 2 - 50);
+    const ready = state.mapStrokes.A && state.mapStrokes.B;
+    if (ready) {
+      const b = MAP_GENERATE_BUTTON;
+      ctx.fillStyle = 'rgba(0,229,255,0.16)'; ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 16); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 28px monospace';
+      ctx.fillText('GÉNÉRER LE CIRCUIT', b.x + b.w / 2, b.y + 54);
+    } else {
+      ctx.font = '22px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillText('DEUX MOITIÉS · UN SEUL CIRCUIT', LOGICAL_W / 2, LOGICAL_H / 2 - 50);
+      ctx.fillText('Les deux tracés doivent être validés avant de continuer.', LOGICAL_W / 2, LOGICAL_H / 2 - 18);
+    }
     ctx.restore();
   }
 }

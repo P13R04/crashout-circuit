@@ -105,24 +105,30 @@ test('invalid strokes fall back to the preset circuit', () => {
 // ─── MAP phase protocol ──────────────────────────────────────────────────────
 
 section('MAP phase');
-test('two valid StrokeDraw → RACE with a track; invalid stroke → mapError', () => {
+test('two shared divider contacts then two half-strokes wait for confirmation before RACE', () => {
   const r = rig();
   r.state.phase = 'LOBBY';
   r.rules.enterMap();
   assert.equal(r.state.phase, 'MAP');
+  assert.equal(r.state.mapTargets, null);
+  r.rules.onMapDivider(msg({ type: 'MapDivider' as const, a: { x: 480, y: 540 }, b: { x: 1440, y: 540 } }));
   const t = r.state.mapTargets!;
   r.rules.onStrokeDraw(msg({ type: 'StrokeDraw' as const, creator: 'A' as Team, pts: [t.A[0], { x: t.A[0].x + 10, y: t.A[0].y }] }));
   assert.ok(r.feedback.includes('mapError'));
   assert.equal(r.state.mapStrokes.A, false);
-  let s = 7;
-  const rnd = () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
-  r.rules.onStrokeDraw(msg({ type: 'StrokeDraw' as const, creator: 'A' as Team, pts: randomStroke(t.A[0], t.A[1], rnd) }));
-  r.rules.onStrokeDraw(msg({ type: 'StrokeDraw' as const, creator: 'B' as Team, pts: randomStroke(t.B[0], t.B[1], rnd) }));
+  const aStroke = [t.A[0], { x: 700, y: 680 }, { x: 1100, y: 760 }, t.A[1]];
+  const bStroke = [t.B[0], { x: 1220, y: 390 }, { x: 820, y: 320 }, t.B[1]];
+  r.rules.onStrokeDraw(msg({ type: 'StrokeDraw' as const, creator: 'A' as Team, pts: aStroke }));
+  r.rules.onStrokeDraw(msg({ type: 'StrokeDraw' as const, creator: 'B' as Team, pts: bStroke }));
+  assert.equal(r.state.phase, 'MAP', 'players explicitly validate the completed drawing');
+  r.rules.onGenerateTrack();
   // generation is asynchronous (Promise)
   return new Promise<void>((resolve, reject) => setTimeout(() => {
     try {
-      assert.equal(r.state.phase, 'RACE');
+      assert.equal(r.state.phase, 'READY');
       assert.ok(r.state.track);
+      r.rules.beginRace();
+      assert.equal(r.state.phase, 'RACE');
       resolve();
     } catch (e) { reject(e); }
   }, 100));
@@ -131,15 +137,16 @@ test('two valid StrokeDraw → RACE with a track; invalid stroke → mapError', 
 // ─── Physics ─────────────────────────────────────────────────────────────────
 
 section('Vehicle & HP');
-test('car follows PilotInput; rebound on the edge costs no HP', () => {
+test('car follows PilotInput then falls when it leaves the ribbon', () => {
   const r = raceRig();
   r.rules.onPilotInput('A', msg({ type: 'PilotInput' as const, team: 'A' as Team, throttle: 1, steer: 0 }));
   r.advance(1500);
   assert.ok(r.state.cars.A.speed > 100, 'accelerates');
   r.advance(10000); // drive straight into the border at some point
-  assert.equal(r.state.cars.A.hp, config.hpMax);
+  assert.equal(r.state.cars.A.hp, 0);
+  assert.equal(r.state.cars.A.disabled, true);
   const hit = nearestOnTrack(r.state.cars.A.pos, r.state.track!);
-  assert.ok(hit.distance <= hit.halfWidth + 1, 'stays inside the track');
+  assert.ok(hit.distance > hit.halfWidth - 10, 'the car is no longer pushed back inside');
 });
 test('steering turns the car', () => {
   const r = raceRig();
@@ -147,6 +154,19 @@ test('steering turns the car', () => {
   r.rules.onPilotInput('A', msg({ type: 'PilotInput' as const, team: 'A' as Team, throttle: 1, steer: 1 }));
   r.advance(500);
   assert.notEqual(r.state.cars.A.angle, a0);
+});
+test('pause freezes race motion and resumes without consuming race time', () => {
+  const r = raceRig();
+  const car = r.state.cars.A;
+  r.rules.togglePause();
+  assert.equal(r.state.phase, 'PAUSED');
+  const before = { ...car.pos };
+  const startAt = r.state.sessionStartAt;
+  r.advance(1000);
+  assert.deepEqual(car.pos, before);
+  r.rules.togglePause();
+  assert.equal(r.state.phase, 'RACE');
+  assert.ok(r.state.sessionStartAt >= startAt + 1000);
 });
 test('car can complete a lap by following the centerline (checkpoints in order)', () => {
   const r = raceRig();
@@ -284,7 +304,11 @@ test('T-06 slingshot: 0.8 s telegraph, then −25 HP + stun on the opponent only
   assert.ok(Math.abs(r.state.stones[0].impactAt - r.clock.now - config.stoneTelegraphS * 1000) < 1);
   r.advance(700);
   assert.equal(B.hp, config.hpMax, 'no damage during the warning');
-  r.advance(200);
+  // Aim is a point in space: put the moving victim inside the impact radius
+  // at the scheduled moment, without conflating this rule test with driving.
+  B.pos = { ...target };
+  r.clock.now += 200;
+  r.rules.updateStones(r.clock.now);
   assert.equal(B.hp, config.hpMax - config.dmgStone);
   assert.ok(B.stunUntil > r.clock.now);
   assert.equal(A.hp, config.hpMax);

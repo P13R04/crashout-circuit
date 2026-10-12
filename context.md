@@ -12,7 +12,7 @@ Cette fiche est la **seule source de vérité**. Chaque règle porte un identifi
 ## 1. Résumé en 10 lignes
 
 - Jeu de course **2 équipes × 2 joueurs** sur une **table tactile 65"** posée à plat. Les deux équipes courent sur **le même circuit**.
-- Chaque équipe: **1 Pilote** (station fixe, conduit avec son smartphone) + **1 Copilote** (mobile autour de la table, agit sur la table).
+- Chaque équipe: **1 Pilote** (station fixe, conduit sur la table) + **1 Copilote** (mobile autour de la table, agit sur la table).
 - Le circuit est **généré** à partir de deux tracés partiels dessinés par deux joueurs, complétés automatiquement puis fusionnés.
 - Le Copilote agit par gestes tactiles (lance-pierre, boost, fantôme, destruction de mur), par **objets tangibles** (poteaux électriques) et par **actions synchrones avec son Pilote** (réparation).
 - Les objets ramassés en piste ne marchent que si **le Pilote les active et le Copilote les joue**.
@@ -25,7 +25,7 @@ Cette fiche est la **seule source de vérité**. Chaque règle porte un identifi
 |---|---|---|
 | D1 | Moteur | WebApp. Navigateur plein écran sur la table. Canvas 2D (PixiJS si besoin de perf) |
 | D2 | Serveur | Node.js + WebSocket, **autoritaire** sur la physique et les règles |
-| D3 | Pilotage | **Smartphone** (web app via QR code, zéro installation): pédale avant/arrière + joystick + bouton d'action. Remplace le gyroscope des anciens docs [DÉCISION] |
+| D3 | Pilotage | **Table, station fixe** : avance continue, zones gauche/droite + bouton d'action. Un tangible orienté pourra remplacer ces zones sans changer la logique [DÉCISION] |
 | D4 | Tangibles | Magicien d'Oz via une console web séparée. Format d'événements TUIO (`id`, `x`, `y`, `angle`) |
 | D5 | Attribution des joueurs | On ne suit **jamais un doigt vers une personne**. L'équipe se déduit du contexte (zone, bouton d'équipe, objet armé par le Pilote) |
 | D6 | Réparation | Action synchrone: **Pilote et Copilote posent chacun un doigt sur leur pad de station** (table). Remplace la « réparation localisée » [DÉCISION] |
@@ -53,7 +53,7 @@ Principes de conception retenus:
 
 | Rôle | Mobilité | Entrée principale | Station (table) |
 |---|---|---|---|
-| Pilote (×2) | **Fixe**, doit rester à sa station | Smartphone (pédale, joystick, bouton) | Pad de réparation + panneau HUD |
+| Pilote (×2) | **Fixe**, doit rester à sa station | Zones gauche/droite + bouton d'action sur la table | Pad de réparation + panneau HUD |
 | Copilote (×2) | **Mobile** autour de la table | Doigts sur la table + tangibles | Pad de réparation + panneau HUD |
 
 Disposition [DÉCISION]: les équipes sont sur les deux grands côtés de la table.
@@ -81,7 +81,7 @@ Chaque coin porte un **panneau HUD** orienté vers son joueur (voir §11).
 
 | Temps | Phase | Contenu |
 |---|---|---|
-| 0:00 | `LOBBY` | Les joueurs scannent le QR code (Pilotes), rôles attribués |
+| 0:00 | `LOBBY` | Rôles attribués, joueurs aux quatre stations |
 | 0:00–0:30 | `MAP` | Création de la carte (§5) |
 | 0:30–4:30 | `RACE` | Course sur 3 tours [EST] ou limite de temps |
 | pendant la course | — | Ramassage d'objets, actions, pannes, réparations |
@@ -95,7 +95,7 @@ Chaque coin porte un **panneau HUD** orienté vers son joueur (voir §11).
 ## 5. Création de la carte
 
 ### 5.1 Principe
-Deux joueurs (**les deux Copilotes** [DÉCISION], un par équipe) reçoivent chacun **deux points imposés** affichés dans leur moitié de table. Chacun trace un chemin entre ses deux points. Le système **complète automatiquement** chaque tracé en boucle fermée (autofill), puis **mélange** les deux boucles en un circuit unique.
+Deux joueurs (un par équipe) posent d'abord deux contacts communs : leur ligne partage la table en deux moitiés. Chacun part de son extrémité, reste dans sa moitié, et rejoint l'autre extrémité. Le système complète et mélange les deux demi-tracés en un circuit unique.
 
 Interprétation retenue de « ils se remplissent l'un l'autre »: chaque joueur remplit ses deux points, et le circuit final contient les deux contributions [?, à confirmer avec l'équipe].
 
@@ -103,15 +103,15 @@ Interprétation retenue de « ils se remplissent l'un l'autre »: chaque joueur 
 
 | Étape | Règle |
 |---|---|
-| 1. Points imposés | Joueur A: P1 en quart haut-gauche, P2 en quart bas-droit. Joueur B: P3 en quart haut-droit, P4 en quart bas-gauche. Jitter ±150 px, distance minimale entre deux points ≥ 400 px [EST] |
-| 2. Tracé | Le joueur trace au doigt un chemin de son point de départ à son point d'arrivée. Tracé valide s'il touche les deux points (rayon 60 px) et fait ≥ 300 px |
+| 1. Ligne de partage | Deux contacts espacés d'au moins 360 px définissent les extrémités communes A et B. |
+| 2. Tracé | Un joueur trace A→B dans le demi-plan gauche de la ligne ; l'autre B→A dans le demi-plan droit. Tracé valide s'il touche les deux points (rayon 60 px), reste dans sa moitié avec une tolérance de 55 px et fait ≥ 300 px. |
 | 3. Nettoyage | Rééchantillonnage à pas constant, filtre 1€ contre le jitter |
 | 4. Autofill (fermeture) | Soit S le tracé et d(s) son décalage latéral par rapport à la droite P1P2. On force S du même côté de la droite (`d' = |d|`), avec amplitude max ≥ 150 px. Le **retour** R est le miroir de S par rapport à la droite, à l'échelle κ ∈ [0,6 ; 1,0] (tiré au hasard) → boucle fermée en forme de **haricot** |
 | 5. Mélange | Chaque boucle est orientée dans le sens anti-horaire et rééchantillonnée en N = 256 points. Le décalage d'indice de B qui minimise la distance totale à A est cherché (256 essais). Circuit final `C(i) = 0,5·A(i) + 0,5·B(i)` |
 | 6. Lissage | Spline Catmull-Rom **centripète** sur C |
 | 7. Largeur | Largeur de base 140 px, variable en fonction de la courbure (±30 px). Minimum 90 px (> 3× la largeur du véhicule) |
 | 8. Géométrie | Bords par la normale (mur extérieur magenta, mur intérieur cyan), colliders |
-| 9. Marquage | 8 checkpoints répartis, ligne de départ sur la portion la plus rectiligne, voitures côte à côte (±20 px de décalage latéral), 4 emplacements de pickups |
+| 9. Marquage | 8 checkpoints répartis, ligne de départ tirée parmi les portions rectilignes sûres, voitures côte à côte (±20 px de décalage latéral), 4 emplacements de pickups |
 
 ### 5.3 Validations
 Rayon de courbure minimal · largeur > gabarit véhicule · pas d'auto-intersection · pas de passage impossible · zone rectiligne pour le départ.
@@ -123,24 +123,24 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 
 ## 6. Pilote
 
-### 6.1 Contrôles (smartphone, web app, WebSocket)
+### 6.1 Contrôles (table, WebSocket)
 
 | Contrôle | Entrée | Valeur envoyée |
 |---|---|---|
-| Pédale | Curseur vertical, rappel à 0 au relâchement. Haut = avant, bas = arrière | `throttle ∈ [-1, 1]` |
-| Joystick | Curseur horizontal, rappel à 0 | `steer ∈ [-1, 1]` |
+| Direction gauche | Zone fixe pilote, maintenue | `steer = -1` |
+| Direction droite | Zone fixe pilote, maintenue | `steer = 1` |
 | Bouton d'objet | Appui | `UseItem` (arme l'objet en stock) |
 
 ### 6.2 Véhicule (modèle simple)
 
 | Paramètre | Valeur par défaut |
 |---|---|
-| Vitesse max avant | 420 px/s [EST] |
+| Vitesse max avant | 260 px/s [EST] |
 | Vitesse max arrière | 140 px/s [EST] |
-| Accélération | 600 px/s² [EST] |
-| Vitesse de rotation max | 2,5 rad/s [EST] |
+| Accélération | 320 px/s² [EST] |
+| Vitesse de rotation max | 2,15 rad/s [EST] |
 | Gabarit | 24 × 14 px |
-| Collision avec bord de piste | Rebond, vitesse ×0,6, **aucun dégât** |
+| Sortie de piste | Chute : HP à 0, immobilisation puis réparation synchronisée au dernier checkpoint |
 
 ### 6.3 Points de vie (HP)
 
@@ -217,7 +217,7 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 - Recharge 20 s [EST]. À activer seulement si le temps le permet.
 
 ### 7.4 Budget de points tactiles
-Copilote max 3 doigts (lance-pierre) + 2 pads (1 doigt par joueur) + 2 créateurs de carte (1 doigt chacun) → **≤ 10 points simultanés**, y compris si le navigateur n'en expose que 10. Voilà pourquoi le pilotage est sur smartphone (D3).
+Copilote max 3 doigts (lance-pierre) + 2 pads (1 doigt par joueur) + 2 créateurs de carte (1 doigt chacun) + 2 pilotes (1 doigt de direction chacun) → **≤ 10 points simultanés**, y compris si le navigateur n'en expose que 10. Les zones pilotes restent dans leurs stations (D3).
 
 ---
 
@@ -403,7 +403,7 @@ Affectation exacte des icônes de la maquette aux boutons: à régler au moment 
 | `destroyDisableS` / `destroyCooldownS` | 10 / 15 |
 | `wallLengthPx` / `arcMaxDistPx` | 120 / 500 |
 | `trackWidthBasePx` / `trackWidthMinPx` | 140 / 90 |
-| `vMaxFwd` / `vMaxRev` / `accel` / `turnRate` | 420 / 140 / 600 / 2,5 |
+| `vMaxFwd` / `vMaxRev` / `accel` / `turnRate` | 260 / 140 / 320 / 2,15 |
 
 Tout est **[EST]**, à régler pendant les tests utilisateurs.
 
