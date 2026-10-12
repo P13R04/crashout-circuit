@@ -62,7 +62,53 @@ gestures.onSimChange = (hint) => {
 };
 
 window.addEventListener('pointerdown', unlock, { once: true });
-window.addEventListener('keydown', (e) => { if (e.key === 'd' || e.key === 'D') view.debug.on = !view.debug.on; });
+// Desktop local multiplayer adapter. It mirrors the table controls without
+// leaking keyboard rules into the game engine: Q/D and ←/→ only steer;
+// cars keep moving. A+P and M+C hold the two repair pads together.
+const down = new Set<string>();
+const repairHeld: Record<'A' | 'B', boolean> = { A: false, B: false };
+const keyName = (e: KeyboardEvent) => e.key.length === 1 ? e.key.toLowerCase() : e.key;
+function sendSteer(team: 'A' | 'B'): void {
+  const steer = team === 'A'
+    ? (down.has('q') ? -1 : down.has('d') ? 1 : 0)
+    : (down.has('ArrowLeft') ? -1 : down.has('ArrowRight') ? 1 : 0);
+  conn.send({ type: 'PilotInput', team, throttle: 1, steer });
+}
+function updateKeyboardRepair(team: 'A' | 'B'): void {
+  const active = team === 'A' ? down.has('a') && down.has('p') : down.has('m') && down.has('c');
+  if (active === repairHeld[team]) return;
+  repairHeld[team] = active;
+  conn.send({ type: 'PadHold', team, role: 'pilot', on: active });
+  conn.send({ type: 'PadHold', team, role: 'copilot', on: active });
+}
+window.addEventListener('keydown', (e) => {
+  const key = keyName(e);
+  if (key === 'F3' && !e.repeat && !down.has('F3')) view.debug.on = !view.debug.on;
+  if (down.has(key)) return;
+  down.add(key);
+  if (key === 'q' || key === 'd') sendSteer('A');
+  if (key === 'ArrowLeft' || key === 'ArrowRight') { e.preventDefault(); sendSteer('B'); }
+  if (key === 'Escape' || key === ' ') { e.preventDefault(); conn.send({ type: 'Pause' }); }
+  if (key === 'a' || key === 'p') updateKeyboardRepair('A');
+  if (key === 'm' || key === 'c') updateKeyboardRepair('B');
+  // A/M alone activate the pilot's stocked item. Waiting briefly lets the
+  // A+P / M+C repair chord win when the two players press in rhythm.
+  if ((key === 'a' || key === 'm') && !e.repeat) {
+    const team: 'A' | 'B' = key === 'a' ? 'A' : 'B';
+    window.setTimeout(() => {
+      const combo = team === 'A' ? down.has('a') && down.has('p') : down.has('m') && down.has('c');
+      if (!combo && down.has(key)) conn.send({ type: 'UseItem', team });
+    }, 120);
+  }
+});
+window.addEventListener('keyup', (e) => {
+  const key = keyName(e);
+  down.delete(key);
+  if (key === 'q' || key === 'd') sendSteer('A');
+  if (key === 'ArrowLeft' || key === 'ArrowRight') { e.preventDefault(); sendSteer('B'); }
+  if (key === 'a' || key === 'p') updateKeyboardRepair('A');
+  if (key === 'm' || key === 'c') updateKeyboardRepair('B');
+});
 document.addEventListener('visibilitychange', () => { if (document.hidden) gestures.releaseAll(); });
 
 // Round-trip time (server echo), used by the debug overlay (task 18)

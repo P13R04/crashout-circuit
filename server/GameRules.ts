@@ -9,7 +9,7 @@
  */
 import type {
   GameState, Team, Vec2, Phase, ItemKind, Car, Wall, MapTargets,
-  StrokeDrawMsg, PadHoldMsg, SlingshotMsg, BoostGateMsg, AbilityMsg, BorderPullMsg,
+  StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGateMsg, AbilityMsg, BorderPullMsg,
   PilotInputMsg, UseItemMsg, TangibleMovedMsg, TangibleRemovedMsg, OzTriggerMsg,
 } from './types.js';
 import { config } from './config.js';
@@ -95,8 +95,10 @@ export function createInitialState(): GameState {
     winner: null,
     sessionStartAt: Date.now(),
     mapTargets: null,
+    mapDivider: null,
     mapStrokes: { A: false, B: false },
     mapDeadline: 0,
+    mapMode: null,
     repairProgress: { A: 0, B: 0 },
     trackVersion: 0,
     tangibles: {},
@@ -123,15 +125,18 @@ export function createInitialState(): GameState {
 
 export class GameRules {
   readonly inputs: Record<Team, { throttle: number; steer: number }> = {
-    A: { throttle: 0, steer: 0 },
-    B: { throttle: 0, steer: 0 },
+    A: { throttle: 1, steer: 0 },
+    B: { throttle: 1, steer: 0 },
   };
   /** Full operator/TUIO log of pylon events (T-11, task 15). */
   readonly tangibleLog: TangibleLogEntry[] = [];
 
   private strokes: Record<Team, Vec2[] | null> = { A: null, B: null };
+  /** A and B must draw on opposite sides of the divider. */
+  private mapSide: Record<Team, number> = { A: 1, B: -1 };
   private idCounter = 0;
   private generating = false;
+  private pausedAt = 0;
   private rng: () => number;
 
   constructor(
@@ -153,34 +158,44 @@ export class GameRules {
 
   // ─── MAP phase (task 2) ────────────────────────────────────────────────────
 
-  /** Draw the imposed points (REQ-2.1.1) and open the 30 s drawing window. */
-  enterMap(): void {
+  /** Open the shared map setup. The first two table contacts define the divider. */
+  enterMap(mode: 'table' | 'pc' = 'table'): void {
     const s = this.state;
-    s.mapTargets = this.randomTargets();
+    s.mapTargets = null;
+    s.mapDivider = null;
     s.mapStrokes = { A: false, B: false };
-    s.mapDeadline = this.now + MAP_DURATION_MS;
+    // Creation never advances by itself: players validate it explicitly.
+    s.mapDeadline = 0;
+    s.mapMode = mode;
     s.track = null;
     s.trackVersion++;
     this.strokes = { A: null, B: null };
     this.generating = false;
     s.walls = []; s.arcs = []; s.boostGates = []; s.stones = []; s.pickups = [];
     s.winner = null;
-    this.host.transition('MAP', { targets: s.mapTargets, deadline: s.mapDeadline });
+    this.host.transition('MAP', { deadline: s.mapDeadline, mode });
     this.host.broadcastFull();
   }
 
-  private randomTargets(): MapTargets {
-    const jit = (v: number, lo: number, hi: number) => clamp(v + (this.rng() * 2 - 1) * 150, lo, hi);
-    const pt = (x: number, y: number): Vec2 => ({ x: jit(x, 250, 1670), y: jit(y, 330, 750) });
-    return {
-      A: [pt(520, 400), pt(1400, 680)],   // top-left & bottom-right quarters
-      B: [pt(1400, 400), pt(520, 680)],   // top-right & bottom-left quarters
-    };
+  /**
+   * Accept the two initial shared contacts. A draws a→b on one half; B draws
+   * b→a on the other. The supplied line therefore stays visible and meaningful
+   * all the way from creation to the generated circuit.
+   */
+  onMapDivider(msg: MapDividerMsg): void {
+    const s = this.state;
+    if (s.phase !== 'MAP' || s.mapDivider || this.generating) return;
+    const a = msg.a, b = msg.b;
+    if (![a?.x, a?.y, b?.x, b?.y].every(Number.isFinite)) return;
+    if (dist(a, b) < 360 || [a, b].some(p => p.x < 230 || p.x > 1690 || p.y < 260 || p.y > 820)) return;
+    s.mapDivider = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
+    s.mapTargets = { A: [s.mapDivider[0], s.mapDivider[1]], B: [s.mapDivider[1], s.mapDivider[0]] };
+    this.host.broadcastFull();
   }
 
   onStrokeDraw(msg: StrokeDrawMsg): void {
     const s = this.state;
-    if (s.phase !== 'MAP' || !s.mapTargets || this.generating) return;
+    if (s.phase !== 'MAP' || !s.mapTargets || !s.mapDivider || this.generating) return;
     const team = msg.creator;
     if (team !== 'A' && team !== 'B') return;
     const pts = (msg.pts ?? [])
@@ -188,21 +203,39 @@ export class GameRules {
       .slice(0, MAX_STROKE_POINTS)
       .map(p => ({ x: p.x, y: p.y }));
     const [p1, p2] = s.mapTargets[team];
-    if (!validateStroke(pts, p1, p2)) {
+    if (!validateStroke(pts, p1, p2) || !this.staysInHalf(team, pts, s.mapDivider)) {
       const last = pts[pts.length - 1] ?? p1;
       this.host.feedback('mapError', last.x, last.y, team);
       return;
     }
+    // Once accepted, lock the endpoints exactly to the common anchors. This
+    // makes a near miss inside the target ring a clean, continuous circuit.
+    pts[0] = { ...p1 };
+    pts[pts.length - 1] = { ...p2 };
     this.strokes[team] = pts;
     s.mapStrokes[team] = true;
     this.host.broadcastFull();
-    if (this.strokes.A && this.strokes.B) void this.buildTrack();
+  }
+
+  /** The shared button is the explicit handoff from drawing to generation. */
+  onGenerateTrack(): void {
+    if (this.state.phase !== 'MAP' || !this.strokes.A || !this.strokes.B || this.generating) return;
+    void this.buildTrack();
+  }
+
+  /** Signed distance to the divider: A is on its left, B on its right. */
+  private staysInHalf(team: Team, pts: Vec2[], divider: [Vec2, Vec2]): boolean {
+    const [a, b] = divider;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    // A small tolerance preserves a continuous join at the two shared endpoints.
+    return pts.every(p => this.mapSide[team] * (dx * (p.y - a.y) - dy * (p.x - a.x)) >= -55);
   }
 
   tickMap(now: number): void {
     const s = this.state;
-    if (s.phase !== 'MAP' || this.generating || now < s.mapDeadline) return;
-    void this.buildTrack(); // missing strokes → single loop or preset
+    // MAP is intentionally player-paced. The operator may still force a fallback
+    // circuit, but time alone must never erase a drawing attempt.
+    void now;
   }
 
   /** Runs outside the physics tick (REQ: generation happens once, in a Promise). */
@@ -216,12 +249,12 @@ export class GameRules {
     const started = Date.now();
     const track = generate(a, b, t.A[0], t.A[1], t.B[0], t.B[1]);
     console.log(`[GameRules] Track generated in ${Date.now() - started} ms`);
-    this.startRace(track);
+    this.startRace(track, true);
   }
 
   // ─── RACE start ────────────────────────────────────────────────────────────
 
-  startRace(track = generatePreset()): void {
+  startRace(track = generatePreset(), waitForPlayers = false): void {
     const s = this.state;
     this.generating = true;
     s.track = track;
@@ -233,7 +266,7 @@ export class GameRules {
       car.pos = { x: sp.x, y: sp.y };
       car.angle = Math.atan2(tan.y, tan.x);
       s.cars[team] = car;
-      this.inputs[team] = { throttle: 0, steer: 0 };
+      this.inputs[team] = { throttle: 1, steer: 0 };
       s.repairProgress[team] = 0;
       s.cooldowns[team] = { ghost: 0, destroy: 0, borderPull: 0 };
     }
@@ -243,11 +276,35 @@ export class GameRules {
       id: i, pos: { ...pos }, kind: this.randomItem(), respawnAt: 0,
     }));
     s.winner = null;
-    s.sessionStartAt = this.now + COUNTDOWN_MS;
+    s.sessionStartAt = waitForPlayers ? 0 : this.now + COUNTDOWN_MS;
     this.rebuildTangibles('A');
     this.rebuildTangibles('B');
-    this.host.transition('RACE', { startsAt: s.sessionStartAt });
+    this.host.transition(waitForPlayers ? 'READY' : 'RACE', { startsAt: s.sessionStartAt });
     this.host.broadcastFull();
+  }
+
+  /** The generated circuit can be inspected before the actual race countdown. */
+  beginRace(): void {
+    if (this.state.phase !== 'READY') return;
+    this.state.sessionStartAt = this.now + COUNTDOWN_MS;
+    this.host.transition('RACE', { startsAt: this.state.sessionStartAt });
+    this.host.broadcastFull();
+  }
+
+  /** Pause freezes physics and timers; resuming shifts the race clock accordingly. */
+  togglePause(): void {
+    const s = this.state;
+    if (s.phase === 'RACE') {
+      this.pausedAt = this.now;
+      this.releaseAllPads();
+      this.host.transition('PAUSED');
+      this.host.broadcastFull();
+    } else if (s.phase === 'PAUSED') {
+      if (this.pausedAt) s.sessionStartAt += this.now - this.pausedAt;
+      this.pausedAt = 0;
+      this.host.transition('RACE');
+      this.host.broadcastFull();
+    }
   }
 
   private randomItem(): ItemKind {
@@ -261,6 +318,8 @@ export class GameRules {
     s.trackVersion++;
     s.walls = []; s.arcs = []; s.boostGates = []; s.stones = []; s.pickups = [];
     s.mapTargets = null;
+    s.mapDivider = null;
+    s.mapMode = null;
     s.mapDeadline = 0;
     this.generating = false;
     this.host.transition('LOBBY');
@@ -271,7 +330,7 @@ export class GameRules {
 
   onPilotInput(team: Team, msg: PilotInputMsg): void {
     if (!Number.isFinite(msg.throttle) || !Number.isFinite(msg.steer)) return;
-    this.inputs[team] = { throttle: clamp(msg.throttle, -1, 1), steer: clamp(msg.steer, -1, 1) };
+    this.inputs[team] = { throttle: 1, steer: clamp(msg.steer, -1, 1) };
   }
 
   /** UseItem: arm the stocked item for `armWindowS` seconds (REQ-4.1.3). */
@@ -345,7 +404,7 @@ export class GameRules {
     const b = { x: msg.b.x, y: msg.b.y };
     if (![a.x, a.y, b.x, b.y].every(Number.isFinite)) return;
     const len = dist(a, b);
-    if (len < config.boostLenMinPx || len > config.boostLenMaxPx) return;
+    if (len < config.boostLenMinPx - 1e-6 || len > config.boostLenMaxPx + 1e-6) return;
     const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const team = this.resolveArmedTeam('boost', mid, msg.team);
     if (!team) return;
@@ -454,6 +513,19 @@ export class GameRules {
       car.velocity = { x: 0, y: 0 };
       this.host.feedback('carDisabled', car.pos.x, car.pos.y, car.team);
     }
+    void now;
+  }
+
+  /** Leaving the neon ribbon is a fall, not a wall collision. */
+  fallOffTrack(team: Team, now: number): void {
+    const car = this.state.cars[team];
+    if (car.disabled) return;
+    car.hp = 0;
+    car.disabled = true;
+    car.speed = 0;
+    car.velocity = { x: 0, y: 0 };
+    this.host.feedback('fall', car.pos.x, car.pos.y, team);
+    this.host.feedback('carDisabled', car.pos.x, car.pos.y, team);
     void now;
   }
 

@@ -7,7 +7,7 @@ export interface Vec2 {
 }
 
 export type Team = 'A' | 'B';
-export type Phase = 'LOBBY' | 'MAP' | 'RACE' | 'RESULT';
+export type Phase = 'LOBBY' | 'MAP' | 'READY' | 'RACE' | 'PAUSED' | 'RESULT';
 export type ItemKind = 'slingshot' | 'boost';
 
 export interface Car {
@@ -137,9 +137,13 @@ export interface GameState {
   sessionStartAt: number;
   /** Imposed target points of each copilot, set on entering the MAP phase. */
   mapTargets: MapTargets | null;
+  /** The two shared contacts that split the table before either half is drawn. */
+  mapDivider: [Vec2, Vec2] | null;
   /** Which copilot strokes have been accepted so far. */
   mapStrokes: Record<Team, boolean>;
   mapDeadline: number;          // ms timestamp, 0 when not in MAP
+  /** Table uses two concurrent contacts; PC uses the same actions sequentially. */
+  mapMode: 'table' | 'pc' | null;
   /** Repair gauge per team, 0..1 (C-06). */
   repairProgress: Record<Team, number>;
   /** Incremented whenever `track` changes; State broadcasts omit the track otherwise. */
@@ -161,6 +165,23 @@ export interface StrokeDrawMsg extends BaseMsg {
   type: 'StrokeDraw';
   creator: Team;
   pts: Vec2[];
+}
+
+/** Both accepted map halves are deliberately confirmed before building the track. */
+export interface GenerateTrackMsg extends BaseMsg {
+  type: 'GenerateTrack';
+}
+
+/** The generated track stays inspectable until players explicitly start. */
+export interface BeginRaceMsg extends BaseMsg {
+  type: 'BeginRace';
+}
+
+/** The two initial contacts which establish the shared divider in MAP. */
+export interface MapDividerMsg extends BaseMsg {
+  type: 'MapDivider';
+  a: Vec2;
+  b: Vec2;
 }
 
 export interface PadHoldMsg extends BaseMsg {
@@ -215,6 +236,11 @@ export interface UseItemMsg extends BaseMsg {
 
 export interface StartGameMsg extends BaseMsg {
   type: 'StartGame';
+  mode?: 'table' | 'pc';
+}
+
+export interface PauseMsg extends BaseMsg {
+  type: 'Pause';
 }
 
 // Console Oz → Server
@@ -272,6 +298,9 @@ export interface PhaseChangeMsg extends BaseMsg {
 
 export type ClientMessage =
   | StrokeDrawMsg
+  | GenerateTrackMsg
+  | BeginRaceMsg
+  | MapDividerMsg
   | PadHoldMsg
   | SlingshotMsg
   | BoostGateMsg
@@ -280,6 +309,7 @@ export type ClientMessage =
   | PilotInputMsg
   | UseItemMsg
   | StartGameMsg
+  | PauseMsg
   | TangibleMovedMsg
   | TangibleRemovedMsg
   | OzTriggerMsg

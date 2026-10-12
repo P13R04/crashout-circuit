@@ -2,7 +2,7 @@
  * MapGenerator — builds TrackGeometry from two freehand strokes.
  *
  * Pipeline (REQ-2.2.x, REQ-2.3.x, T-01):
- *  1. validate(stroke)          — length ≥ 300 px, touches both target points (r=60)
+ *  1. validate(stroke)          — length ≥ 300 px, endpoint inside a target ring (r=95)
  *  2. resample(stroke, step)    — constant-step resampling
  *  3. oneEuroFilter(pts)        — 1€ filter (β=0.007, fCmin=1.0, dCutoff=1.0)
  *  4. autofill(stroke, P1, P2)  — close as bean shape (mirror + scale κ ∈ [0.6, 1.0])
@@ -23,7 +23,7 @@ import { segmentsIntersect } from './geometry.js';
 
 const LOOP_N = 256;
 const RESAMPLE_STEP = 8;           // px — initial resample step
-const TOUCH_RADIUS = 60;           // px — target point tolerance
+const TOUCH_RADIUS = 95;           // px — generous target ring for a real finger/mouse release
 const MIN_STROKE_LENGTH = 300;     // px
 const MIN_CURVATURE_RADIUS = 50;   // px — below this track is too tight (1.8·R ≥ min width)
 const MIN_TRACK_WIDTH = 24;        // px — vehicle clearance
@@ -105,10 +105,11 @@ function validate(stroke: Vec2[], P1: Vec2, P2: Vec2): boolean {
   const len = strokeLength(stroke);
   if (len < MIN_STROKE_LENGTH) return false;
 
-  // Must touch both target points
-  const touchesP1 = stroke.some(pt => dist(pt, P1) <= TOUCH_RADIUS);
-  const touchesP2 = stroke.some(pt => dist(pt, P2) <= TOUCH_RADIUS);
-  return touchesP1 && touchesP2;
+  // The beginning and end must land in their own generous target ring. Looking
+  // at a small endpoint window allows a user to stop just inside the circle.
+  const head = stroke.slice(0, Math.min(8, stroke.length));
+  const tail = stroke.slice(Math.max(0, stroke.length - 8));
+  return head.some(pt => dist(pt, P1) <= TOUCH_RADIUS) && tail.some(pt => dist(pt, P2) <= TOUCH_RADIUS);
 }
 
 // ─── Step 2: resample(stroke, step) ───────────────────────────────────────────
@@ -398,14 +399,14 @@ function tangentAt(centerline: Vec2[], idx: number): Vec2 {
  * Checkpoint 0 is the start line: the 8 checkpoints are spread evenly starting
  * from it, so a lap is completed when the car crosses checkpoint 0 again.
  */
-function placeFeatures(geo: BaseGeometry): TrackGeometry {
+function placeFeatures(geo: BaseGeometry, randomStart = true): TrackGeometry {
   const { centerline, widths } = geo;
   const n = centerline.length;
 
-  // Straightest 10-point window → start line
+  // A roulette among the safe straight sections → start line. This makes the
+  // finishing line uncertain while never placing it in a tight bend.
   const windowSize = 10;
-  let minCurv = Infinity;
-  let startIdx = 0;
+  const candidates: Array<{ idx: number; curv: number }> = [];
   for (let i = 0; i < n; i++) {
     let totalCurv = 0;
     for (let j = 0; j < windowSize; j++) {
@@ -416,11 +417,11 @@ function placeFeatures(geo: BaseGeometry): TrackGeometry {
       const t2 = normalize(sub(next, curr));
       totalCurv += Math.abs(t1.x * t2.y - t1.y * t2.x);
     }
-    if (totalCurv < minCurv) {
-      minCurv = totalCurv;
-      startIdx = (i + windowSize / 2) % n;
-    }
+    candidates.push({ idx: (i + windowSize / 2) % n, curv: totalCurv });
   }
+  candidates.sort((a, b) => a.curv - b.curv);
+  const safePool = candidates.slice(0, Math.max(1, Math.floor(candidates.length * 0.18)));
+  const startIdx = (randomStart ? safePool[Math.floor(Math.random() * safePool.length)] : safePool[0]).idx;
 
   const checkpoints: Array<{ pos: Vec2; normal: Vec2 }> = [];
   for (let c = 0; c < CHECKPOINT_COUNT; c++) {
@@ -596,7 +597,7 @@ export function generatePreset(): TrackGeometry {
     pts.push({ x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a) * (1 - 0.08 * Math.cos(a)) });
   }
   const loop = signedArea(pts) < 0 ? pts.reverse() : pts;
-  return placeFeatures(computeGeometry(loop));
+  return placeFeatures(computeGeometry(loop), false);
 }
 
 /** Try the loop as drawn, then progressively fatter ones (thin beans overlap their own edges). */

@@ -7,7 +7,7 @@
  * in multi-finger gestures, so the repair pads and the buttons stay independent
  * of gameplay gestures (T-09):
  *
- *   joystick   pilot touchpad: up/down = throttle, left/right = steer → PilotInput
+ *   steer      pilot left/right pads; the car advances automatically → PilotInput
  *   item       pilot's item button tap               → UseItem(team)
  *   pad        finger on a repair pad                → PadHold(team, role, on)
  *   ghost      tap on the Ghost button               → Ability(ghost)
@@ -22,12 +22,12 @@
  */
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import {
-  LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, JOY_LOCAL, JOY_GRAB_R, ITEM_BTN_LOCAL,
+  LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_LEFT_LOCAL, STEER_RIGHT_LOCAL, ITEM_BTN_LOCAL,
   GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL, worldToLocal, type PanelLayout,
   insidePanel, nearestStationTeam, type Role,
 } from '../server/layout.js';
 import { distToSegment, nearestOnTrack } from '../server/geometry.js';
-import { RESULT_BUTTON, START_BUTTON } from './Renderer.js';
+import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON } from './Renderer.js';
 import type { View } from './view.js';
 
 export const MAX_CONTACTS = 10;
@@ -42,7 +42,7 @@ const TARGET_RADIUS_PX = 40;
 const TARGETING_MS = 3000;
 const PALM_MAX_PX = 140;        // contacts wider than this (logical px) are palms/arms
 
-type Zone = 'joystick' | 'item' | 'pad' | 'ghost' | 'destroy' | 'stroke' | 'target' | 'result' | 'free' | 'rejected';
+type Zone = 'steer' | 'item' | 'pad' | 'ghost' | 'destroy' | 'stroke' | 'target' | 'result' | 'pause' | 'free' | 'rejected';
 
 interface Contact {
   id: number;
@@ -51,7 +51,8 @@ interface Contact {
   zone: Zone;
   consumed: boolean;
   padKey?: string;
-  panel?: PanelLayout; // joystick contacts: the panel whose frame the stick is read in
+  panel?: PanelLayout;
+  steer?: -1 | 1;
   strokeTeam?: Team;
   outward?: Vec2; // border candidate: unit vector away from the centerline
 }
@@ -61,7 +62,7 @@ type Send = (msg: { type: string } & Record<string, unknown>) => void;
 export class GestureRecognizer {
   private contacts = new Map<number, Contact>();
   private padTouches = new Map<string, Set<number>>();
-  /** team → pointerId of the finger holding that team's joystick. */
+  /** team → pointerId of the finger holding that team's steering pad. */
   private sticks = new Map<Team, number>();
   private lastInput: Record<Team, { throttle: number; steer: number }> = {
     A: { throttle: 0, steer: 0 }, B: { throttle: 0, steer: 0 },
@@ -76,6 +77,8 @@ export class GestureRecognizer {
    * (the two fingers) for the boost gate. The normal armed-item rules still apply.
    */
   private sim: { kind: 'slingshot' | 'boost'; first?: Vec2 } | null = null;
+  /** Two clicks in desktop mode, or two simultaneous touches on the table. */
+  private mapDividerPoints: Vec2[] = [];
   onSimChange: (hint: string) => void = () => {};
 
   simulate(kind: 'slingshot' | 'boost' | null): void {
@@ -114,7 +117,7 @@ export class GestureRecognizer {
     canvas.addEventListener('pointerup', (e) => this.onUp(e), opts);
     canvas.addEventListener('pointercancel', (e) => this.onUp(e), opts);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    // Steering is streamed at up to 60 Hz while a joystick is held
+    // Steering is streamed at up to 60 Hz while a steering pad is held
     setInterval(() => this.streamInputs(), 1000 / 60);
   }
 
@@ -142,10 +145,10 @@ export class GestureRecognizer {
 
     // 0 — lobby: start button
     if (state.phase === 'LOBBY') {
-      const b = START_BUTTON;
-      if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
+      const hit = (b: { x: number; y: number; w: number; h: number }) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+      if (hit(START_TABLE_BUTTON) || hit(START_PC_BUTTON)) {
         c.zone = 'result';
-        this.send({ type: 'StartGame' });
+        this.send({ type: 'StartGame', mode: hit(START_PC_BUTTON) ? 'pc' : 'table' });
       } else c.zone = 'rejected';
       return;
     }
@@ -160,15 +163,43 @@ export class GestureRecognizer {
       return;
     }
 
-    // 2 — MAP phase: every touch outside the corner panels draws
+    // 2 — MAP: two shared contacts establish the divider, then each half starts
+    // from its own endpoint. Desktop clicks use the same sequence (desync mode).
     if (state.phase === 'MAP') {
-      if (!state.mapTargets || insidePanel(p)) { c.zone = 'rejected'; return; }
-      const team = this.nearestTargetTeam(state, p);
+      if (insidePanel(p)) { c.zone = 'rejected'; return; }
+      const generate = MAP_GENERATE_BUTTON;
+      if (state.mapStrokes.A && state.mapStrokes.B && p.x >= generate.x && p.x <= generate.x + generate.w && p.y >= generate.y && p.y <= generate.y + generate.h) {
+        c.zone = 'result'; this.send({ type: 'GenerateTrack' }); return;
+      }
+      if (!state.mapTargets) {
+        c.zone = 'target';
+        this.mapDividerPoints.push(p);
+        if (this.mapDividerPoints.length === 2) {
+          this.send({ type: 'MapDivider', a: this.mapDividerPoints[0], b: this.mapDividerPoints[1] });
+          this.mapDividerPoints = [];
+        }
+        return;
+      }
+      const team = this.mapStrokeStartTeam(state, p);
+      if (!team || state.mapStrokes[team]) { c.zone = 'rejected'; return; }
       c.zone = 'stroke';
       c.strokeTeam = team;
       for (const [id, s] of this.view.strokes) if (s.team === team) this.view.strokes.delete(id);
       this.view.strokes.set(c.id, { team, pts: [p], done: false });
       return;
+    }
+    if (state.phase === 'READY') {
+      const b = RACE_START_BUTTON;
+      if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
+        c.zone = 'result'; this.send({ type: 'BeginRace' });
+      } else c.zone = 'rejected';
+      return;
+    }
+    if (state.phase === 'RACE' || state.phase === 'PAUSED') {
+      const b = PAUSE_BUTTON;
+      if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
+        c.zone = 'pause'; this.send({ type: 'Pause' }); return;
+      }
     }
     if (state.phase !== 'RACE') { c.zone = 'rejected'; return; }
 
@@ -176,13 +207,17 @@ export class GestureRecognizer {
     for (const panel of PANELS) {
       const l = worldToLocal(panel, p.x, p.y);
       if (panel.role === 'pilot') {
-        if (Math.hypot(l.x - JOY_LOCAL.x, l.y - JOY_LOCAL.y) <= JOY_GRAB_R) {
-          // One finger per joystick; a second finger on it is ignored
+        const steerPad = [
+          { box: STEER_LEFT_LOCAL, value: -1 as const },
+          { box: STEER_RIGHT_LOCAL, value: 1 as const },
+        ].find(({ box }) => Math.abs(l.x - box.x) <= box.w / 2 && Math.abs(l.y - box.y) <= box.h / 2);
+        if (steerPad) {
           if (this.sticks.has(panel.team)) { c.zone = 'rejected'; return; }
-          c.zone = 'joystick';
+          c.zone = 'steer';
           c.panel = panel;
+          c.steer = steerPad.value;
           this.sticks.set(panel.team, c.id);
-          this.updateStick(c);
+          this.updateSteer(c);
           return;
         }
         if (Math.hypot(l.x - ITEM_BTN_LOCAL.x, l.y - ITEM_BTN_LOCAL.y) <= ITEM_BTN_LOCAL.r + 6) {
@@ -259,8 +294,8 @@ export class GestureRecognizer {
     const p = this.toLogical(e);
     c.x = p.x; c.y = p.y;
 
-    if (c.zone === 'joystick') {
-      this.updateStick(c);
+    if (c.zone === 'steer') {
+      this.updateSteer(c);
     } else if (c.zone === 'stroke') {
       const s = this.view.strokes.get(c.id);
       const last = s?.pts[s.pts.length - 1];
@@ -277,7 +312,7 @@ export class GestureRecognizer {
     this.view.debug.contacts = this.contacts.size;
 
     if (c.zone === 'pad' && c.padKey) this.padUp(c.padKey, c.id);
-    if (c.zone === 'joystick' && c.panel) this.releaseStick(c.panel.team);
+    if (c.zone === 'steer' && c.panel) this.releaseStick(c.panel.team);
     if (c.zone === 'stroke') {
       const s = this.view.strokes.get(c.id);
       if (s) {
@@ -288,23 +323,17 @@ export class GestureRecognizer {
     if (c.zone === 'free') this.scheduleEvaluation();
   }
 
-  // ─── Joystick ─────────────────────────────────────────────────────────────
+  // ─── Remote-control steering ─────────────────────────────────────────────
 
-  /** Knob position from the finger, in the panel's frame (up = forward). */
-  private updateStick(c: Contact): void {
-    if (!c.panel) return;
-    const l = worldToLocal(c.panel, c.x, c.y);
-    let vx = (l.x - JOY_LOCAL.x) / JOY_LOCAL.r;
-    let vy = (l.y - JOY_LOCAL.y) / JOY_LOCAL.r;
-    const mag = Math.hypot(vx, vy);
-    if (mag > 1) { vx /= mag; vy /= mag; }
-    this.view.sticks[c.panel.team] = { x: vx, y: vy, active: true };
+  private updateSteer(c: Contact): void {
+    if (!c.panel || !c.steer) return;
+    this.view.sticks[c.panel.team] = { x: c.steer, y: 0, active: true };
   }
 
   private releaseStick(team: Team): void {
     this.sticks.delete(team);
     this.view.sticks[team] = { x: 0, y: 0, active: false };
-    this.sendInput(team, 0, 0);
+    this.sendInput(team, 1, 0);
   }
 
   /** 10 % deadzone, rescaled so the full range is still reachable. */
@@ -318,7 +347,7 @@ export class GestureRecognizer {
     for (const team of ['A', 'B'] as Team[]) {
       const st = this.view.sticks[team];
       if (!st.active) continue;
-      this.sendInput(team, GestureRecognizer.axis(-st.y), GestureRecognizer.axis(st.x));
+      this.sendInput(team, 1, GestureRecognizer.axis(st.x));
     }
   }
 
@@ -363,8 +392,8 @@ export class GestureRecognizer {
     this.padTouches.clear();
     for (const team of ['A', 'B'] as Team[]) {
       this.releaseStick(team);
-      this.lastInput[team] = { throttle: 1e9, steer: 1e9 }; // force the zero frame out
-      this.sendInput(team, 0, 0);
+      this.lastInput[team] = { throttle: 1e9, steer: 1e9 }; // force the neutral frame out
+      this.sendInput(team, 1, 0);
     }
     this.contacts.clear();
     this.view.debug.contacts = 0;
@@ -461,15 +490,11 @@ export class GestureRecognizer {
     return best;
   }
 
-  private nearestTargetTeam(state: GameState, p: Vec2): Team {
-    let best: Team = 'A';
-    let bestD = Infinity;
+  private mapStrokeStartTeam(state: GameState, p: Vec2): Team | null {
     for (const team of ['A', 'B'] as Team[]) {
-      for (const t of state.mapTargets![team]) {
-        const d = Math.hypot(t.x - p.x, t.y - p.y);
-        if (d < bestD) { bestD = d; best = team; }
-      }
+      const start = state.mapTargets![team][0];
+      if (Math.hypot(p.x - start.x, p.y - start.y) <= 100) return team;
     }
-    return best;
+    return null;
   }
 }

@@ -10,7 +10,7 @@ export const LOGICAL_H = 1080;
 export type Role = 'pilot' | 'copilot';
 
 export const PANEL_H = 200;
-/** The pilot panel is wider: it holds the joystick, the item button and the repair pad. */
+/** The pilot panel is wider: it holds directional pads, the item button and repair. */
 export const PILOT_PANEL_W = 700;
 export const COPILOT_PANEL_W = 460;
 export const panelWidth = (role: Role): number => (role === 'pilot' ? PILOT_PANEL_W : COPILOT_PANEL_W);
@@ -38,10 +38,9 @@ export const PANELS: PanelLayout[] = [
 export const PAD_LOCAL_COPILOT = { x: 140, y: 18, r: PAD_R };
 export const PAD_LOCAL_PILOT = { x: 250, y: 10, r: PAD_R };
 export const padLocal = (role: Role) => (role === 'pilot' ? PAD_LOCAL_PILOT : PAD_LOCAL_COPILOT);
-/** Touchpad-style joystick of the pilot: vertical axis = throttle, horizontal = steering. */
-export const JOY_LOCAL = { x: -255, y: 10, r: 85 };
-/** Grab radius: a touch starting slightly outside the base still grabs the stick. */
-export const JOY_GRAB_R = 105;
+/** RC controls: the car advances continuously; hold one pad to steer. */
+export const STEER_LEFT_LOCAL = { x: -275, y: 10, w: 105, h: 130 };
+export const STEER_RIGHT_LOCAL = { x: -155, y: 10, w: 105, h: 130 };
 export const ITEM_BTN_LOCAL = { x: -20, y: 45, r: 40 };
 export const GHOST_BTN_LOCAL = { x: -150, y: 20, r: 42 };
 export const DESTROY_BTN_LOCAL = { x: -50, y: 20, r: 42 };

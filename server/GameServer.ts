@@ -108,10 +108,22 @@ export class GameServer {
         if (fromTable && (msg.team === 'A' || msg.team === 'B')) this.rules.onUseItem(msg.team, msg);
         break;
       case 'StartGame':
-        if (fromTable && this.state.phase === 'LOBBY') this.rules.enterMap();
+        if (fromTable && this.state.phase === 'LOBBY') this.rules.enterMap(msg.mode);
+        break;
+      case 'Pause':
+        if (fromTable) this.rules.togglePause();
         break;
       case 'StrokeDraw':
         if (fromTable) this.rules.onStrokeDraw(msg);
+        break;
+      case 'GenerateTrack':
+        if (fromTable) this.rules.onGenerateTrack();
+        break;
+      case 'BeginRace':
+        if (fromTable) this.rules.beginRace();
+        break;
+      case 'MapDivider':
+        if (fromTable) this.rules.onMapDivider(msg);
         break;
       case 'PadHold':
         if (fromTable) this.rules.onPadHold(msg);
