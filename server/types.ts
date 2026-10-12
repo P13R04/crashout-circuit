@@ -111,6 +111,8 @@ export interface TrackDeformation {
   /** Set when a newer deformation takes over, then the old one eases back. */
   releaseAt: number | null;
   strength: number;
+  /** True for the predefined circuit: the players' drawing could not be used. */
+  preset?: boolean;
 }
 
 export interface MapTargets {

@@ -9,8 +9,11 @@ import { GameRules, createInitialState } from '../server/GameRules.js';
 import type { RulesHost } from '../server/GameRules.js';
 import { PhysicsLoop } from '../server/PhysicsLoop.js';
 import { config } from '../server/config.js';
-import { generate, generatePreset, validateGeometry, generationInfo } from '../server/MapGenerator.js';
+import { generate, generatePreset, validateGeometry, generationInfo, selfCrossings } from '../server/MapGenerator.js';
 import { nearestOnTrack } from '../server/geometry.js';
+import { mock } from 'node:test';
+import { GestureRecognizer } from '../client-table/GestureRecognizer.js';
+import { createView } from '../client-table/view.js';
 
 const queue: Array<{ name: string; fn?: () => void | Promise<void> }> = [];
 function test(name: string, fn: () => void | Promise<void>): void { queue.push({ name, fn }); }
@@ -97,6 +100,189 @@ test('100 random stroke pairs → valid circuit, no self-intersection, each < 3 
   assert.ok(worst < 3000, `worst generation ${worst.toFixed(0)} ms`);
   console.log(`      worst case ${worst.toFixed(0)} ms; strategies: ${JSON.stringify(methods)}`);
 });
+
+/** Smooth half-stroke from a to b bulging `amp` px sideways (positive = towards +y when a→b goes right). */
+function bulge(a: Vec2, b: Vec2, amp: number, n = 60): Vec2[] {
+  const out: Vec2[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t + amp * Math.sin(Math.PI * t) });
+  }
+  return out;
+}
+const distToLoop = (p: Vec2, loop: Vec2[]): number => Math.min(...loop.map(q => Math.hypot(p.x - q.x, p.y - q.y)));
+
+test('issue #3: two ~100 px half-strokes give a circuit through both halves, not the preset', () => {
+  const P1 = { x: 560, y: 540 }, P2 = { x: 1360, y: 540 };
+  for (const amp of [60, 100, 150, 220]) {
+    const A = bulge(P1, P2, amp), B = bulge(P2, P1, -amp);
+    const geo = generate(A, B, P1, P2, P2, P1);
+    assert.equal(generationInfo.method, 'closed loop union', `amplitude ${amp}`);
+    assert.ok(!geo.preset && validateGeometry(geo), `amplitude ${amp}`);
+    // the circuit stays the drawing: a half is only bulged when the loop would otherwise
+    // be undrivable, and then no further than needed (never more than the 150 px minimum)
+    const ys = geo.centerline.map(p => p.y);
+    const need = Math.max(amp, 90);
+    assert.ok(Math.min(...ys) >= 540 - need - 15 && Math.max(...ys) <= 540 + need + 15,
+      `amplitude ${amp}: ${Math.min(...ys).toFixed(0)}..${Math.max(...ys).toFixed(0)}`);
+    // the middle of each drawn half is still on the circuit
+    const apexA = A[30], apexB = B[30];
+    const tol = Math.max(0, need - amp) + 25;
+    assert.ok(distToLoop(apexA, geo.centerline) <= tol, `amplitude ${amp}: half A ${distToLoop(apexA, geo.centerline).toFixed(0)} px away`);
+    assert.ok(distToLoop(apexB, geo.centerline) <= tol, `amplitude ${amp}: half B ${distToLoop(apexB, geo.centerline).toFixed(0)} px away`);
+    // the start line is on P1's side
+    assert.ok(Math.hypot(geo.startLine.pos.x - P1.x, geo.startLine.pos.y - P1.y) < 160);
+  }
+});
+test('issue #3: 100 random drawings with shared anchors never fall back to the preset', () => {
+  let s = 7;
+  const rnd = () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
+  for (let i = 0; i < 100; i++) {
+    const len = 360 + rnd() * 540, ang = (rnd() - 0.5) * 0.8;
+    const c = { x: 760 + rnd() * 400, y: 440 + rnd() * 200 };
+    const P1 = { x: c.x - Math.cos(ang) * len / 2, y: c.y - Math.sin(ang) * len / 2 };
+    const P2 = { x: c.x + Math.cos(ang) * len / 2, y: c.y + Math.sin(ang) * len / 2 };
+    const half = (a: Vec2, b: Vec2, amp: number): Vec2[] => {
+      const L = Math.hypot(b.x - a.x, b.y - a.y), nx = -(b.y - a.y) / L, ny = (b.x - a.x) / L;
+      return Array.from({ length: 61 }, (_, k) => {
+        const t = k / 60, d = amp * Math.sin(Math.PI * t) * (1 + 0.15 * Math.sin(6 * t)) + (rnd() - 0.5) * 4;
+        return { x: a.x + (b.x - a.x) * t + nx * d, y: a.y + (b.y - a.y) * t + ny * d };
+      });
+    };
+    const A = half(P1, P2, 70 + rnd() * 170), B = half(P2, P1, 70 + rnd() * 170);
+    const geo = generate(A, B, P1, P2, P2, P1);
+    assert.equal(generationInfo.method, 'closed loop union', `drawing ${i}`);
+    assert.ok(validateGeometry(geo) && !geo.preset, `drawing ${i}`);
+  }
+});
+test('issue #3: an undrivable drawing is smoothed, never replaced by the preset', () => {
+  const P1 = { x: 560, y: 540 }, P2 = { x: 1360, y: 540 };
+  // A: a loop that crosses itself ; B: pinched against the divider in the middle, with a dip across it
+  const A = bulge(P1, P2, 170);
+  const c = A[30];
+  const loop = Array.from({ length: 25 }, (_, k) => {
+    const th = (k / 24) * 2 * Math.PI;
+    return { x: c.x + 45 * Math.sin(th), y: c.y - 45 * (1 - Math.cos(th)) };
+  });
+  const strokeA = [...A.slice(0, 30), ...loop, ...A.slice(31)];
+  const strokeB = bulge(P2, P1, -170).map((p, i) => (i > 24 && i < 36 ? { x: p.x, y: 540 + (i % 2 ? 6 : -8) } : p));
+  const geo = generate(strokeA, strokeB, P1, P2, P2, P1);
+  assert.notEqual(generationInfo.method, 'preset');
+  assert.ok(!geo.preset && validateGeometry(geo));
+  // still the players' circuit: both halves are close to it
+  const ds = [...strokeA, ...strokeB].map(p => distToLoop(p, geo.centerline));
+  const mean = ds.reduce((a, d) => a + d, 0) / ds.length;
+  assert.ok(mean < 60, `mean distance to the drawing ${mean.toFixed(0)} px`);
+});
+test('self-crossing drawings: a figure of eight and a loop-de-loop are kept as drawn', () => {
+  const P1 = { x: 560, y: 540 }, P2 = { x: 1360, y: 540 };
+  const wave = (a: Vec2, b: Vec2, amp: number): Vec2[] =>
+    Array.from({ length: 121 }, (_, i) => { const t = i / 120; return { x: a.x + (b.x - a.x) * t, y: 540 + amp * Math.sin(2 * Math.PI * t) }; });
+  // each half crosses the divider once: the two halves, hooked on P1 and P2, make an 8
+  const A = wave(P1, P2, -170), B = wave(P2, P1, -170);
+  const r = rig();
+  r.rules.enterMap('pc');
+  r.rules.onMapDivider(msg({ type: 'MapDivider' as const, a: P1, b: P2 }));
+  r.rules.onStrokeDraw(msg({ type: 'StrokeDraw' as const, creator: 'A' as Team, pts: A }));
+  r.rules.onStrokeDraw(msg({ type: 'StrokeDraw' as const, creator: 'B' as Team, pts: B }));
+  assert.ok(r.state.mapStrokes.A && r.state.mapStrokes.B, 'strokes crossing the divider are accepted');
+
+  const geo = generate(A, B, P1, P2, P2, P1);
+  assert.equal(generationInfo.method, 'closed loop union');
+  assert.ok(!geo.preset && validateGeometry(geo));
+  const crossings = selfCrossings(geo.centerline);
+  assert.equal(crossings.length, 1, 'the circuit crosses itself once');
+  assert.ok(crossings[0].sin >= 0.64, 'a clean crossing');
+  // fidelity: the circuit is the 8 that was drawn
+  const ds = [...A, ...B].map(p => distToLoop(p, geo.centerline));
+  assert.ok(ds.reduce((a, d) => a + d, 0) / ds.length < 25);
+  // start line and checkpoints stay clear of the junction (the other branch would trigger them)
+  for (const cp of [geo.startLine, ...geo.checkpoints]) {
+    assert.ok(Math.hypot(cp.pos.x - crossings[0].at.x, cp.pos.y - crossings[0].at.y) > 130, 'checkpoint away from the junction');
+  }
+  // …and a lap can be completed on it
+  const race = rig();
+  race.state.phase = 'RACE';
+  race.rules.startRace(geo);
+  race.advance(3100);
+  const car = race.state.cars.A;
+  const n = geo.centerline.length;
+  const startIdx = nearestOnTrack(geo.startLine.pos, geo).index;
+  for (let k = 0; k <= n + 6; k++) {
+    const p = geo.centerline[(startIdx - 3 + k + n) % n];
+    const prev = { ...car.pos };
+    car.pos = { x: p.x, y: p.y };
+    race.rules.afterMove('A', prev, race.clock.now);
+  }
+  assert.equal(car.lap, 1);
+
+  // and a car actually driving it goes through the junction (twice per lap) without falling
+  const drive = rig();
+  drive.state.phase = 'RACE';
+  drive.rules.startRace(geo);
+  drive.advance(3100);
+  const d = drive.state.cars.A;
+  let crossedJunction = 0, wasIn = false;
+  for (let step = 0; step < 60 * 40 && d.lap < 1; step++) { // 40 s at most
+    const idx = nearestOnTrack(d.pos, geo).index;
+    const target = geo.centerline[(idx + 12) % n];
+    let err = Math.atan2(target.y - d.pos.y, target.x - d.pos.x) - d.angle;
+    err = Math.atan2(Math.sin(err), Math.cos(err));
+    drive.rules.onPilotInput('A', msg({ type: 'PilotInput' as const, team: 'A' as Team, throttle: 1, steer: Math.max(-1, Math.min(1, err * 3)) }));
+    drive.advance(1000 / 60);
+    const inJ = Math.hypot(d.pos.x - crossings[0].at.x, d.pos.y - crossings[0].at.y) < 60;
+    if (inJ && !wasIn) crossedJunction++;
+    wasIn = inJ;
+    assert.equal(d.disabled, false, `fell off the track at step ${step}`);
+  }
+  assert.equal(d.lap >= 1, true, 'completed a lap');
+  assert.ok(crossedJunction >= 2, `went through the junction ${crossedJunction} times`);
+});
+test('self-crossing drawings: a loop drawn in a half is kept (blown up to a drivable size)', () => {
+  const P1 = { x: 560, y: 540 }, P2 = { x: 1360, y: 540 };
+  const base = bulge(P1, P2, 150, 160);
+  // loop-de-loop going away from the divider: prolate trochoid inserted at x ≈ 960
+  const at = 80, c0 = base[at];
+  const loop = Array.from({ length: 61 }, (_, k) => {
+    const th = -Math.PI + (k / 60) * 2 * Math.PI;
+    return { x: c0.x + 20 * th - 60 * Math.sin(th), y: c0.y + 60 * (1 + Math.cos(th)) };
+  });
+  const A = [...base.slice(0, at - 7), ...loop, ...base.slice(at + 7)];
+  const B = bulge(P2, P1, -150, 160);
+  const geo = generate(A, B, P1, P2, P2, P1);
+  assert.equal(generationInfo.method, 'closed loop union');
+  assert.ok(validateGeometry(geo) && !geo.preset);
+  assert.ok(selfCrossings(geo.centerline).length >= 1, 'the loop crosses the rest of the track');
+  const apex = loop[30];
+  assert.ok(distToLoop(apex, geo.centerline) < 90, `the loop is still there (${distToLoop(apex, geo.centerline).toFixed(0)} px from its apex)`);
+});
+test('the circuit is the drawing: ~1 px away from the anchors, only the two tips are rounded', () => {
+  let s = 11;
+  const rnd = () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
+  let farMeans: number[] = [];
+  for (let i = 0; i < 60; i++) {
+    // drawn inside the play area (outside it, the circuit is moved back in: that is the only change)
+    const len = 400 + rnd() * 450, c = { x: 760 + rnd() * 400, y: 500 + rnd() * 80 };
+    const room = Math.min(c.y - 305, 775 - c.y);
+    const P1 = { x: c.x - len / 2, y: c.y }, P2 = { x: c.x + len / 2, y: c.y };
+    const A = bulge(P1, P2, 100 + rnd() * (room - 100)), B = bulge(P2, P1, -(100 + rnd() * (room - 100)));
+    const geo = generate(A, B, P1, P2, P2, P1);
+    assert.equal(generationInfo.method, 'closed loop union');
+    const far = [...A, ...B].filter(p => Math.hypot(p.x - P1.x, p.y - P1.y) > 140 && Math.hypot(p.x - P2.x, p.y - P2.y) > 140);
+    const ds = far.map(p => distToLoop(p, geo.centerline));
+    // (distToLoop uses the 256 vertices: the polyline lies within a few px of them)
+    assert.ok(Math.max(...ds) < 14, `drawing ${i}: ${Math.max(...ds).toFixed(0)} px from the circuit`);
+    farMeans = farMeans.concat(ds.reduce((a, d) => a + d, 0) / ds.length);
+  }
+  assert.ok(farMeans.reduce((a, d) => a + d, 0) / farMeans.length < 5);
+});
+test('issue #3: the predefined circuit is flagged, a circuit built on the drawing is not', () => {
+  assert.equal(generatePreset().preset, true);
+  const fallback = generate([{ x: 0, y: 0 }, { x: 5, y: 5 }], [{ x: 0, y: 0 }, { x: 5, y: 5 }]);
+  assert.equal(fallback.preset, true);
+  const P1 = { x: 600, y: 540 }, P2 = { x: 1320, y: 540 };
+  assert.equal(generate(bulge(P1, P2, 160), bulge(P2, P1, -160), P1, P2, P2, P1).preset, undefined);
+});
 test('invalid strokes fall back to the preset circuit', () => {
   const geo = generate([{ x: 0, y: 0 }, { x: 5, y: 5 }], [{ x: 0, y: 0 }, { x: 5, y: 5 }]);
   assert.ok(validateGeometry(geo));
@@ -132,6 +318,111 @@ test('two shared divider contacts then two half-strokes wait for confirmation be
       resolve();
     } catch (e) { reject(e); }
   }, 100));
+});
+
+test('issue #3: a refused divider is announced (too short, outside the table area)', () => {
+  const asks = (a: Vec2, b: Vec2) => {
+    const r = rig();
+    r.rules.enterMap();
+    r.rules.onMapDivider(msg({ type: 'MapDivider' as const, a, b }));
+    return r;
+  };
+  let r = asks({ x: 700, y: 540 }, { x: 900, y: 540 });
+  assert.equal(r.state.mapDivider, null);
+  assert.deepEqual(r.feedback, ['dividerTooShort']);
+  r = asks({ x: 100, y: 100 }, { x: 1000, y: 540 });
+  assert.equal(r.state.mapDivider, null);
+  assert.deepEqual(r.feedback, ['dividerOutOfZone']);
+  r = asks({ x: 600, y: 540 }, { x: 1400, y: 900 });
+  assert.deepEqual(r.feedback, ['dividerOutOfZone']);
+  r = asks({ x: 600, y: 540 }, { x: 960, y: 540 }); // exactly 360 px
+  assert.ok(r.state.mapDivider);
+  assert.deepEqual(r.feedback, []);
+});
+
+/** Table client driven with synthetic pointer events and fake timers (no browser). */
+function tableClient(mode: 'table' | 'pc') {
+  const handlers: Record<string, (e: unknown) => void> = {};
+  const canvas = {
+    addEventListener: (type: string, fn: (e: unknown) => void) => { handlers[type] = fn; },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1920, height: 1080 }),
+    setPointerCapture: () => {},
+  } as unknown as HTMLCanvasElement;
+  const view = createView(() => 0);
+  const state = createInitialState();
+  state.phase = 'MAP';
+  state.mapMode = mode;
+  view.state = state;
+  const sent: Array<{ type: string } & Record<string, unknown>> = [];
+  new GestureRecognizer(canvas, view, m => sent.push(m));
+  const ev = (id: number, p: Vec2) => ({ pointerId: id, clientX: p.x, clientY: p.y, timeStamp: 0, preventDefault() {} });
+  return {
+    view, sent,
+    down: (id: number, p: Vec2) => handlers.pointerdown(ev(id, p)),
+    up: (id: number, p: Vec2) => handlers.pointerup(ev(id, p)),
+    dividers: () => sent.filter(m => m.type === 'MapDivider'),
+  };
+}
+test('issue #3: an isolated contact never pairs with one made 5 s later', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  try {
+    for (const mode of ['table', 'pc'] as const) {
+      const c = tableClient(mode);
+      c.down(1, { x: 600, y: 540 });
+      c.up(1, { x: 600, y: 540 });
+      mock.timers.tick(5000);
+      assert.equal(c.view.pendingDivider.length, 0, `${mode}: the isolated contact expired`);
+      assert.ok(c.view.mapNotice, `${mode}: the players are told`);
+      c.down(2, { x: 1400, y: 540 });
+      c.up(2, { x: 1400, y: 540 });
+      assert.equal(c.dividers().length, 0, `${mode}: no dividing line from two contacts 5 s apart`);
+      assert.equal(c.view.pendingDivider.length, 1, `${mode}: the new contact starts a fresh wait`);
+    }
+  } finally { mock.timers.reset(); }
+});
+test('issue #3: two simultaneous contacts make the dividing line; refusals show a message', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  try {
+    const t = tableClient('table');
+    t.down(1, { x: 600, y: 540 });
+    mock.timers.tick(1500); // still held: not abandoned
+    t.down(2, { x: 1400, y: 540 });
+    assert.equal(t.dividers().length, 1);
+    assert.deepEqual(t.dividers()[0].a, { x: 600, y: 540 });
+
+    const close = tableClient('table');
+    close.down(1, { x: 600, y: 540 });
+    close.down(2, { x: 700, y: 540 });
+    assert.equal(close.dividers().length, 0);
+    assert.match(close.view.mapNotice!.text, /360/);
+
+    const out = tableClient('table');
+    out.down(1, { x: 60, y: 60 });
+    assert.equal(out.view.pendingDivider.length, 0);
+    assert.match(out.view.mapNotice!.text, /zone/);
+
+    // a finger lifted alone on the table is dropped within a second, a click on the PC is not
+    const lifted = tableClient('table');
+    lifted.down(1, { x: 600, y: 540 });
+    lifted.up(1, { x: 600, y: 540 });
+    mock.timers.tick(700);
+    assert.equal(lifted.view.pendingDivider.length, 0);
+    const click = tableClient('pc');
+    click.down(1, { x: 600, y: 540 });
+    click.up(1, { x: 600, y: 540 });
+    mock.timers.tick(2500);
+    click.down(1, { x: 1400, y: 540 });
+    assert.equal(click.dividers().length, 1, 'PC mode: successive clicks 2.5 s apart pair up');
+  } finally { mock.timers.reset(); }
+});
+test('issue #3: with a mouse (same pointerId) the first half-stroke stays on screen', () => {
+  const c = tableClient('pc');
+  const state = c.view.state!;
+  state.mapDivider = [{ x: 600, y: 540 }, { x: 1400, y: 540 }];
+  state.mapTargets = { A: [state.mapDivider[0], state.mapDivider[1]], B: [state.mapDivider[1], state.mapDivider[0]] };
+  c.down(1, { x: 600, y: 540 }); c.up(1, { x: 700, y: 640 });
+  c.down(1, { x: 1400, y: 540 }); c.up(1, { x: 1300, y: 440 });
+  assert.deepEqual([...c.view.strokes.values()].map(s => s.team).sort(), ['A', 'B']);
 });
 
 // ─── Physics ─────────────────────────────────────────────────────────────────

@@ -103,18 +103,19 @@ Interprétation retenue de « ils se remplissent l'un l'autre »: chaque joueur 
 
 | Étape | Règle |
 |---|---|
-| 1. Ligne de partage | Deux contacts espacés d'au moins 360 px définissent les extrémités communes A et B. |
-| 2. Tracé | Un joueur trace A→B dans le demi-plan gauche de la ligne ; l'autre B→A dans le demi-plan droit. Tracé valide s'il touche les deux points (rayon 60 px), reste dans sa moitié avec une tolérance de 55 px et fait ≥ 300 px. |
-| 3. Nettoyage | Rééchantillonnage à pas constant, filtre 1€ contre le jitter |
-| 4. Autofill (fermeture) | Soit S le tracé et d(s) son décalage latéral par rapport à la droite P1P2. On force S du même côté de la droite (`d' = |d|`), avec amplitude max ≥ 150 px. Le **retour** R est le miroir de S par rapport à la droite, à l'échelle κ ∈ [0,6 ; 1,0] (tiré au hasard) → boucle fermée en forme de **haricot** |
-| 5. Mélange | Chaque boucle est orientée dans le sens anti-horaire et rééchantillonnée en N = 256 points. Le décalage d'indice de B qui minimise la distance totale à A est cherché (256 essais). Circuit final `C(i) = 0,5·A(i) + 0,5·B(i)` |
-| 6. Lissage | Spline Catmull-Rom **centripète** sur C |
+| 1. Ligne de partage | Deux contacts simultanés (mode table ; un contact isolé est abandonné après 4 s, ou 0,6 s après avoir été levé) espacés d'au moins 360 px, tous deux dans la zone de jeu (x 170–1750, y 300–780). Sinon la ligne est refusée **avec un message** (trop proches / hors zone), côté table et côté serveur (`checkDivider`). |
+| 2. Tracé | Un joueur trace A→B dans le demi-plan gauche de la ligne ; l'autre B→A dans le demi-plan droit. Tracé valide s'il touche les deux points (rayon 60 px), fait ≥ 300 px et est dessiné en majorité de son côté : il **peut** boucler sur lui-même ou franchir la ligne (circuit en 8). |
+| 3. Fermeture | Les deux demi-tracés, accrochés exactement aux deux points communs, forment **directement la boucle fermée** : le circuit est le dessin. |
+| 4. Amplitude | Le dessin est pris **tel quel**. Seulement si la boucle n'est pas roulable, les demi-tracés sont étirés latéralement **au minimum nécessaire** (90 → 150 px d'amplitude max, puis ×1,2 … ×2,2). Un petit écart de l'autre côté de la ligne (≤ 70 px) est replié (d' = \|d\|) ; un franchissement plus profond est conservé tel quel. |
+| 5. Nettoyage | Rééchantillonnage (4 px), lissage gaussien **sans retard** (σ = 7 px) contre le tremblement de la main seulement, puis 256 points. Pas de filtre 1€ ni de relaxation : ils décalent et rétrécissent le tracé. Résultat mesuré : à plus de 140 px des deux ancres, le circuit passe à ≈ 1 px du dessin. |
+| 6. Arrondi local | Seuls les virages trop serrés pour rouler (rayon < 50 px : les deux points d'ancrage, les épingles) sont arrondis par un raccord de Bézier tangent aux deux bras, choisi parmi plusieurs fenêtres/poignées pour **déplacer le dessin le moins possible** ; le reste du tracé n'est pas déplacé. Si le raccord ne suffit pas, lissage gaussien croissant par petits pas (σ 9 → 40 px). |
+| 6 bis. Cas limites | **Auto-croisements** : un croisement net (≥ 40°, boucle ≥ 350 px de long) est valide : le circuit est alors une piste en 8 / à boucle, avec un carrefour ouvert (la piste est « une seule surface », les murs sont omis au croisement, départ et checkpoints sont écartés du carrefour). Une boucle trop petite pour être roulée est agrandie autour de son point de croisement jusqu'à l'être. Si la boucle n'est pas valide telle quelle, l'amplitude est augmentée (×1,2 … ×2,2), puis le dessin est **lissé de plus en plus fort, par petits pas** (σ 48 → 380 px, taille d'origine restituée) jusqu'à donner une boucle simple et roulable ; au pire l'ellipse la mieux ajustée. Le mélange miroir A/B (R-06), la boucle A seule puis le circuit prédéfini ne servent que si tout cela échoue (pratiquement jamais). Un circuit prédéfini est **annoncé** avant « Lancer la course » (`track.preset`). |
 | 7. Largeur | Largeur de base 140 px, variable en fonction de la courbure (±30 px). Minimum 90 px (> 3× la largeur du véhicule) |
 | 8. Géométrie | Bords par la normale (mur extérieur magenta, mur intérieur cyan), colliders |
-| 9. Marquage | 8 checkpoints répartis, ligne de départ tirée parmi les portions rectilignes sûres, voitures côte à côte (±20 px de décalage latéral), 4 emplacements de pickups |
+| 9. Marquage | 8 checkpoints répartis, ligne de départ au premier point posé (P1), voitures côte à côte (±20 px de décalage latéral), 4 emplacements de pickups |
 
 ### 5.3 Validations
-Rayon de courbure minimal · largeur > gabarit véhicule · pas d'auto-intersection · pas de passage impossible · zone rectiligne pour le départ.
+Rayon de courbure minimal · largeur > gabarit véhicule · pas de nœud ni de croisement rasant (une auto-intersection nette est permise) · pas de passage impossible hors carrefour · départ et checkpoints hors carrefour.
 **R-06** Si une validation échoue: relancer le mélange avec poids 0,4 puis 0,6; si encore en échec, utiliser la boucle A seule. L'opérateur Oz peut aussi forcer un circuit de secours.
 
 Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'est que **deux personnes dessinent en même temps sur le même espace**.

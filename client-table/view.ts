@@ -1,4 +1,5 @@
 import type { GameState, Team, Vec2 } from '../server/types.js';
+import { MIN_DIVIDER_PX, type DividerCheck } from '../server/layout.js';
 
 /** Short-lived visual effect spawned by a server `Feedback` message. */
 export interface Effect {
@@ -36,7 +37,23 @@ export interface View {
   hpShown: Record<Team, number>;
   /** Last mapError per team (performance.now()). */
   mapErrorAt: Record<Team, number>;
+  /** Points currently chosen during the two-point placement stage of MAP phase. */
+  pendingDivider: Vec2[];
+  /** Transient guidance notice shown during map creation. */
+  mapNotice: { text: string; until: number; color?: string } | null;
   debug: { on: boolean; fps: number; frameMs: number; rtt: number; touchMs: number; contacts: number };
+}
+
+const DIVIDER_REFUSAL: Record<Exclude<DividerCheck, 'ok'>, string> = {
+  tooShort: `Points trop proches : écartez-les d’au moins ${MIN_DIVIDER_PX} px.`,
+  outOfZone: 'Point hors de la zone du circuit : placez-le dans le cadre en pointillés.',
+};
+
+export const REFUSAL_COLOR = '#ff4040';
+
+/** Tell the players why the dividing line was refused (a refusal is never silent). */
+export function showDividerRefusal(view: View, reason: Exclude<DividerCheck, 'ok'>): void {
+  view.mapNotice = { text: DIVIDER_REFUSAL[reason], until: performance.now() + 4000, color: REFUSAL_COLOR };
 }
 
 export const TEAM_COLOR: Record<Team, string> = { A: '#00e5ff', B: '#ff4081' };
@@ -54,6 +71,8 @@ export function createView(now: () => number): View {
     sticks: { A: { x: 0, y: 0, active: false }, B: { x: 0, y: 0, active: false } },
     hpShown: { A: 100, B: 100 },
     mapErrorAt: { A: -1e9, B: -1e9 },
+    pendingDivider: [],
+    mapNotice: null,
     debug: { on: false, fps: 0, frameMs: 0, rtt: 0, touchMs: 0, contacts: 0 },
   };
 }

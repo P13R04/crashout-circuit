@@ -96,3 +96,26 @@ export function rotationTowardsTeam(team: Team, p: Vec2): number {
   }
   return best.rot;
 }
+
+/**
+ * Free area of the table for the circuit centerline: between the two rows of corner
+ * panels, half a lane plus its wall away from the edges (R-22). The edges of the
+ * generated circuit therefore stay within y ∈ [215, 865].
+ */
+export const PLAY_AREA = { x0: 170, y0: 300, x1: 1750, y1: 780 };
+
+/** The two shared contacts of the divider are at least this far apart (context.md §5.2 step 1). */
+export const MIN_DIVIDER_PX = 360;
+
+export function inPlayArea(p: Vec2): boolean {
+  return p.x >= PLAY_AREA.x0 && p.x <= PLAY_AREA.x1 && p.y >= PLAY_AREA.y0 && p.y <= PLAY_AREA.y1;
+}
+
+export type DividerCheck = 'ok' | 'tooShort' | 'outOfZone';
+
+/** Single rule for the divider, used by the table (immediate message) and the server. */
+export function checkDivider(a: Vec2, b: Vec2): DividerCheck {
+  if (!inPlayArea(a) || !inPlayArea(b)) return 'outOfZone';
+  if (Math.hypot(b.x - a.x, b.y - a.y) < MIN_DIVIDER_PX) return 'tooShort';
+  return 'ok';
+}

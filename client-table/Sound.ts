@@ -53,6 +53,6 @@ export function playFeedback(kind: string): void {
     case 'hit': tone(180, 0.15, 'square', 0.12, 80); break;
     case 'pickup': tone(660, 0.1, 'sine', 0.12); tone(990, 0.1, 'sine', 0.12, undefined, 0.08); break;
     case 'carDisabled': tone(400, 0.6, 'sawtooth', 0.15, 60); break;
-    case 'mapError': tone(200, 0.2, 'square', 0.1); break;
+    case 'mapError': case 'dividerTooShort': case 'dividerOutOfZone': tone(200, 0.2, 'square', 0.1); break;
   }
 }

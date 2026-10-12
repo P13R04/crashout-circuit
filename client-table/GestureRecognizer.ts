@@ -24,13 +24,17 @@ import type { GameState, Team, Vec2 } from '../server/types.js';
 import {
   LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_AREA_LOCAL, PEDAL_LOCAL, ITEM_BTN_LOCAL,
   GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL, worldToLocal, type PanelLayout,
-  insidePanel, nearestStationTeam, type Role,
+  insidePanel, nearestStationTeam, checkDivider, inPlayArea, type Role,
 } from '../server/layout.js';
 import { distToSegment, nearestOnTrack } from '../server/geometry.js';
 import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
 import type { View } from './view.js';
 
 export const MAX_CONTACTS = 10;
+/** The second divider contact must come within this delay of the first (or the first is dropped). */
+export const DIVIDER_PAIR_MS = 4000;
+/** On the table, a finger lifted from the first point still counts for this long (contact bounce). */
+const DIVIDER_RELEASE_GRACE_MS = 600;
 const SETTLE_MS = 180;          // wait for all fingers to land before judging a gesture
 const SLING_CLUSTER_PX = 150;
 const BOOST_MIN_PX = 100;
@@ -56,6 +60,7 @@ interface Contact {
   panel?: PanelLayout;
   steer?: number;
   strokeTeam?: Team;
+  strokeKey?: number; // unique per drawn stroke (a mouse reuses the same pointerId)
   outward?: Vec2; // border candidate: unit vector away from the centerline
   edgeIndex?: number;
 }
@@ -64,6 +69,10 @@ type Send = (msg: { type: string } & Record<string, unknown>) => void;
 
 export class GestureRecognizer {
   private contacts = new Map<number, Contact>();
+  private strokeSeq = 0;
+  /** Contact that placed the first divider point, and the timer that drops it. */
+  private pendingContact: number | null = null;
+  private pendingTimer: ReturnType<typeof setTimeout> | null = null;
   private padTouches = new Map<string, Set<number>>();
   /** team → pointerId of the finger holding that team's steering pad. */
   private sticks = new Map<Team, number>();
@@ -182,26 +191,22 @@ export class GestureRecognizer {
     // 2 — MAP: two shared contacts establish the divider, then each half starts
     // from its own endpoint. Desktop clicks use the same sequence (desync mode).
     if (state.phase === 'MAP') {
-      if (insidePanel(p)) { c.zone = 'rejected'; return; }
       const generate = MAP_GENERATE_BUTTON;
       if (state.mapStrokes.A && state.mapStrokes.B && p.x >= generate.x && p.x <= generate.x + generate.w && p.y >= generate.y && p.y <= generate.y + generate.h) {
         c.zone = 'result'; this.send({ type: 'GenerateTrack' }); return;
       }
       if (!state.mapTargets) {
         c.zone = 'target';
-        this.mapDividerPoints.push(p);
-        if (this.mapDividerPoints.length === 2) {
-          this.send({ type: 'MapDivider', a: this.mapDividerPoints[0], b: this.mapDividerPoints[1] });
-          this.mapDividerPoints = [];
-        }
+        this.placeDividerPoint(c, p, state.mapMode);
         return;
       }
       const team = this.mapStrokeStartTeam(state, p);
-      if (!team || state.mapStrokes[team]) { c.zone = 'rejected'; return; }
+      if (!team) { c.zone = 'rejected'; return; }
       c.zone = 'stroke';
       c.strokeTeam = team;
-      for (const [id, s] of this.view.strokes) if (s.team === team) this.view.strokes.delete(id);
-      this.view.strokes.set(c.id, { team, pts: [p], done: false });
+      for (const [key, s] of this.view.strokes) if (s.team === team) this.view.strokes.delete(key);
+      c.strokeKey = ++this.strokeSeq;
+      this.view.strokes.set(c.strokeKey, { team, pts: [p], done: false });
       return;
     }
     if (state.phase === 'READY') {
@@ -323,7 +328,7 @@ export class GestureRecognizer {
     if (c.zone === 'steer') {
       this.updateSteer(c);
     } else if (c.zone === 'stroke') {
-      const s = this.view.strokes.get(c.id);
+      const s = this.view.strokes.get(c.strokeKey ?? -1);
       const last = s?.pts[s.pts.length - 1];
       if (s && last && Math.hypot(p.x - last.x, p.y - last.y) >= 2) s.pts.push(p);
     } else if (c.zone === 'free' && c.outward && !c.consumed) {
@@ -341,13 +346,68 @@ export class GestureRecognizer {
     if (c.zone === 'steer' && c.panel) this.releaseStick(c.panel.team);
     if (c.zone === 'pedal' && c.panel) this.releasePedal(c.panel.team);
     if (c.zone === 'stroke') {
-      const s = this.view.strokes.get(c.id);
+      const s = this.view.strokes.get(c.strokeKey ?? -1);
       if (s) {
         s.done = true;
         if (s.pts.length >= 2) this.send({ type: 'StrokeDraw', creator: s.team, pts: s.pts });
       }
     }
     if (c.zone === 'free') this.scheduleEvaluation();
+  }
+
+  // ─── Divider (the two shared contacts) ───────────────────────────────────
+
+  /**
+   * First contact: wait for the other player's. Second contact: the line is sent, or a
+   * message says why it is refused. An isolated contact never waits for long: it is
+   * dropped after DIVIDER_PAIR_MS (or right after being lifted on the table), so a
+   * palm or a stray touch cannot pair with a contact made much later.
+   */
+  private placeDividerPoint(c: Contact, p: Vec2, mode: 'table' | 'pc' | null): void {
+    const view = this.view;
+    if (!inPlayArea(p)) { showDividerRefusal(view, 'outOfZone'); return; }
+    const first = view.pendingDivider[0];
+    if (!first) {
+      view.pendingDivider = [{ ...p }];
+      this.pendingContact = c.id;
+      this.armPendingTimer(DIVIDER_PAIR_MS);
+      view.mapNotice = {
+        text: mode === 'pc'
+          ? 'Point P1 posé ! Cliquez pour placer le point P2.'
+          : 'Point P1 posé ! L’autre joueur pose le point P2 maintenant.',
+        until: performance.now() + DIVIDER_PAIR_MS,
+        color: '#00e5ff',
+      };
+      return;
+    }
+    const verdict = checkDivider(first, p);
+    if (verdict !== 'ok') { showDividerRefusal(view, verdict); return; }
+    this.dropPendingDivider();
+    view.mapNotice = null;
+    this.send({ type: 'MapDivider', a: first, b: { ...p } });
+  }
+
+  private armPendingTimer(ms: number): void {
+    if (this.pendingTimer) clearTimeout(this.pendingTimer);
+    this.pendingTimer = setTimeout(() => {
+      this.dropPendingDivider();
+      const shown = this.view.mapNotice;
+      if (shown && shown.color === REFUSAL_COLOR && shown.until > performance.now()) return; // keep the reason
+      this.view.mapNotice = {
+        text: this.state?.mapMode === 'pc'
+          ? 'Point P1 expiré : recommencez.'
+          : 'Contact isolé abandonné : les deux points doivent être posés ensemble.',
+        until: performance.now() + 3500,
+        color: '#ffb300',
+      };
+    }, ms);
+  }
+
+  private dropPendingDivider(): void {
+    if (this.pendingTimer) clearTimeout(this.pendingTimer);
+    this.pendingTimer = null;
+    this.pendingContact = null;
+    this.view.pendingDivider = [];
   }
 
   // ─── Remote-control steering ─────────────────────────────────────────────
@@ -544,9 +604,31 @@ export class GestureRecognizer {
   }
 
   private mapStrokeStartTeam(state: GameState, p: Vec2): Team | null {
-    for (const team of ['A', 'B'] as Team[]) {
-      const start = state.mapTargets![team][0];
-      if (Math.hypot(p.x - start.x, p.y - start.y) <= 100) return team;
+    if (!state.mapTargets) return null;
+    const p1 = state.mapTargets.A[0]; // Anchor 1
+    const p2 = state.mapTargets.A[1]; // Anchor 2
+    const d1 = Math.hypot(p.x - p1.x, p.y - p1.y);
+    const d2 = Math.hypot(p.x - p2.x, p.y - p2.y);
+    const TOLERANCE = 150;
+
+    // Which side of the divider line is the touch?
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const cross = dx * (p.y - p1.y) - dy * (p.x - p1.x);
+    // cross >= 0 -> Team A side; cross < 0 -> Team B side
+    const touchSideTeam: Team = cross >= 0 ? 'A' : 'B';
+
+    if (d1 <= TOLERANCE) {
+      if (!state.mapStrokes.A) return 'A';
+      if (!state.mapStrokes.B) return 'B';
+      return touchSideTeam;
+    }
+    if (d2 <= TOLERANCE) {
+      if (!state.mapStrokes.B) return 'B';
+      if (!state.mapStrokes.A) return 'A';
+      return touchSideTeam;
+    }
+    if (d1 <= TOLERANCE * 1.5 || d2 <= TOLERANCE * 1.5) {
+      return touchSideTeam;
     }
     return null;
   }
