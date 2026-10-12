@@ -45,7 +45,7 @@ En dev, ouvrir la table sur `http://localhost:5173/client-table/`, Oz sur `/clie
 1. **LOBBY** : choisir **Jouer sur table** (deux contacts simultanés) ou **Mode PC · séquentiel** (clics et demi-tracés successifs).
 2. **MAP** : deux contacts communs définissent une ligne qui partage la table. Chaque copilote part de son point, dessine sa moitié sans traverser la ligne, et rejoint le point opposé. Une fois les deux traits acceptés, les joueurs touchent **GÉNÉRER LE CIRCUIT**. Il n'y a pas de passage automatique.
 3. **PRÊT** : le circuit généré est affiché et les joueurs touchent **LANCER LA COURSE** lorsqu'ils sont en place.
-4. **RACE** : compte à rebours, 3 tours ou 5 minutes. La voiture avance continuellement à une vitesse volontairement modérée ; le pilote pose et fait glisser son doigt sur la bande de direction de son panneau, puis touche **UTILISER** pour armer l'objet ramassé. Quitter le ruban de piste est une chute : la voiture est hors d'usage jusqu'à la réparation synchronisée.
+4. **RACE** : compte à rebours, 3 tours ou 5 minutes. Le bouton central **PILOTAGE** alterne entre **AUTO** (avance continue) et **PÉDALE** (chaque pilote maintient sa pédale pour accélérer, puis ralentit jusqu'à l'arrêt). La bande de direction et **UTILISER** restent disponibles dans les deux modes. Quitter le ruban de piste est une chute : la voiture est hors d'usage jusqu'à la réparation synchronisée.
 5. **PAUSE** : le bouton central, Échap ou Espace fige la course et ses compteurs.
 6. **RESULT** : classement, bouton « Nouvelle partie ».
 
@@ -74,8 +74,8 @@ Deux doigts sont posés près du **même bord**, à moins de 130 px l’un de l�
 
 | Équipe | Direction | Activer l'objet | Réparation synchronisée |
 |---|---|---|---|
-| Cyan (A) | `Q` / `D` | `A` | maintenir `A` + `P` |
-| Rose (B) | `←` / `→` | `M` | maintenir `M` + `C` |
+| Cyan (A) | `Q` / `D` | `Z` en mode PÉDALE | `A` | maintenir `A` + `P` |
+| Rose (B) | `←` / `→` | `↑` en mode PÉDALE | `M` | maintenir `M` + `C` |
 
 `A` ou `M` seuls activent l'objet. Lorsque les deux touches de réparation sont maintenues, le prototype simule les deux appuis synchrones des postes pilote et copilote.
 

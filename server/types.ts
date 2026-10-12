@@ -9,6 +9,7 @@ export interface Vec2 {
 export type Team = 'A' | 'B';
 export type Phase = 'LOBBY' | 'MAP' | 'READY' | 'RACE' | 'PAUSED' | 'RESULT';
 export type ItemKind = 'slingshot' | 'boost';
+export type DriveMode = 'auto' | 'pedal';
 
 export interface Car {
   team: Team;
@@ -142,6 +143,8 @@ export interface GameParams {
 
 export interface GameState {
   phase: Phase;
+  /** Shared driving scheme selected from the central race control. */
+  driveMode: DriveMode;
   tick: number;
   cars: Record<Team, Car>;
   walls: Wall[];
@@ -246,7 +249,7 @@ export interface BorderPullMsg extends BaseMsg {
 export interface PilotInputMsg extends BaseMsg {
   type: 'PilotInput';
   team: Team;
-  /** Reserved for a future control scheme; the current table mode advances continuously. */
+  /** 0..1 in pedal mode; ignored in auto mode. */
   throttle: number;
   steer: number;    // [-1, 1]
 }
@@ -263,6 +266,10 @@ export interface StartGameMsg extends BaseMsg {
 
 export interface PauseMsg extends BaseMsg {
   type: 'Pause';
+}
+
+export interface ToggleDriveModeMsg extends BaseMsg {
+  type: 'ToggleDriveMode';
 }
 
 // Console Oz → Server
@@ -336,6 +343,7 @@ export type ClientMessage =
   | UseItemMsg
   | StartGameMsg
   | PauseMsg
+  | ToggleDriveModeMsg
   | TangibleMovedMsg
   | TangibleRemovedMsg
   | OzTriggerMsg
