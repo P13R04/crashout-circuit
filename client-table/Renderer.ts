@@ -584,51 +584,173 @@ export class Renderer {
     const targets = state.mapTargets;
     const now = view.now();
     const t = performance.now();
+    void now;
 
+    // ── Phase 0: no divider yet ───────────────────────────────────────────
     if (!targets) {
       ctx.save();
       ctx.textAlign = 'center';
-      ctx.fillStyle = '#ffffff'; ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 20;
-      ctx.font = 'bold 38px monospace';
-      ctx.fillText('POSEZ DEUX POINTS POUR PARTAGER LE CIRCUIT', LOGICAL_W / 2, LOGICAL_H / 2 - 10);
+
+      // Title
+      ctx.fillStyle = '#ffffff'; ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 22;
+      ctx.font = 'bold 36px monospace';
+      ctx.fillText('CR\u00c9ATION DU CIRCUIT \u00b7 POINTS D\u2019ANCRAGE', LOGICAL_W / 2, 140);
       ctx.shadowBlur = 0;
-      ctx.font = '20px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.fillText(state.mapMode === 'pc' ? 'Mode PC : cliquez ces deux points l’un après l’autre.' : 'Puis chaque copilote trace sa moitié vers le point opposé.', LOGICAL_W / 2, LOGICAL_H / 2 + 34);
+
+      // Subtitle / instructions
+      ctx.font = '20px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      if (view.pendingDivider.length === 0) {
+        ctx.fillText('Chaque \u00e9quipe pose un doigt sur la table (ou cliquez 2 points).', LOGICAL_W / 2, 180);
+        ctx.fillStyle = 'rgba(0,229,255,0.7)';
+        ctx.fillText('\u25b6 Touchez pour placer le premier point (P1 \u00b7 D\u00c9PART)', LOGICAL_W / 2, LOGICAL_H / 2);
+      } else {
+        ctx.fillText('Premier point enregistr\u00e9 ! Placez le second point pour cr\u00e9er la ligne de s\u00e9paration.', LOGICAL_W / 2, 180);
+        ctx.fillStyle = 'rgba(255,64,129,0.85)';
+        ctx.fillText('\u25b6 Touchez pour placer le second point (P2)', LOGICAL_W / 2, LOGICAL_H / 2 + 100);
+      }
+
+      // Render pending point 1 if placed
+      if (view.pendingDivider.length >= 1) {
+        const p1 = view.pendingDivider[0];
+        const pulse = 4 * Math.sin(t / 200);
+        ctx.save();
+        ctx.translate(p1.x, p1.y);
+        ctx.strokeStyle = '#00e5ff'; ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 24;
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(0, 0, 95, 0, Math.PI * 2); ctx.stroke();
+        ctx.lineWidth = 1; ctx.setLineDash([6, 6]);
+        ctx.beginPath(); ctx.arc(0, 0, 95 + pulse * 2, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#00e5ff';
+        ctx.beginPath(); ctx.arc(0, 0, 12 + pulse, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px monospace';
+        ctx.fillText('P1 \u00b7 D\u00c9PART', 0, -110);
+        ctx.restore();
+      }
+
+      // Display transient notice banner if active
+      if (view.mapNotice && view.mapNotice.until > t) {
+        const n = view.mapNotice;
+        ctx.fillStyle = n.color ?? '#ff4081';
+        ctx.shadowColor = n.color ?? '#ff4081'; ctx.shadowBlur = 12;
+        ctx.font = 'bold 22px monospace';
+        ctx.fillText(n.text, LOGICAL_W / 2, LOGICAL_H - 120);
+        ctx.shadowBlur = 0;
+      }
+
       ctx.restore();
       return;
     }
 
-    // The initial line is the lasting boundary between the two simultaneous traces.
-    const divider = state.mapDivider;
-    if (divider) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 3; ctx.setLineDash([12, 10]);
-      ctx.beginPath(); ctx.moveTo(divider[0].x, divider[0].y); ctx.lineTo(divider[1].x, divider[1].y); ctx.stroke();
-      ctx.setLineDash([]); ctx.restore();
-    }
+    // ── Phase 1: divider set, teams draw ────────────────────────────────
+    const divider = state.mapDivider!;
+    const [da, db] = divider;
+    const dLen = Math.hypot(db.x - da.x, db.y - da.y) || 1;
+    const dux = (db.x - da.x) / dLen, duy = (db.y - da.y) / dLen;
+    // Left normal = team A side
+    const nx = -duy, ny = dux;
 
-    // Shared endpoints with a generous 95 px completion tolerance.
-    for (const team of ['A', 'B'] as Team[]) {
+    // Half-plane tinted fills
+    const farEnough = Math.max(LOGICAL_W, LOGICAL_H) * 2;
+    for (const [team, side] of [['A', 1], ['B', -1]] as [Team, number][]) {
       const color = TEAM_COLOR[team];
-      targets[team].forEach((p, i) => {
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.strokeStyle = color; ctx.fillStyle = color;
-        ctx.shadowColor = color; ctx.shadowBlur = 18;
-        ctx.lineWidth = 3;
-        ctx.setLineDash([6, 8]);
-        ctx.beginPath(); ctx.arc(0, 0, 95, 0, Math.PI * 2); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.beginPath(); ctx.arc(0, 0, 14 + 3 * Math.sin(t / 250), 0, Math.PI * 2); ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#04081f';
-        ctx.font = 'bold 16px monospace'; ctx.textAlign = 'center';
-        ctx.fillText(i === 0 ? 'D' : 'A', 0, 6);
-        ctx.restore();
-      });
+      ctx.save();
+      ctx.beginPath();
+      // Polygon covering the full half, constructed by offsetting both ends of
+      // the divider outward and then sweeping sideways to fill the half-plane.
+      const ox = nx * side * farEnough;
+      const oy = ny * side * farEnough;
+      const ex = dux * farEnough, ey = duy * farEnough;
+      ctx.moveTo(da.x - ex, da.y - ey);
+      ctx.lineTo(da.x - ex + ox, da.y - ey + oy);
+      ctx.lineTo(db.x + ex + ox, db.y + ey + oy);
+      ctx.lineTo(db.x + ex, db.y + ey);
+      ctx.closePath();
+      ctx.fillStyle = state.mapStrokes[team] ? `${color}18` : `${color}0c`;
+      ctx.fill();
+      if (state.mapStrokes[team]) {
+        ctx.strokeStyle = `${color}44`; ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      ctx.restore();
     }
 
-    // Strokes as drawn
+    // Glowing divider line (extended to canvas edges)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 3; ctx.setLineDash([14, 10]);
+    ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(da.x - dux * farEnough, da.y - duy * farEnough);
+    ctx.lineTo(db.x + dux * farEnough, db.y + duy * farEnough);
+    ctx.stroke();
+    ctx.setLineDash([]); ctx.shadowBlur = 0; ctx.restore();
+
+    // Zone labels at the midpoint of each half
+    const mid = { x: (da.x + db.x) / 2, y: (da.y + db.y) / 2 };
+    const labelOffset = 180;
+    for (const [team, side] of [['A', 1], ['B', -1]] as [Team, number][]) {
+      const color = TEAM_COLOR[team];
+      const lx = mid.x + nx * side * labelOffset;
+      const ly = mid.y + ny * side * labelOffset;
+      ctx.save();
+      ctx.translate(lx, ly);
+      ctx.rotate(team === 'B' ? Math.PI : 0);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 14;
+      ctx.font = 'bold 26px monospace';
+      ctx.fillText(`ZONE ${TEAM_NAME[team]}`, 0, 0);
+      ctx.shadowBlur = 0;
+      if (!state.mapStrokes[team]) {
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.font = '17px monospace';
+        ctx.fillText(team === 'A' ? 'tracez de P1 \u2192 P2 dans cette zone' : 'tracez de P2 \u2192 P1 dans cette zone', 0, 28);
+      } else {
+        ctx.fillStyle = '#3ddc84'; ctx.font = 'bold 18px monospace';
+        ctx.fillText('\u2713 trac\u00e9 accept\u00e9', 0, 28);
+      }
+      ctx.restore();
+    }
+
+    // ── Anchor points (shared P1 / P2) ───────────────────────────────────
+    // P1 = divider[0] = departure for A, arrival for B
+    // P2 = divider[1] = departure for B, arrival for A
+    const anchors: [Vec2, string, string, string, string][] = [
+      [da, 'P1', TEAM_COLOR.A, TEAM_COLOR.B, 'D\u00c9PART (P1)'],
+      [db, 'P2', TEAM_COLOR.B, TEAM_COLOR.A, 'ANCRE (P2)'],
+    ];
+    for (const [anchor, label, departColor, arriveColor, tag] of anchors) {
+      const pulse = 3 * Math.sin(t / 280);
+      ctx.save();
+      ctx.translate(anchor.x, anchor.y);
+      // Outer tolerance ring (white)
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.shadowBlur = 14; ctx.shadowColor = '#fff';
+      ctx.beginPath(); ctx.arc(0, 0, 95, 0, Math.PI * 2); ctx.stroke();
+      // Departure half-ring (team that starts here)
+      ctx.strokeStyle = departColor; ctx.shadowColor = departColor; ctx.lineWidth = 4; ctx.shadowBlur = 16;
+      ctx.beginPath(); ctx.arc(0, 0, 95, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+      // Arrival half-ring
+      ctx.strokeStyle = arriveColor; ctx.shadowColor = arriveColor;
+      ctx.beginPath(); ctx.arc(0, 0, 95, Math.PI / 2, -Math.PI / 2); ctx.stroke();
+      ctx.shadowBlur = 0;
+      // Centre disc
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(0, 0, 10 + pulse, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#04081f'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(label, 0, 4);
+      // Tag above
+      ctx.fillStyle = departColor; ctx.shadowColor = departColor; ctx.shadowBlur = 10;
+      ctx.font = 'bold 15px monospace';
+      ctx.fillText(tag, 0, -114);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // Guide arrows (faint, animated): D → A for each team's stroke
+    if (!state.mapStrokes.A) this.drawMapArrow(ctx, da, db, TEAM_COLOR.A, t);
+    if (!state.mapStrokes.B) this.drawMapArrow(ctx, db, da, TEAM_COLOR.B, t);
+
+    // ── Live strokes as drawn ─────────────────────────────────────────────
     for (const s of view.strokes.values()) {
       if (s.pts.length < 2) continue;
       const rejected = s.rejectedAt !== undefined && t - s.rejectedAt < 1500;
@@ -640,10 +762,16 @@ export class Renderer {
       ctx.moveTo(s.pts[0].x, s.pts[0].y);
       for (const p of s.pts) ctx.lineTo(p.x, p.y);
       ctx.stroke();
+      // Live tip glow
+      if (!s.done) {
+        const tip = s.pts[s.pts.length - 1];
+        ctx.fillStyle = TEAM_COLOR[s.team]; ctx.shadowBlur = 20;
+        ctx.beginPath(); ctx.arc(tip.x, tip.y, 8 + 3 * Math.sin(t / 180), 0, Math.PI * 2); ctx.fill();
+      }
       ctx.restore();
     }
 
-    // Instructions per copilot panel + shared countdown
+    // ── Corner panel instructions (copilotes) ─────────────────────────────
     ctx.save();
     for (const panel of PANELS) {
       if (panel.role !== 'copilot') continue;
@@ -657,24 +785,71 @@ export class Renderer {
       ctx.fillText(`COPILOTE ${TEAM_NAME[team]}`, 0, -40);
       ctx.font = '20px monospace';
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillText(state.mapMode === 'pc' ? 'trace D → A, puis laisse l’autre moitié' : 'trace D → A dans ta moitié', 0, -8);
-      if (state.mapStrokes[team]) { ctx.fillStyle = '#3ddc84'; ctx.fillText('✓ tracé accepté', 0, 30); }
-      else if (t - view.mapErrorAt[team] < 2500) { ctx.fillStyle = '#ff4040'; ctx.fillText('tracé invalide — recommence', 0, 30); }
+      ctx.fillText(
+        state.mapMode === 'pc'
+          ? 'tracez de votre point vers l\u2019autre'
+          : 'tracez de votre point vers l\u2019autre dans votre moiti\u00e9',
+        0, -8,
+      );
+      if (state.mapStrokes[team]) { ctx.fillStyle = '#3ddc84'; ctx.fillText('\u2713 trac\u00e9 accept\u00e9', 0, 30); }
+      else if (t - view.mapErrorAt[team] < 2500) { ctx.fillStyle = '#ff4040'; ctx.fillText('trac\u00e9 invalide \u2014 recommencez', 0, 30); }
       ctx.restore();
     }
+
+    // ── Centre: generate button or waiting hint ───────────────────────────
     ctx.textAlign = 'center';
     const ready = state.mapStrokes.A && state.mapStrokes.B;
     if (ready) {
       const b = MAP_GENERATE_BUTTON;
-      ctx.fillStyle = 'rgba(0,229,255,0.16)'; ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 16); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 28px monospace';
-      ctx.fillText('GÉNÉRER LE CIRCUIT', b.x + b.w / 2, b.y + 54);
+      const pulseBtn = 0.5 + 0.5 * Math.sin(t / 300);
+      ctx.fillStyle = `rgba(0,229,255,${0.2 + 0.15 * pulseBtn})`;
+      ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 4;
+      ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 20;
+      ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 18); ctx.fill(); ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 26px monospace';
+      ctx.fillText('FERMER LE CIRCUIT \u25b6', b.x + b.w / 2, b.y + 40);
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '15px monospace';
+      ctx.fillText('D\u00e9part sur le point P1', b.x + b.w / 2, b.y + 68);
     } else {
-      ctx.font = '22px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.fillText('DEUX MOITIÉS · UN SEUL CIRCUIT', LOGICAL_W / 2, LOGICAL_H / 2 - 50);
-      ctx.fillText('Les deux tracés doivent être validés avant de continuer.', LOGICAL_W / 2, LOGICAL_H / 2 - 18);
+      ctx.font = '22px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fillText('CIRCUIT FERM\u00c9 \u00b7 2 DEMI-TRAC\u00c9S', LOGICAL_W / 2, LOGICAL_H / 2 - 50);
+      ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = '17px monospace';
+      const aDone = state.mapStrokes.A;
+      const bDone = state.mapStrokes.B;
+      const statusText = !aDone && !bDone
+        ? 'Chaque \u00e9quipe trace sa moiti\u00e9 entre P1 et P2'
+        : aDone ? 'Trac\u00e9 Cyan pr\u00eat \u2014 En attente du trac\u00e9 Rose...' : 'Trac\u00e9 Rose pr\u00eat \u2014 En attente du trac\u00e9 Cyan...';
+      ctx.fillText(statusText, LOGICAL_W / 2, LOGICAL_H / 2 - 18);
     }
+    ctx.restore();
+  }
+
+  /**
+   * Draw a subtle dashed arrow from `from` toward `to`, showing the drawing
+   * direction expected for a team. Stops before reaching the target anchor ring.
+   */
+  private drawMapArrow(ctx: Ctx, from: Vec2, to: Vec2, color: string, t: number): void {
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const margin = 105; // stay outside the anchor rings
+    const sx = from.x + ux * margin, sy = from.y + uy * margin;
+    const ex = to.x - ux * margin, ey = to.y - uy * margin;
+    if (Math.hypot(ex - sx, ey - sy) < 60) return;
+    ctx.save();
+    const alpha = 0.18 + 0.08 * Math.sin(t / 500);
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([10, 14]);
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = alpha * 1.8;
+    ctx.fillStyle = color;
+    ctx.save();
+    ctx.translate(ex, ey);
+    ctx.rotate(Math.atan2(dy, dx));
+    ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-7, -6); ctx.lineTo(-7, 6); ctx.closePath(); ctx.fill();
+    ctx.restore();
     ctx.restore();
   }
 }

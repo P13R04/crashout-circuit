@@ -180,22 +180,40 @@ export class GestureRecognizer {
     // 2 — MAP: two shared contacts establish the divider, then each half starts
     // from its own endpoint. Desktop clicks use the same sequence (desync mode).
     if (state.phase === 'MAP') {
-      if (insidePanel(p)) { c.zone = 'rejected'; return; }
       const generate = MAP_GENERATE_BUTTON;
       if (state.mapStrokes.A && state.mapStrokes.B && p.x >= generate.x && p.x <= generate.x + generate.w && p.y >= generate.y && p.y <= generate.y + generate.h) {
         c.zone = 'result'; this.send({ type: 'GenerateTrack' }); return;
       }
       if (!state.mapTargets) {
         c.zone = 'target';
-        this.mapDividerPoints.push(p);
-        if (this.mapDividerPoints.length === 2) {
-          this.send({ type: 'MapDivider', a: this.mapDividerPoints[0], b: this.mapDividerPoints[1] });
-          this.mapDividerPoints = [];
+        if (this.view.pendingDivider.length === 1) {
+          const p1 = this.view.pendingDivider[0];
+          const d = Math.hypot(p.x - p1.x, p.y - p1.y);
+          if (d < 120) {
+            this.view.mapNotice = {
+              text: 'Points trop proches ! Écartez les 2 points (minimum 120 px).',
+              until: performance.now() + 3000,
+              color: '#ff4040',
+            };
+            return;
+          }
+          const p2 = { ...p };
+          this.view.pendingDivider.push(p2);
+          this.view.mapNotice = null;
+          this.send({ type: 'MapDivider', a: p1, b: p2 });
+          this.view.pendingDivider = [];
+        } else {
+          this.view.pendingDivider = [{ ...p }];
+          this.view.mapNotice = {
+            text: 'Point P1 posé ! Touchez pour placer le point P2.',
+            until: performance.now() + 6000,
+            color: '#00e5ff',
+          };
         }
         return;
       }
       const team = this.mapStrokeStartTeam(state, p);
-      if (!team || state.mapStrokes[team]) { c.zone = 'rejected'; return; }
+      if (!team) { c.zone = 'rejected'; return; }
       c.zone = 'stroke';
       c.strokeTeam = team;
       for (const [id, s] of this.view.strokes) if (s.team === team) this.view.strokes.delete(id);
@@ -510,9 +528,31 @@ export class GestureRecognizer {
   }
 
   private mapStrokeStartTeam(state: GameState, p: Vec2): Team | null {
-    for (const team of ['A', 'B'] as Team[]) {
-      const start = state.mapTargets![team][0];
-      if (Math.hypot(p.x - start.x, p.y - start.y) <= 100) return team;
+    if (!state.mapTargets) return null;
+    const p1 = state.mapTargets.A[0]; // Anchor 1
+    const p2 = state.mapTargets.A[1]; // Anchor 2
+    const d1 = Math.hypot(p.x - p1.x, p.y - p1.y);
+    const d2 = Math.hypot(p.x - p2.x, p.y - p2.y);
+    const TOLERANCE = 150;
+
+    // Which side of the divider line is the touch?
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const cross = dx * (p.y - p1.y) - dy * (p.x - p1.x);
+    // cross >= 0 -> Team A side; cross < 0 -> Team B side
+    const touchSideTeam: Team = cross >= 0 ? 'A' : 'B';
+
+    if (d1 <= TOLERANCE) {
+      if (!state.mapStrokes.A) return 'A';
+      if (!state.mapStrokes.B) return 'B';
+      return touchSideTeam;
+    }
+    if (d2 <= TOLERANCE) {
+      if (!state.mapStrokes.B) return 'B';
+      if (!state.mapStrokes.A) return 'A';
+      return touchSideTeam;
+    }
+    if (d1 <= TOLERANCE * 1.5 || d2 <= TOLERANCE * 1.5) {
+      return touchSideTeam;
     }
     return null;
   }

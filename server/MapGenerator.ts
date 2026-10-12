@@ -23,8 +23,8 @@ import { segmentsIntersect } from './geometry.js';
 
 const LOOP_N = 256;
 const RESAMPLE_STEP = 8;           // px — initial resample step
-const TOUCH_RADIUS = 95;           // px — generous target ring for a real finger/mouse release
-const MIN_STROKE_LENGTH = 300;     // px
+const TOUCH_RADIUS = 140;          // px — generous target ring for a real finger/mouse release
+const MIN_STROKE_LENGTH = 150;     // px — relaxed for accessible sketching
 const MIN_CURVATURE_RADIUS = 50;   // px — below this track is too tight (1.8·R ≥ min width)
 const MIN_TRACK_WIDTH = 24;        // px — vehicle clearance
 const CHECKPOINT_COUNT = 8;
@@ -105,11 +105,13 @@ function validate(stroke: Vec2[], P1: Vec2, P2: Vec2): boolean {
   const len = strokeLength(stroke);
   if (len < MIN_STROKE_LENGTH) return false;
 
-  // The beginning and end must land in their own generous target ring. Looking
-  // at a small endpoint window allows a user to stop just inside the circle.
-  const head = stroke.slice(0, Math.min(8, stroke.length));
-  const tail = stroke.slice(Math.max(0, stroke.length - 8));
-  return head.some(pt => dist(pt, P1) <= TOUCH_RADIUS) && tail.some(pt => dist(pt, P2) <= TOUCH_RADIUS);
+  // The beginning and end must land in their own generous target ring.
+  // Supports strokes drawn in either direction (P1→P2 or P2→P1).
+  const head = stroke.slice(0, Math.min(10, stroke.length));
+  const tail = stroke.slice(Math.max(0, stroke.length - 10));
+  const fwd = head.some(pt => dist(pt, P1) <= TOUCH_RADIUS) && tail.some(pt => dist(pt, P2) <= TOUCH_RADIUS);
+  const rev = head.some(pt => dist(pt, P2) <= TOUCH_RADIUS) && tail.some(pt => dist(pt, P1) <= TOUCH_RADIUS);
+  return fwd || rev;
 }
 
 // ─── Step 2: resample(stroke, step) ───────────────────────────────────────────
@@ -400,29 +402,41 @@ function tangentAt(centerline: Vec2[], idx: number): Vec2 {
  * Checkpoint 0 is the start line: the 8 checkpoints are spread evenly starting
  * from it, so a lap is completed when the car crosses checkpoint 0 again.
  */
-function placeFeatures(geo: BaseGeometry, randomStart = true): TrackGeometry {
+function placeFeatures(geo: BaseGeometry, randomStart = true, preferredStart?: Vec2): TrackGeometry {
   const { centerline, widths } = geo;
   const n = centerline.length;
 
-  // A roulette among the safe straight sections → start line. This makes the
-  // finishing line uncertain while never placing it in a tight bend.
-  const windowSize = 10;
-  const candidates: Array<{ idx: number; curv: number }> = [];
-  for (let i = 0; i < n; i++) {
-    let totalCurv = 0;
-    for (let j = 0; j < windowSize; j++) {
-      const prev = centerline[(i + j - 1 + n) % n];
-      const curr = centerline[(i + j) % n];
-      const next = centerline[(i + j + 1) % n];
-      const t1 = normalize(sub(curr, prev));
-      const t2 = normalize(sub(next, curr));
-      totalCurv += Math.abs(t1.x * t2.y - t1.y * t2.x);
+  let startIdx = 0;
+  if (preferredStart) {
+    let bestDist = Infinity;
+    for (let i = 0; i < n; i++) {
+      const d = dist(centerline[i], preferredStart);
+      if (d < bestDist) {
+        bestDist = d;
+        startIdx = i;
+      }
     }
-    candidates.push({ idx: (i + windowSize / 2) % n, curv: totalCurv });
+  } else {
+    // A roulette among the safe straight sections → start line. This makes the
+    // finishing line uncertain while never placing it in a tight bend.
+    const windowSize = 10;
+    const candidates: Array<{ idx: number; curv: number }> = [];
+    for (let i = 0; i < n; i++) {
+      let totalCurv = 0;
+      for (let j = 0; j < windowSize; j++) {
+        const prev = centerline[(i + j - 1 + n) % n];
+        const curr = centerline[(i + j) % n];
+        const next = centerline[(i + j + 1) % n];
+        const t1 = normalize(sub(curr, prev));
+        const t2 = normalize(sub(next, curr));
+        totalCurv += Math.abs(t1.x * t2.y - t1.y * t2.x);
+      }
+      candidates.push({ idx: (i + windowSize / 2) % n, curv: totalCurv });
+    }
+    candidates.sort((a, b) => a.curv - b.curv);
+    const safePool = candidates.slice(0, Math.max(1, Math.floor(candidates.length * 0.18)));
+    startIdx = (randomStart ? safePool[Math.floor(Math.random() * safePool.length)] : safePool[0]).idx;
   }
-  candidates.sort((a, b) => a.curv - b.curv);
-  const safePool = candidates.slice(0, Math.max(1, Math.floor(candidates.length * 0.18)));
-  const startIdx = (randomStart ? safePool[Math.floor(Math.random() * safePool.length)] : safePool[0]).idx;
 
   const checkpoints: Array<{ pos: Vec2; normal: Vec2 }> = [];
   const checkpointIndices: number[] = [];
@@ -588,10 +602,10 @@ function stretchMinorAxis(pts: Vec2[], factor: number): Vec2[] {
   });
 }
 
-function buildFromCenterline(raw: Vec2[], stretch = 1): TrackGeometry {
+function buildFromCenterline(raw: Vec2[], stretch = 1, preferredStart?: Vec2): TrackGeometry {
   let loop = relax(catmullRom(raw), 40);
   if (stretch !== 1) loop = stretchMinorAxis(loop, stretch);
-  return placeFeatures(computeGeometry(fitToPlayArea(loop)));
+  return placeFeatures(computeGeometry(fitToPlayArea(loop)), false, preferredStart);
 }
 
 // ─── Fallbacks ───────────────────────────────────────────────────────────────
@@ -611,9 +625,9 @@ export function generatePreset(): TrackGeometry {
 }
 
 /** Try the loop as drawn, then progressively fatter ones (thin beans overlap their own edges). */
-function singleLoopTrack(loop: Vec2[]): TrackGeometry | null {
-  for (const stretch of [1, 1.3, 1.7, 2.2, 3]) {
-    const geo = buildFromCenterline(loop, stretch);
+function singleLoopTrack(loop: Vec2[], preferredStart?: Vec2): TrackGeometry | null {
+  for (const stretch of [1, 1.2, 1.5, 2, 2.8]) {
+    const geo = buildFromCenterline(loop, stretch, preferredStart);
     if (validateGeometry(geo)) return geo;
   }
   return null;
@@ -636,9 +650,9 @@ function prepareLoop(stroke: Vec2[], P1: Vec2, P2: Vec2): Vec2[] {
 }
 
 /**
- * Generate a TrackGeometry from two freehand strokes. Always returns a valid
- * track: weights 0.5/0.5, then 0.4/0.6, then loop A alone, then loop B alone,
- * and finally the predefined circuit.
+ * Generate a TrackGeometry from two freehand strokes.
+ * Prioritises a direct closed-loop union of stroke A and stroke B connecting at
+ * P1 and P2, placing the start line at the initial chosen point (P1A).
  *
  * @param p1A/p2A/p1B/p2B  Imposed target points (inferred from stroke ends if omitted)
  */
@@ -659,18 +673,43 @@ export function generate(
   const bValid = strokeB.length >= 2 && validate(strokeB, P1B, P2B);
   if (!aValid && !bValid) { generationInfo.method = 'preset'; return generatePreset(); }
 
+  // 1. Direct union: Stroke A goes P1→P2, Stroke B goes P2→P1.
+  // Joined together at the two points P1 and P2, they form the complete closed circuit!
+  if (aValid && bValid) {
+    let orientedA = [...strokeA];
+    if (dist(orientedA[0], P2A) < dist(orientedA[0], P1A)) {
+      orientedA.reverse();
+    }
+    let orientedB = [...strokeB];
+    if (dist(orientedB[0], P1A) < dist(orientedB[orientedB.length - 1], P1A)) {
+      orientedB.reverse();
+    }
+    const resA = resample(orientedA, RESAMPLE_STEP);
+    const filtA = oneEuroFilter(resA.length >= 2 ? resA : orientedA);
+    const resB = resample(orientedB, RESAMPLE_STEP);
+    const filtB = oneEuroFilter(resB.length >= 2 ? resB : orientedB);
+
+    const closedLoop = makeLoop([...filtA, ...filtB]);
+    const geo = singleLoopTrack(closedLoop, P1A);
+    if (geo) {
+      generationInfo.method = 'closed loop union';
+      return geo;
+    }
+  }
+
+  // 2. Fallbacks: merge, single loops, preset
   const loopA = aValid ? prepareLoop(strokeA, P1A, P2A) : null;
   const loopB = bValid ? prepareLoop(strokeB, P1B, P2B) : null;
 
   if (loopA && loopB) {
     for (const [wA, wB] of [[0.5, 0.5], [0.4, 0.6]] as const) {
-      const geo = singleLoopTrack(mergeLoops(loopA, loopB, wA, wB));
+      const geo = singleLoopTrack(mergeLoops(loopA, loopB, wA, wB), P1A);
       if (geo) { generationInfo.method = `merge ${wA}/${wB}`; return geo; }
     }
   }
   for (const [name, loop] of [['loop A', loopA], ['loop B', loopB]] as const) {
     if (!loop) continue;
-    const geo = singleLoopTrack(loop);
+    const geo = singleLoopTrack(loop, P1A);
     if (geo) { generationInfo.method = name; return geo; }
   }
   generationInfo.method = 'preset';

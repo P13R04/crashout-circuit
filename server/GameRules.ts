@@ -191,7 +191,8 @@ export class GameRules {
     if (s.phase !== 'MAP' || s.mapDivider || this.generating) return;
     const a = msg.a, b = msg.b;
     if (![a?.x, a?.y, b?.x, b?.y].every(Number.isFinite)) return;
-    if (dist(a, b) < 360 || [a, b].some(p => p.x < 230 || p.x > 1690 || p.y < 260 || p.y > 820)) return;
+    // Keep points on-screen with comfortable edge margin, minimum 120px separation
+    if (dist(a, b) < 120 || [a, b].some(p => p.x < 40 || p.x > 1880 || p.y < 40 || p.y > 1040)) return;
     s.mapDivider = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
     s.mapTargets = { A: [s.mapDivider[0], s.mapDivider[1]], B: [s.mapDivider[1], s.mapDivider[0]] };
     this.host.broadcastFull();
@@ -202,11 +203,16 @@ export class GameRules {
     if (s.phase !== 'MAP' || !s.mapTargets || !s.mapDivider || this.generating) return;
     const team = msg.creator;
     if (team !== 'A' && team !== 'B') return;
-    const pts = (msg.pts ?? [])
+    let pts = (msg.pts ?? [])
       .filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))
       .slice(0, MAX_STROKE_POINTS)
       .map(p => ({ x: p.x, y: p.y }));
     const [p1, p2] = s.mapTargets[team];
+    if (pts.length < 2) return;
+    // If the player started at p2 and drew towards p1, reverse so it canonicalizes p1→p2
+    if (dist(pts[0], p2) < 160 && dist(pts[pts.length - 1], p1) < 160) {
+      pts = pts.reverse();
+    }
     if (!validateStroke(pts, p1, p2) || !this.staysInHalf(team, pts, s.mapDivider)) {
       const last = pts[pts.length - 1] ?? p1;
       this.host.feedback('mapError', last.x, last.y, team);
@@ -227,12 +233,20 @@ export class GameRules {
     void this.buildTrack();
   }
 
-  /** Signed distance to the divider: A is on its left, B on its right. */
+  /** Signed distance in pixels to the divider: A is on its left, B on its right. */
   private staysInHalf(team: Team, pts: Vec2[], divider: [Vec2, Vec2]): boolean {
     const [a, b] = divider;
     const dx = b.x - a.x, dy = b.y - a.y;
-    // A small tolerance preserves a continuous join at the two shared endpoints.
-    return pts.every(p => this.mapSide[team] * (dx * (p.y - a.y) - dy * (p.x - a.x)) >= -55);
+    const len = Math.hypot(dx, dy) || 1;
+    // Calculate actual Euclidean pixel distance rather than unnormalized cross product.
+    // Near endpoints (within 160 px), grant generous 100 px tolerance; 65 px elsewhere.
+    return pts.every(p => {
+      const dToA = dist(p, a);
+      const dToB = dist(p, b);
+      const tolerance = (dToA < 160 || dToB < 160) ? 100 : 65;
+      const signedDist = (this.mapSide[team] * (dx * (p.y - a.y) - dy * (p.x - a.x))) / len;
+      return signedDist >= -tolerance;
+    });
   }
 
   tickMap(now: number): void {
