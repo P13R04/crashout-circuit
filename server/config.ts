@@ -36,6 +36,7 @@ const defaults = {
   trackWidthBasePx: 140,
   trackWidthMinPx: 90,
   vMaxFwd: 420,
+  vMaxPedal: 190,
   accel: 600,
   coastDecel: 260,
   turnRate: 2.5,

@@ -185,6 +185,9 @@ test('central drive mode switches all cars to a held-pedal acceleration model', 
   const before = car.speed;
   r.physics.step(r.clock.now += 100, 0.1);
   assert.ok(car.speed > before, 'held pedal accelerates');
+  car.speed = config.vMaxFwd;
+  r.physics.step(r.clock.now += 100, 0.1);
+  assert.equal(car.speed, config.vMaxPedal, 'pedal mode uses its lower maximum speed');
 });
 test('pause freezes race motion and resumes without consuming race time', () => {
   const r = raceRig();

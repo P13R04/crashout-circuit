@@ -138,6 +138,7 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 | Paramètre | Valeur par défaut |
 |---|---|
 | Vitesse max avant | 260 px/s [EST] |
+| Vitesse max en mode PÉDALE | 190 px/s [EST] |
 | Frein / marche arrière | Aucun [DÉCISION] |
 | Ralentissement sans pédale | 260 px/s² [EST] jusqu'à l'arrêt |
 | Accélération | 320 px/s² [EST] |
@@ -406,7 +407,7 @@ Affectation exacte des icônes de la maquette aux boutons: à régler au moment 
 | `destroyDisableS` / `destroyCooldownS` | 10 / 15 |
 | `wallLengthPx` / `arcMaxDistPx` | 120 / 500 |
 | `trackWidthBasePx` / `trackWidthMinPx` | 140 / 90 |
-| `vMaxFwd` / `accel` / `turnRate` / gain direction / expiration d'entrée | 260 / 320 / 2,8 / 1,12 / 250 ms |
+| `vMaxFwd` / `vMaxPedal` / `accel` / `turnRate` / gain direction / expiration d'entrée | 260 / 190 / 320 / 2,8 / 1,12 / 250 ms |
 
 Tout est **[EST]**, à régler pendant les tests utilisateurs.
 

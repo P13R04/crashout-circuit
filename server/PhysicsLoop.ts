@@ -87,7 +87,8 @@ export class PhysicsLoop {
 
     const boost = now < car.boostUntil ? 1 + config.boostGain * car.boostK : 1;
     const slow = now < car.slowUntil ? config.arcSlowFactor : 1;
-    const maxFwd = config.vMaxFwd * boost * slow;
+    const baseMaxFwd = this.state.driveMode === 'pedal' ? config.vMaxPedal : config.vMaxFwd;
+    const maxFwd = baseMaxFwd * boost * slow;
 
     const target = throttle * maxFwd;
     const rate = throttle < car.speed / Math.max(maxFwd, 1) ? config.coastDecel : config.accel;

@@ -29,6 +29,7 @@
   "trackWidthBasePx": 140,
   "trackWidthMinPx": 90,
   "vMaxFwd": 260,
+  "vMaxPedal": 190,
   "accel": 320,
   "coastDecel": 260,
   "turnRate": 2.8,
