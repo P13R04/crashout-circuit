@@ -187,7 +187,7 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 ### 7.3 Détail des actions
 
 **C-01 Lance-pierre**
-- Geste: **3 doigts** posés ensemble (cluster ≤ 150 px). **Deux appuis** forment la fourche ; le doigt qui s'en éloigne est la **poche** de l'élastique. Il est tiré vers l'arrière puis relâché (le premier doigt levé déclenche le tir). Un élastique est tracé entre les trois contacts, avec la ligne de vol et la zone d'atterrissage en aperçu.
+- Geste: **3 doigts** posés ensemble (cluster ≤ 150 px). **Deux appuis** forment la fourche ; le doigt qui s'en éloigne est la **poche** de l'élastique. Il est tiré vers l'arrière puis relâché (le premier doigt levé déclenche le tir). L'ordre de pose ne désigne aucun rôle : tant qu'aucun doigt ne s'est nettement éloigné (≥ 14 px et ≥ 1,5× chacun des deux autres), aucun rôle n'est affiché ; un doigt qui a simplement glissé à la pose perd le rôle de poche dès qu'un autre est tiré bien plus loin. Un contact annulé (`pointercancel`) ne tire pas. Un élastique est tracé entre les trois contacts, avec la ligne de vol et la zone d'atterrissage en aperçu.
 - Direction: la pierre part de la poche, **à l'opposé de la traction**, et passe par le milieu de la fourche.
 - Portée (fonction continue de la traction): de 220 px (traction 40 px, minimum) à 900 px (traction 260 px, maximum) au-delà de la fourche. Une traction plus courte que 40 px ne tire pas et laisse l'objet armé. Le point d'atterrissage reste dans la table.
 - Effet: la pierre est **visible en vol** pendant **0,8 s**, puis frappe le point d'atterrissage. Un cercle rouge d'avertissement y est affiché pendant le vol, orienté vers le joueur adverse le plus proche (l'adversaire peut esquiver).

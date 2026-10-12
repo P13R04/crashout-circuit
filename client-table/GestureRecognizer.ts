@@ -14,7 +14,7 @@
  *   destroy    tap on Destroy, then touch a wall     → Ability(destroy, targetId)
  *   stroke     MAP phase drawing                     → StrokeDraw(creator, pts)
  *   free       3 fingers ≤150 px, one pulled back  → Slingshot (released)
- *              2 fingers 100–400 px                 → BoostGate
+ *              2 fingers 100–400 px, no 3rd finger  → BoostGate
  *              one finger pulled off a track edge    → BorderPull
  *
  * Team attribution (R-03): pad/button → station's team; free gesture → the team
@@ -38,7 +38,8 @@ export const DIVIDER_PAIR_MS = 4000;
 const DIVIDER_RELEASE_GRACE_MS = 600;
 const SETTLE_MS = 180;          // wait for all fingers to land before judging a gesture
 const SLING_CLUSTER_PX = 150;   // the three fingers must land together...
-const SLING_ROLE_MIN_PX = 14;   // ...then the one that moves this far is the pouch
+const SLING_ROLE_MIN_PX = 14;   // ...then the one that moves this far is the pouch...
+const SLING_DOMINANCE = 1.5;    // ...provided it moved this many times more than each other finger
 const SIM_FORK_HALF_PX = 38;    // mouse stand-in: virtual anchors either side of the pull axis
 const BOOST_MIN_PX = 100;
 const BOOST_MAX_PX = 400;
@@ -354,9 +355,10 @@ export class GestureRecognizer {
       if (s && last && Math.hypot(p.x - last.x, p.y - last.y) >= 2) s.pts.push(p);
     } else if (c.zone === 'simsling') {
       this.updateSimSling(c);
-    } else if (c.zone === 'free' && c.outward && !c.consumed) {
+    } else if (c.zone === 'free' && !c.consumed) {
       this.updateSling();
-      if (c.outward && !c.consumed) this.tryBorderPull(c);
+      // the fingers of a slingshot are never a border pull
+      if (!this.slingIds && c.outward && !c.consumed) this.tryBorderPull(c);
     }
   }
 
@@ -377,7 +379,7 @@ export class GestureRecognizer {
       }
     }
     if (c.zone === 'simsling') this.releaseSimSling(c);
-    if (this.slingIds?.includes(c.id)) this.releaseSling(c);
+    if (this.slingIds?.includes(c.id)) this.releaseSling(e.type === 'pointercancel');
     if (c.zone === 'free') this.scheduleEvaluation();
   }
 
@@ -548,24 +550,15 @@ export class GestureRecognizer {
 
   /**
    * Judged once the fingers have settled: the 2-finger boost gate. The 3-finger
-   * slingshot is handled live by `updateSling`; its fingers are never free for this.
+   * slingshot is handled live by `updateSling`; its fingers are never free for this,
+   * and nothing is fired while a sling is being formed.
    */
   private evaluate(): void {
     const state = this.state;
-    if (!state || state.phase !== 'RACE') return;
+    if (!state || state.phase !== 'RACE' || this.slingIds) return;
     const free = [...this.contacts.values()].filter(c => c.zone === 'free' && !c.consumed);
 
-    if (free.length === 3) {
-      const cx = (free[0].x + free[1].x + free[2].x) / 3;
-      const cy = (free[0].y + free[1].y + free[2].y) / 3;
-      if (free.every(c => Math.hypot(c.x - cx, c.y - cy) <= SLING_CLUSTER_PX)) {
-        const team = this.armedTeam('slingshot', { x: cx, y: cy });
-        if (team) {
-          this.send({ type: 'Slingshot', x: cx, y: cy, team });
-          free.forEach(c => { c.consumed = true; });
-        }
-      }
-    } else if (free.length === 2 && !free.some(c => c.outward)) {
+    if (free.length === 2 && !free.some(c => c.outward)) {
       const d = Math.hypot(free[0].x - free[1].x, free[0].y - free[1].y);
       if (d >= BOOST_MIN_PX && d <= BOOST_MAX_PX) {
         const mid = { x: (free[0].x + free[1].x) / 2, y: (free[0].y + free[1].y) / 2 };
@@ -587,8 +580,11 @@ export class GestureRecognizer {
 
   /**
    * Three free fingers landing together while a slingshot is armed form the sling.
-   * The finger that moves away from the other two is the pouch (it stays the pouch
-   * once chosen); the other two are the fork. The shot is fired on release.
+   * The landing order says nothing about the roles (fingers land within a few ms of
+   * each other): the pouch is the finger that has clearly travelled the most, the
+   * other two are the fork. The choice is not final — a finger that merely slid while
+   * settling loses it as soon as another one is pulled much farther. Until one finger
+   * dominates, no role is shown. The shot is fired on release.
    */
   private updateSling(): void {
     const state = this.state;
@@ -609,11 +605,10 @@ export class GestureRecognizer {
     if (cs.length !== 3) { this.cancelSling(); return; }
     const disp = (c: Contact) => Math.hypot(c.x - c.sx, c.y - c.sy);
 
-    if (this.slingPuller === null) {
-      const far = [...cs].sort((a, b) => disp(b) - disp(a));
-      // Decided once one finger left its spot while the two others stayed
-      if (disp(far[0]) >= SLING_ROLE_MIN_PX && disp(far[1]) < disp(far[0]) * 0.6) this.slingPuller = far[0].id;
-    }
+    const far = [...cs].sort((a, b) => disp(b) - disp(a));
+    // A finger takes (or takes back) the pouch role only when it left its spot while
+    // both others stayed comparatively still; otherwise the previous choice is kept.
+    if (disp(far[0]) >= SLING_ROLE_MIN_PX && disp(far[0]) >= disp(far[1]) * SLING_DOMINANCE) this.slingPuller = far[0].id;
 
     const puller = cs.find(c => c.id === this.slingPuller) ?? null;
     const anchors = puller ? cs.filter(c => c !== puller) : cs.slice(0, 2);
@@ -633,7 +628,7 @@ export class GestureRecognizer {
    * clean order, so any lift fires the shot as long as the pull is long enough. To
    * cancel, bring the pouch back near the fork before lifting.
    */
-  private releaseSling(_c: Contact): void {
+  private releaseSling(cancelled: boolean): void {
     const state = this.state;
     const sling = this.view.sling;
     for (const id of this.slingIds ?? []) {
@@ -641,7 +636,7 @@ export class GestureRecognizer {
       if (o) o.consumed = true; // the remaining fingers must not trigger other gestures
     }
     this.cancelSling();
-    if (!state || !sling || sling.idle || !sling.shot.valid) return;
+    if (cancelled || !state || !sling || sling.idle || !sling.shot.valid) return;
     const anchor = { x: (sling.anchors[0].x + sling.anchors[1].x) / 2, y: (sling.anchors[0].y + sling.anchors[1].y) / 2 };
     const team = this.armedTeam('slingshot', anchor);
     if (team) this.send({ type: 'Slingshot', anchor, pouch: { ...sling.pouch }, team });
@@ -693,7 +688,7 @@ export class GestureRecognizer {
 
   private tryBorderPull(c: Contact): void {
     const state = this.state;
-    if (!state || state.phase !== 'RACE') return;
+    if (!state || state.phase !== 'RACE' || this.slingIds) return;
     const candidates = [...this.contacts.values()]
       .filter(c => c.zone === 'free' && !c.consumed && c.outward && c.edgeIndex !== undefined);
     if (candidates.length !== 2) return;

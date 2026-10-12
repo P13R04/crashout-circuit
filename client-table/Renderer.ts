@@ -448,27 +448,39 @@ export class Renderer {
       ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(shot.target.x, shot.target.y, prm.stoneRadiusPx, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
-    // elastic band: anchor 1 → pouch → anchor 2
-    ctx.strokeStyle = band;
-    ctx.shadowColor = band;
-    ctx.shadowBlur = ready ? 16 : 0;
-    ctx.lineWidth = 4 + 6 * power;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    ctx.moveTo(anchors[0].x, anchors[0].y);
-    ctx.lineTo(pouch.x, pouch.y);
-    ctx.lineTo(anchors[1].x, anchors[1].y);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    // fork fingers and pouch
-    ctx.fillStyle = teamColor;
-    for (const a of anchors) { ctx.beginPath(); ctx.arc(a.x, a.y, 15, 0, Math.PI * 2); ctx.fill(); }
-    ctx.fillStyle = ready ? '#ffebc5' : 'rgba(255,255,255,0.7)';
-    ctx.beginPath(); ctx.arc(pouch.x, pouch.y, 12, 0, Math.PI * 2); ctx.fill();
+    if (idle) {
+      // Nobody has been pulled yet: the three contacts look alike, no role is suggested
+      // (the landing order does not tell which finger will be the pouch).
+      ctx.fillStyle = teamColor;
+      ctx.globalAlpha = 0.7;
+      for (const c of [anchors[0], anchors[1], pouch]) { ctx.beginPath(); ctx.arc(c.x, c.y, 15, 0, Math.PI * 2); ctx.fill(); }
+      ctx.globalAlpha = 1;
+    } else {
+      // elastic band: anchor 1 → pouch → anchor 2
+      ctx.strokeStyle = band;
+      ctx.shadowColor = band;
+      ctx.shadowBlur = ready ? 16 : 0;
+      ctx.lineWidth = 4 + 6 * power;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(anchors[0].x, anchors[0].y);
+      ctx.lineTo(pouch.x, pouch.y);
+      ctx.lineTo(anchors[1].x, anchors[1].y);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      // fork fingers and pouch
+      ctx.fillStyle = teamColor;
+      for (const a of anchors) { ctx.beginPath(); ctx.arc(a.x, a.y, 15, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = ready ? '#ffebc5' : 'rgba(255,255,255,0.7)';
+      ctx.beginPath(); ctx.arc(pouch.x, pouch.y, 12, 0, Math.PI * 2); ctx.fill();
+    }
     // strength read-out, upright for the team that holds the item
     ctx.save();
-    ctx.translate(pouch.x, pouch.y);
+    const labelAt = idle
+      ? { x: (anchors[0].x + anchors[1].x + pouch.x) / 3, y: (anchors[0].y + anchors[1].y + pouch.y) / 3 }
+      : pouch;
+    ctx.translate(labelAt.x, labelAt.y);
     ctx.rotate(sling.team ? rotationTowardsTeam(sling.team, fork) : 0);
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 20px monospace';

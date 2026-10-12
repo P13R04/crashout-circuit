@@ -56,7 +56,7 @@ La console Oz simule les poteaux tangibles (clic sur la miniature) et propose de
 1. Le pilote roule sur un pickup (icône sur la piste) : l'objet apparaît dans le bouton rond de son panneau.
 2. Il touche **UTILISER** : l'objet est armé pendant 5 s (halo doré sur le panneau du copilote).
 3. Le copilote fait le geste dans ces 5 s :
-   - **Lance-pierre** : pose **3 doigts** rapprochés (≤ 150 px). Deux doigts forment la fourche ; **tire le troisième vers l'arrière** puis relâche. La pierre part à l'opposé de la traction et va d'autant plus loin que l'élastique est tendu (jauge en %, aperçu de la trajectoire et de la zone d'impact). Une traction trop courte annule le tir sans perdre l'objet.
+   - **Lance-pierre** : pose **3 doigts** rapprochés (≤ 150 px). Deux doigts forment la fourche ; **tire le troisième vers l'arrière** (le doigt qui s'éloigne devient la poche, quel que soit l'ordre de pose) puis relâche. La pierre part à l'opposé de la traction et va d'autant plus loin que l'élastique est tendu (jauge en %, aperçu de la trajectoire et de la zone d'impact). Une traction trop courte annule le tir sans perdre l'objet.
    - **Portail de boost** : **2 doigts écartés** de 100 à 400 px.
 
 ### Tester sur PC (sans multitouch)
@@ -98,6 +98,7 @@ En mode PC, cliquez d’abord les deux extrémités de la séparation, puis dess
 
 ```bash
 npm run test:acceptance   # règles serveur et générateur de piste (T-01, T-03 à T-11)
+npm run test:gestures     # reconnaissance des gestes de la table (lance-pierre à 3 doigts, boost)
 npm run typecheck         # vérification TypeScript des clients
 ```
 
