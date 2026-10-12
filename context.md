@@ -156,7 +156,7 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 |---|---|---|
 | Mur (poteau seul) | −10, puis 1 s d'invulnérabilité | Rebond |
 | Arc électrique | −10 par franchissement | Vitesse ×0,5 pendant 1,5 s |
-| Pierre du lance-pierre | −25 | Étourdissement 1 s |
+| Pierre du lance-pierre | −100 (une voiture à pleine santé est mise hors d'usage) | Étourdissement 1 s |
 
 **R-09** Les éléments d'une équipe n'affectent jamais sa propre voiture (pas de tir ami). Ils sont affichés semi-transparents pour elle.
 **R-10** À **HP = 0**, le véhicule est **hors d'usage**: il s'arrête et ne répond plus au Pilote, jusqu'à la réparation synchrone (§7.4).
@@ -169,7 +169,7 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 
 | ID | Action | Déclencheur | Entrée | Prio |
 |---|---|---|---|---|
-| C-01 | Lance-pierre | Objet **ramassé + armé** par le Pilote | 3 doigts sur la table | P1 |
+| C-01 | Lance-pierre | Objet **ramassé + armé** par le Pilote | 3 doigts : 2 appuis + 1 doigt tiré en arrière | P1 |
 | C-02 | Boost (portail de vitesse) | Objet **ramassé + armé** par le Pilote | 2 doigts sur la piste | P1 |
 | C-03 | Fantôme | **Indépendant** (recharge) | Bouton du panneau Copilote | P1 |
 | C-04 | Destruction de mur | **Indépendant** (recharge) | Bouton + toucher un mur adverse | P1 |
@@ -187,8 +187,10 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 ### 7.3 Détail des actions
 
 **C-01 Lance-pierre**
-- Geste: **3 doigts** posés ensemble (cluster ≤ 150 px) sur un point de la table, centre = point visé.
-- Effet: après un **délai de signalement 0,8 s**, une pierre frappe ce point. Un cercle rouge d'avertissement est affiché pendant ce délai, orienté vers le joueur adverse le plus proche (l'adversaire peut esquiver).
+- Geste: **3 doigts** posés ensemble (cluster ≤ 150 px). **Deux appuis** forment la fourche ; le doigt qui s'en éloigne est la **poche** de l'élastique. Il est tiré vers l'arrière puis relâché (le premier doigt levé déclenche le tir). L'ordre de pose ne désigne aucun rôle : tant qu'aucun doigt ne s'est nettement éloigné (≥ 14 px et ≥ 1,5× chacun des deux autres), aucun rôle n'est affiché ; un doigt qui a simplement glissé à la pose perd le rôle de poche dès qu'un autre est tiré bien plus loin. Un contact annulé (`pointercancel`) ne tire pas. Un élastique est tracé entre les trois contacts, avec la ligne de vol et la zone d'atterrissage en aperçu.
+- Direction: la pierre part de la poche, **à l'opposé de la traction**, et passe par le milieu de la fourche.
+- Portée (fonction continue de la traction): de 220 px (traction 40 px, minimum) à 900 px (traction 260 px, maximum) au-delà de la fourche. Une traction plus courte que 40 px ne tire pas et laisse l'objet armé. Le point d'atterrissage reste dans la table.
+- Effet: la pierre est **visible en vol** pendant **0,8 s**, puis frappe le point d'atterrissage. Un cercle rouge d'avertissement y est affiché pendant le vol, orienté vers le joueur adverse le plus proche (l'adversaire peut esquiver).
 - Rayon d'impact 60 px [EST]. Touche uniquement la voiture adverse. Dégâts: voir R-08.
 
 **C-02 Boost (portail de vitesse)**
@@ -380,7 +382,7 @@ Affectation exacte des icônes de la maquette aux boutons: à régler au moment 
 | T-03 | Un mur adverse retire 10 HP, avec 1 s d'invulnérabilité |
 | T-04 | Deux poteaux alliés génèrent un arc électrique; la voiture adverse perd 10 HP et ralentit |
 | T-05 | Un objet armé sans geste du Copilote dans les 5 s est perdu |
-| T-06 | Le lance-pierre à 3 doigts affiche un avertissement 0,8 s avant l'impact |
+| T-06 | Le lance-pierre (2 appuis + 1 doigt tiré) lance une pierre visible ; l'avertissement est affiché 0,8 s avant l'impact et la portée croît avec la traction |
 | T-07 | Le portail de boost est plus fort quand ses extrémités sont plus écartées |
 | T-08 | Le Fantôme permet de traverser murs et arcs adverses 3 s, puis recharge de 20 s |
 | T-09 | La réparation ne s'enclenche que si **les deux** doigts sont sur leur pad |
@@ -396,7 +398,7 @@ Affectation exacte des icônes de la maquette aux boutons: à régler au moment 
 | `lapsToWin` | 3 |
 | `sessionMaxSeconds` | 300 |
 | `hpMax` | 100 |
-| `dmgWall` / `dmgArc` / `dmgStone` | 10 / 10 / 25 |
+| `dmgWall` / `dmgArc` / `dmgStone` | 10 / 10 / 100 |
 | `invulnAfterHitS` | 1 |
 | `stunStoneS` | 1 |
 | `arcSlowFactor` / `arcSlowS` | 0,5 / 1,5 |

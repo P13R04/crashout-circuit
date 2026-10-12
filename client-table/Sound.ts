@@ -45,6 +45,7 @@ function noise(dur: number, gain = 0.2): void {
 export function playFeedback(kind: string): void {
   switch (kind) {
     case 'stoneWarning': tone(880, 0.12, 'square', 0.08); tone(880, 0.12, 'square', 0.08, undefined, 0.2); tone(880, 0.12, 'square', 0.08, undefined, 0.4); break;
+    case 'stoneHit': tone(160, 0.28, 'square', 0.22, 55); noise(0.18, 0.25); break;
     case 'stoneImpact': noise(0.35, 0.3); tone(120, 0.3, 'sawtooth', 0.2, 40); break;
     case 'ghost': tone(300, 0.4, 'sine', 0.15, 900); break;
     case 'boostGate': case 'boostHit': tone(400, 0.25, 'triangle', 0.15, 1200); break;

@@ -61,6 +61,21 @@ gestures.onSimChange = (hint) => {
   }
 };
 
+// PC test switches: only shown (and honoured by the server) in the PC mode
+const testBar = document.getElementById('testbar') as HTMLDivElement;
+const testInvincible = document.getElementById('test-invincible') as HTMLButtonElement;
+const testItems = document.getElementById('test-items') as HTMLButtonElement;
+testInvincible.addEventListener('click', () =>
+  conn.send({ type: 'TestToggle', flag: 'invincible', on: !view.state?.testMode.invincible }));
+testItems.addEventListener('click', () =>
+  conn.send({ type: 'TestToggle', flag: 'allItems', on: !view.state?.testMode.allItems }));
+function syncTestBar(): void {
+  const st = view.state;
+  testBar.classList.toggle('on', st?.mapMode === 'pc');
+  testInvincible.classList.toggle('active', !!st?.testMode.invincible);
+  testItems.classList.toggle('active', !!st?.testMode.allItems);
+}
+
 window.addEventListener('pointerdown', unlock, { once: true });
 // Desktop local multiplayer adapter. It mirrors the table controls without
 // leaking keyboard rules into the game engine: Q/D and ←/→ are the two
@@ -141,6 +156,7 @@ function handleMessage(msg: ServerMessage): void {
         gestures.releaseAll();
       }
       statusEl.textContent = `Phase: ${msg.state.phase}`;
+      syncTestBar();
       statusEl.style.display = view.debug.on ? 'block' : 'none';
       break;
     }
@@ -161,6 +177,10 @@ function handleMessage(msg: ServerMessage): void {
         view.pendingDivider = [];
         showDividerRefusal(view, msg.kind === 'dividerTooShort' ? 'tooShort' : 'outOfZone');
       }
+      view.effects.push({
+        kind: msg.kind, x: msg.x, y: msg.y, team: msg.team, start: performance.now(), dur: effectDuration(msg.kind),
+        ...(msg.kind === 'stoneHit' ? { text: HIT_WORDS[Math.floor(Math.random() * HIT_WORDS.length)], tilt: (Math.random() - 0.5) * 0.5 } : {}),
+      });
       if (msg.kind === 'mapError') {
         view.mapErrorAt[msg.team] = performance.now();
         for (const s of view.strokes.values()) if (s.team === msg.team) s.rejectedAt = performance.now();
@@ -173,8 +193,11 @@ function handleMessage(msg: ServerMessage): void {
   }
 }
 
+const HIT_WORDS = ['TOUCHÉ !', 'POW !', 'BAM !', 'BOUM !', 'AÏE !', 'KO !'];
+
 function effectDuration(kind: string): number {
   switch (kind) {
+    case 'stoneHit': return 1200;
     case 'stoneImpact': return 700;
     case 'wallDestroyed': return 450;
     case 'repairDone': return 900;

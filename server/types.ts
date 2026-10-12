@@ -60,7 +60,9 @@ export interface BoostGate {
 
 export interface Stone {
   id: string;
-  target: Vec2;
+  from: Vec2;        // launch point (the pulled pouch)
+  target: Vec2;      // landing point, where the warning circle is shown
+  launchedAt: number; // timestamp ms
   impactAt: number;  // timestamp ms
   team: Team;
 }
@@ -136,6 +138,10 @@ export interface GameParams {
   trackDeformRelaxS: number;
   stoneTelegraphS: number;
   stoneRadiusPx: number;
+  slingMinPullPx: number;
+  slingMaxPullPx: number;
+  slingMinRangePx: number;
+  slingMaxRangePx: number;
   boostLenMinPx: number;
   boostLenMaxPx: number;
   repairHoldS: number;
@@ -177,6 +183,8 @@ export interface GameState {
   /** Operator-reported pylons currently on the table, keyed by tangible id. */
   tangibles: Record<number, { x: number; y: number; angle: number }>;
   params: GameParams;
+  /** PC test switches (only honoured in the PC mode, see `TestToggleMsg`). */
+  testMode: { invincible: boolean; allItems: boolean };
 }
 
 // ─── WebSocket message types ──────────────────────────────────────────────────
@@ -217,10 +225,15 @@ export interface PadHoldMsg extends BaseMsg {
   on: boolean;
 }
 
+/**
+ * Slingshot released: the elastic's fork (`anchor`, midpoint of the two anchoring
+ * fingers) and the pulled pouch (`pouch`, where the third finger let go). The stone
+ * flies from the pouch through the fork; the server derives direction and range.
+ */
 export interface SlingshotMsg extends BaseMsg {
   type: 'Slingshot';
-  x: number;
-  y: number;
+  anchor: Vec2;
+  pouch: Vec2;
   team?: Team; // resolved by the table's gesture recognizer (R-03); server falls back to proximity
 }
 
@@ -295,6 +308,16 @@ export interface NewGameMsg extends BaseMsg {
 export interface ResetMsg extends BaseMsg {
   type: 'Reset';
 }
+/**
+ * PC-mode test switches. `invincible`: both cars are untouchable (no damage, stun,
+ * slow-down or fall). `allItems`: every item is always armed and usable, without
+ * pickup, and ability cooldowns are ignored. Ignored outside the PC mode.
+ */
+export interface TestToggleMsg extends BaseMsg {
+  type: 'TestToggle';
+  flag: 'invincible' | 'allItems';
+  on: boolean;
+}
 
 export interface PingMsg extends BaseMsg {
   type: 'Ping';
@@ -351,6 +374,8 @@ export type ClientMessage =
   | OzTriggerMsg
   | PingMsg
   | NewGameMsg
-  | ResetMsg;
+  | ResetMsg
+  | TestToggleMsg
+  | NewGameMsg;
 
 export type ServerMessage = StateMsg | FeedbackMsg | PhaseChangeMsg | PongMsg;

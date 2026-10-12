@@ -36,12 +36,29 @@
     }
     #sim button:hover { background: #1b3270; }
     #sim button.armed { background: #00e5ff; color: #04081f; }
+    #testbar {
+      position: fixed; bottom: 52px; left: 54%; transform: translateX(-50%);
+      display: none; gap: 8px; align-items: center;
+      font: 12px monospace; color: #ffd08a;
+    }
+    #testbar.on { display: flex; }
+    #testbar button {
+      background: #3a2406; color: #fff; border: 1px solid #ff9c2e; border-radius: 6px;
+      padding: 7px 12px; font: inherit; cursor: pointer;
+    }
+    #testbar button:hover { background: #55330a; }
+    #testbar button.active { background: #ff9c2e; color: #1a0f00; font-weight: bold; }
   </style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
+  <div id="testbar">
+    <span>TEST (PC)</span>
+    <button id="test-invincible">🛡 Véhicules invincibles</button>
+    <button id="test-items">🎁 Tous les objets utilisables</button>
+  </div>
   <div id="sim">
-    <button id="sim3">✋ Simuler 3 doigts (lance-pierre)</button>
+    <button id="sim3">🏹 Simuler lance-pierre (clic + tirer + relâcher)</button>
     <button id="sim2">✌ Simuler 2 doigts (boost)</button>
     <span id="sim-hint"></span>
   </div>

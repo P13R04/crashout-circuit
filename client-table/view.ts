@@ -1,5 +1,6 @@
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import { MIN_DIVIDER_PX, type DividerCheck } from '../server/layout.js';
+import type { SlingshotShot } from '../server/geometry.js';
 
 /** Short-lived visual effect spawned by a server `Feedback` message. */
 export interface Effect {
@@ -9,6 +10,19 @@ export interface Effect {
   team: Team;
   start: number; // performance.now()
   dur: number;   // ms
+  /** Comic word shown by `stoneHit` effects, and its tilt in radians. */
+  text?: string;
+  tilt?: number;
+}
+
+/** Slingshot being drawn on the table: fork anchors, pulled pouch and the predicted shot. */
+export interface SlingPreview {
+  team: Team | null;
+  anchors: [Vec2, Vec2];
+  pouch: Vec2;
+  /** True while the roles (anchors / puller) are not decided yet: nothing pulled so far. */
+  idle: boolean;
+  shot: SlingshotShot;
 }
 
 export interface LocalStroke {
@@ -31,6 +45,8 @@ export interface View {
   /** Destroy-wall targeting mode, deadline in local Date.now() ms. */
   targeting: { team: Team; until: number } | null;
   strokes: Map<number, LocalStroke>;
+  /** Live slingshot preview (3 fingers, or the mouse stand-in on PC). */
+  sling: SlingPreview | null;
   /** Joystick knob per team, normalized to the base radius (x right, y down), as drawn. */
   sticks: Record<Team, { x: number; y: number; active: boolean }>;
   /** Smoothed HP shown on the bars. */
@@ -68,6 +84,7 @@ export function createView(now: () => number): View {
     localPedals: { A: false, B: false },
     targeting: null,
     strokes: new Map(),
+    sling: null,
     sticks: { A: { x: 0, y: 0, active: false }, B: { x: 0, y: 0, active: false } },
     hpShown: { A: 100, B: 100 },
     mapErrorAt: { A: -1e9, B: -1e9 },

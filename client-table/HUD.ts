@@ -33,12 +33,20 @@ export function drawItemIcon(ctx: Ctx, kind: 'slingshot' | 'boost', x: number, y
   ctx.strokeStyle = color;
   ctx.lineWidth = 3;
   ctx.beginPath();
-  if (kind === 'slingshot') { // crosshair
-    ctx.arc(0, 0, r * 0.65, 0, Math.PI * 2);
-    ctx.moveTo(-r, 0); ctx.lineTo(-r * 0.3, 0);
-    ctx.moveTo(r, 0);  ctx.lineTo(r * 0.3, 0);
-    ctx.moveTo(0, -r); ctx.lineTo(0, -r * 0.3);
-    ctx.moveTo(0, r);  ctx.lineTo(0, r * 0.3);
+  if (kind === 'slingshot') { // Y-shaped fork, elastic band and stone
+    ctx.moveTo(0, r); ctx.lineTo(0, r * 0.1);
+    ctx.moveTo(0, r * 0.1); ctx.lineTo(-r * 0.75, -r * 0.9);
+    ctx.moveTo(0, r * 0.1); ctx.lineTo(r * 0.75, -r * 0.9);
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.75, -r * 0.9);
+    ctx.quadraticCurveTo(0, r * 0.1, r * 0.75, -r * 0.9);
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(0, -r * 0.3, r * 0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    return;
   } else { // compass
     ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2);
     ctx.moveTo(0, -r * 0.6); ctx.lineTo(r * 0.25, 0); ctx.lineTo(0, r * 0.6); ctx.lineTo(-r * 0.25, 0); ctx.closePath();
@@ -201,7 +209,7 @@ export class HUD {
       ctx.fillStyle = '#ffe14a';
       ctx.font = 'bold 15px monospace';
       ctx.textAlign = 'right';
-      const gesture = car.heldItem === 'slingshot' ? '3 doigts' : '2 doigts';
+      const gesture = state.testMode.allItems ? '3 ou 2 doigts' : car.heldItem === 'slingshot' ? '3 doigts' : '2 doigts';
       ctx.fillText(`✦ OBJET ARMÉ · ${gesture} · ${(left / 1000).toFixed(1)}s`, PANEL_W / 2 - 14, -PANEL_H / 2 + 24);
       ctx.textAlign = 'left';
     }
