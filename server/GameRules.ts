@@ -10,10 +10,10 @@
 import type {
   GameState, Team, Vec2, Phase, ItemKind, Car, Wall, MapTargets, TrackGeometry,
   StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGateMsg, AbilityMsg, BorderPullMsg,
-  PilotInputMsg, UseItemMsg, TangibleMovedMsg, TangibleRemovedMsg, OzTriggerMsg,
+  PilotInputMsg, UseItemMsg, TangibleMovedMsg, TangibleRemovedMsg, OzTriggerMsg, TestToggleMsg,
 } from './types.js';
 import { config } from './config.js';
-import { dist, distToSegment, nearestOnTrack, segmentsIntersect, wrapAngle } from './geometry.js';
+import { dist, distToSegment, nearestOnTrack, segmentsIntersect, slingshotShot, wrapAngle } from './geometry.js';
 import { generate, generatePreset, validateStroke, rebuildEdges } from './MapGenerator.js';
 import { nearestStationTeam, LOGICAL_W, checkDivider } from './layout.js';
 
@@ -101,6 +101,7 @@ export function createInitialState(): GameState {
     repairProgress: { A: 0, B: 0 },
     trackVersion: 0,
     tangibles: {},
+    testMode: { invincible: false, allItems: false },
     params: {
       hpMax: config.hpMax,
       lapsToWin: config.lapsToWin,
@@ -115,6 +116,10 @@ export function createInitialState(): GameState {
       trackDeformRelaxS: config.trackDeformRelaxS,
       stoneTelegraphS: config.stoneTelegraphS,
       stoneRadiusPx: config.stoneRadiusPx,
+      slingMinPullPx: config.slingMinPullPx,
+      slingMaxPullPx: config.slingMaxPullPx,
+      slingMinRangePx: config.slingMinRangePx,
+      slingMaxRangePx: config.slingMaxRangePx,
       boostLenMinPx: config.boostLenMinPx,
       boostLenMaxPx: config.boostLenMaxPx,
       repairHoldS: config.repairHoldS,
@@ -314,6 +319,23 @@ export class GameRules {
     this.host.broadcastFull();
   }
 
+  /** PC-only test switches: ignored unless the session was started in PC mode. */
+  onTestToggle(msg: TestToggleMsg): void {
+    const s = this.state;
+    if (s.mapMode !== 'pc') return;
+    if (msg.flag !== 'invincible' && msg.flag !== 'allItems') return;
+    s.testMode[msg.flag] = !!msg.on;
+    if (msg.flag === 'allItems' && !msg.on) {
+      // back to the normal rules: nothing stays armed for free
+      for (const t of TEAMS) {
+        const car = s.cars[t];
+        car.itemArmed = false;
+        car.itemArmExpiry = 0;
+      }
+    }
+    this.host.broadcastFull();
+  }
+
   /** Pause freezes physics and timers; resuming shifts the race clock accordingly. */
   togglePause(): void {
     const s = this.state;
@@ -344,6 +366,7 @@ export class GameRules {
     s.mapDivider = null;
     s.mapStrokes = { A: false, B: false };
     s.mapMode = null;
+    s.testMode = { invincible: false, allItems: false };
     s.mapDeadline = 0;
     this.generating = false;
     this.strokes = { A: null, B: null };
@@ -405,7 +428,7 @@ export class GameRules {
     const now = this.now;
     const ok = TEAMS.filter(t => {
       const c = this.state.cars[t];
-      return c.itemArmed && c.heldItem === kind && now < c.itemArmExpiry;
+      return c.itemArmed && (this.state.testMode.allItems || c.heldItem === kind) && now < c.itemArmExpiry;
     });
     if (ok.length === 0) return null;
     if (explicit && ok.includes(explicit)) return explicit;
@@ -420,19 +443,30 @@ export class GameRules {
     car.itemArmExpiry = 0;
   }
 
+  /**
+   * The stone is launched from the pouch through the fork. Too short a pull does
+   * nothing and keeps the item armed, so the copilot can simply try again.
+   */
   onSlingshot(msg: SlingshotMsg): void {
-    if (this.state.phase !== 'RACE' || !Number.isFinite(msg.x) || !Number.isFinite(msg.y)) return;
-    const target = { x: msg.x, y: msg.y };
-    const team = this.resolveArmedTeam('slingshot', target, msg.team);
+    if (this.state.phase !== 'RACE' || !msg.anchor || !msg.pouch) return;
+    const anchor = { x: msg.anchor.x, y: msg.anchor.y };
+    const pouch = { x: msg.pouch.x, y: msg.pouch.y };
+    if (![anchor.x, anchor.y, pouch.x, pouch.y].every(Number.isFinite)) return;
+    const shot = slingshotShot(anchor, pouch, config);
+    if (!shot.valid) return;
+    const team = this.resolveArmedTeam('slingshot', anchor, msg.team);
     if (!team) return;
     this.consumeItem(team);
+    const now = this.now;
     this.state.stones.push({
       id: this.nextId('stone'),
-      target,
-      impactAt: this.now + config.stoneTelegraphS * 1000,
+      from: pouch,
+      target: shot.target,
+      launchedAt: now,
+      impactAt: now + config.stoneTelegraphS * 1000,
       team,
     });
-    this.host.feedback('stoneWarning', target.x, target.y, team);
+    this.host.feedback('stoneWarning', shot.target.x, shot.target.y, team);
   }
 
   updateStones(now: number): void {
@@ -443,10 +477,12 @@ export class GameRules {
       if (stone.impactAt > now) { remaining.push(stone); continue; }
       const victim = s.cars[other(stone.team)];
       this.host.feedback('stoneImpact', stone.target.x, stone.target.y, stone.team);
-      if (!victim.disabled && dist(victim.pos, stone.target) <= config.stoneRadiusPx) {
+      if (!victim.disabled && !s.testMode.invincible && dist(victim.pos, stone.target) <= config.stoneRadiusPx) {
         this.damage(victim, config.dmgStone, now);
         victim.stunUntil = now + config.stunStoneS * 1000;
         victim.speed = 0;
+        // Cartoon "POW" on the car that was hit (the impact itself is already announced)
+        this.host.feedback('stoneHit', victim.pos.x, victim.pos.y, victim.team);
       }
     }
     s.stones = remaining;
@@ -492,17 +528,17 @@ export class GameRules {
     const car = s.cars[team];
 
     if (msg.kind === 'ghost') {
-      if (now < cd.ghost) return;
+      if (!s.testMode.allItems && now < cd.ghost) return;
       car.ghostUntil = now + config.ghostS * 1000;
       // Recharge starts when the ghost effect ends (T-08: 3 s, then 20 s)
-      cd.ghost = car.ghostUntil + config.ghostCooldownS * 1000;
+      if (!s.testMode.allItems) cd.ghost = car.ghostUntil + config.ghostCooldownS * 1000;
       this.host.feedback('ghost', car.pos.x, car.pos.y, team);
     } else if (msg.kind === 'destroy') {
-      if (now < cd.destroy || !msg.targetId) return;
+      if ((!s.testMode.allItems && now < cd.destroy) || !msg.targetId) return;
       const target = s.walls.find(w => w.id === msg.targetId) ?? s.arcs.find(a => a.id === msg.targetId);
       if (!target || target.team === team) return;
       target.disabledUntil = now + config.destroyDisableS * 1000;
-      cd.destroy = now + config.destroyCooldownS * 1000;
+      if (!s.testMode.allItems) cd.destroy = now + config.destroyCooldownS * 1000;
       const at = 'pos' in target ? target.pos : { x: (target.pylon1.x + target.pylon2.x) / 2, y: (target.pylon1.y + target.pylon2.y) / 2 };
       this.host.feedback('wallDestroyed', at.x, at.y, team);
     }
@@ -560,7 +596,7 @@ export class GameRules {
   // ─── Damage ────────────────────────────────────────────────────────────────
 
   damage(car: Car, amount: number, now: number): void {
-    if (car.disabled) return;
+    if (car.disabled || this.state.testMode.invincible) return;
     car.hp = Math.max(0, car.hp - amount);
     this.host.feedback('hit', car.pos.x, car.pos.y, car.team);
     if (car.hp === 0) {
@@ -576,6 +612,12 @@ export class GameRules {
   fallOffTrack(team: Team, now: number): void {
     const car = this.state.cars[team];
     if (car.disabled) return;
+    if (this.state.testMode.invincible) {
+      // Invincible: the fall costs nothing, the car is simply put back on the track
+      this.respawnAtCheckpoint(car);
+      this.host.feedback('fall', car.pos.x, car.pos.y, team);
+      return;
+    }
     car.hp = 0;
     car.disabled = true;
     car.speed = 0;
@@ -857,6 +899,13 @@ export class GameRules {
     }
     for (const team of TEAMS) {
       const car = s.cars[team];
+      if (s.testMode.allItems) {
+        // Test mode: no pickup needed, the item is armed again as soon as it is used
+        car.heldItem ??= 'slingshot';
+        car.itemArmed = true;
+        car.itemArmExpiry = now + config.armWindowS * 1000;
+        continue;
+      }
       if (car.itemArmed && now >= car.itemArmExpiry) {
         // T-05: armed item that was not used in time is lost
         car.heldItem = null;
@@ -902,7 +951,7 @@ export class GameRules {
     }
 
     // Hostile walls and arcs (never the team's own, never while ghost/invulnerable)
-    if (car.ghostUntil <= now && car.invulnUntil <= now) {
+    if (car.ghostUntil <= now && car.invulnUntil <= now && !s.testMode.invincible) {
       for (const w of s.walls) {
         if (w.team === team || w.disabledUntil > now) continue;
         const [a, b] = GameRules.wallEnds(w);

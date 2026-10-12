@@ -10,7 +10,7 @@ import type { RulesHost } from '../server/GameRules.js';
 import { PhysicsLoop } from '../server/PhysicsLoop.js';
 import { config } from '../server/config.js';
 import { generate, generatePreset, validateGeometry, generationInfo, selfCrossings } from '../server/MapGenerator.js';
-import { nearestOnTrack } from '../server/geometry.js';
+import { nearestOnTrack, slingshotShot } from '../server/geometry.js';
 import { mock } from 'node:test';
 import { GestureRecognizer } from '../client-table/GestureRecognizer.js';
 import { createView } from '../client-table/view.js';
@@ -54,6 +54,16 @@ function raceRig(): Rig {
 }
 
 const msg = <T extends object>(o: T) => ({ t: 0, ...o });
+
+/**
+ * A slingshot message that lands on `target`: the stone flies from the pouch through
+ * the fork, so the fork sits `range` px before the target and the pouch `pull` px behind it.
+ */
+function aim(target: Vec2, pull: number): { anchor: Vec2; pouch: Vec2 } {
+  const { range } = slingshotShot({ x: 0, y: 0 }, { x: -pull, y: 0 }, config);
+  const anchor = { x: target.x - range, y: target.y };
+  return { anchor, pouch: { x: anchor.x - pull, y: anchor.y } };
+}
 
 function randomStroke(p1: Vec2, p2: Vec2, rnd: () => number): Vec2[] {
   const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
@@ -617,14 +627,17 @@ test('T-05 armed item without gesture within 5 s is lost', () => {
   assert.equal(car.heldItem, null);
   assert.equal(car.itemArmed, false);
 });
-test('T-06 slingshot: 0.8 s telegraph, then −25 HP + stun on the opponent only', () => {
+test('T-06 slingshot: 0.8 s telegraph, then a full-HP car is put out of order (+ stun, "stoneHit" feedback), opponent only', () => {
   const r = raceRig();
   const A = r.state.cars.A, B = r.state.cars.B;
   A.heldItem = 'slingshot';
   r.rules.onUseItem('A');
   const target = { ...B.pos };
-  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, x: target.x, y: target.y }));
+  const shot = aim(target, 120);
+  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, ...shot }));
   assert.equal(r.state.stones.length, 1);
+  assert.ok(Math.hypot(r.state.stones[0].target.x - target.x, r.state.stones[0].target.y - target.y) < 1, 'lands on the aimed point');
+  assert.deepEqual(r.state.stones[0].from, shot.pouch, 'flies from the pouch');
   assert.equal(A.heldItem, null, 'item consumed');
   assert.ok(Math.abs(r.state.stones[0].impactAt - r.clock.now - config.stoneTelegraphS * 1000) < 1);
   r.advance(700);
@@ -634,15 +647,51 @@ test('T-06 slingshot: 0.8 s telegraph, then −25 HP + stun on the opponent only
   B.pos = { ...target };
   r.clock.now += 200;
   r.rules.updateStones(r.clock.now);
-  assert.equal(B.hp, config.hpMax - config.dmgStone);
+  assert.equal(B.hp, Math.max(0, config.hpMax - config.dmgStone));
+  assert.ok(config.dmgStone >= config.hpMax, 'one stone breaks a full-HP car');
+  assert.equal(B.disabled, true);
+  assert.ok(r.feedback.includes('stoneHit'), 'hit feedback for the comic effect');
   assert.ok(B.stunUntil > r.clock.now);
   assert.equal(A.hp, config.hpMax);
   assert.equal(r.state.stones.length, 0);
 });
 test('slingshot without armed slingshot is ignored', () => {
   const r = raceRig();
-  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, x: 500, y: 500 }));
+  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, ...aim({ x: 900, y: 500 }, 120) }));
   assert.equal(r.state.stones.length, 0);
+});
+test('slingshot: a pull shorter than the minimum does nothing and the item stays armed', () => {
+  const r = raceRig();
+  const A = r.state.cars.A;
+  A.heldItem = 'slingshot';
+  r.rules.onUseItem('A');
+  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, anchor: { x: 900, y: 500 }, pouch: { x: 900, y: 500 + config.slingMinPullPx - 5 } }));
+  assert.equal(r.state.stones.length, 0);
+  assert.equal(A.itemArmed, true);
+  assert.equal(A.heldItem, 'slingshot');
+});
+test('slingshot: the stone flies opposite to the pull and a longer pull goes farther', () => {
+  const land = (pull: number) => {
+    const r = raceRig();
+    r.state.cars.A.heldItem = 'slingshot';
+    r.rules.onUseItem('A');
+    // fork at (900,540), pouch pulled straight down → the stone goes up
+    r.rules.onSlingshot(msg({ type: 'Slingshot' as const, anchor: { x: 900, y: 700 }, pouch: { x: 900, y: 700 + pull } }));
+    return r.state.stones[0].target;
+  };
+  const short = land(config.slingMinPullPx + 20), long = land(config.slingMaxPullPx);
+  assert.equal(Math.round(short.x), 900, 'straight line');
+  assert.ok(short.y < 700 && long.y < 700, 'opposite to the pull (up)');
+  assert.ok(long.y < short.y, 'longer pull = farther landing');
+  assert.ok(long.y >= 0 && long.y <= config.logicalHeight, 'kept inside the table');
+});
+test('slingshot: the landing point is clamped to the table', () => {
+  const r = raceRig();
+  r.state.cars.A.heldItem = 'slingshot';
+  r.rules.onUseItem('A');
+  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, anchor: { x: 300, y: 200 }, pouch: { x: 300, y: 200 + config.slingMaxPullPx } }));
+  const t = r.state.stones[0].target;
+  assert.ok(t.y >= 0 && t.x >= 0 && t.x <= config.logicalWidth);
 });
 test('T-07 longer boost gate → stronger boost', () => {
   const crossWith = (len: number) => {
@@ -676,7 +725,7 @@ test('boost gate rejects lengths outside 100–400 px and expires after 8 s', ()
 test('R-03 both teams armed → team of the nearest station wins the gesture', () => {
   const r = raceRig();
   for (const t of ['A', 'B'] as Team[]) { r.state.cars[t].heldItem = 'slingshot'; r.rules.onUseItem(t); }
-  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, x: 1600, y: 950 })); // near copilot A (bottom-right)
+  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, anchor: { x: 1600, y: 950 }, pouch: { x: 1600, y: 1050 } })); // fork near copilot A (bottom-right)
   assert.equal(r.state.stones[0].team, 'A');
 });
 
@@ -758,6 +807,69 @@ test('HP 0 → car stops and ignores the pilot', () => {
 });
 
 // ─── Border pull (C-07) ──────────────────────────────────────────────────────
+
+section('PC test switches');
+const toggle = (r: Rig, flag: 'invincible' | 'allItems', on: boolean) =>
+  r.rules.onTestToggle(msg({ type: 'TestToggle' as const, flag, on }));
+test('test switches are ignored outside the PC mode', () => {
+  const r = raceRig();
+  r.state.mapMode = 'table';
+  toggle(r, 'invincible', true);
+  toggle(r, 'allItems', true);
+  assert.deepEqual(r.state.testMode, { invincible: false, allItems: false });
+});
+test('invincible: no damage from walls, arcs or stones, and a fall just respawns the car', () => {
+  const r = raceRig();
+  r.state.mapMode = 'pc';
+  toggle(r, 'invincible', true);
+  const A = r.state.cars.A;
+  placeBlocking(r, [3]);
+  r.rules.afterMove('A', A.pos, r.clock.now);
+  assert.equal(A.hp, config.hpMax, 'wall');
+  // stone right on the car
+  r.state.cars.B.heldItem = 'slingshot';
+  r.rules.onUseItem('B');
+  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, ...aim({ ...A.pos }, 120) }));
+  r.advance(config.stoneTelegraphS * 1000 + 100);
+  assert.equal(A.hp, config.hpMax, 'stone');
+  assert.ok(A.stunUntil <= r.clock.now, 'no stun');
+  // leaving the ribbon
+  A.checkpointIndex = 3;
+  r.rules.fallOffTrack('A', r.clock.now);
+  assert.equal(A.disabled, false);
+  assert.equal(A.hp, config.hpMax);
+  const cp = r.state.track!.checkpoints[2];
+  assert.ok(Math.hypot(A.pos.x - cp.pos.x, A.pos.y - cp.pos.y) < 5, 'back on the last checkpoint');
+  // and switching it off restores the normal rules
+  toggle(r, 'invincible', false);
+  r.rules.damage(A, 10, r.clock.now);
+  assert.equal(A.hp, config.hpMax - 10);
+});
+test('allItems: every item is armed and usable without pickup, repeatedly, with no cooldown', () => {
+  const r = raceRig();
+  r.state.mapMode = 'pc';
+  toggle(r, 'allItems', true);
+  r.advance(50);
+  const A = r.state.cars.A;
+  assert.equal(A.itemArmed, true);
+  // a boost gate works although the stocked item is a "slingshot"
+  assert.equal(A.heldItem, 'slingshot');
+  const c = { x: A.pos.x + 60, y: A.pos.y };
+  r.rules.onBoostGate(msg({ type: 'BoostGate' as const, a: { x: c.x, y: c.y - 100 }, b: { x: c.x, y: c.y + 100 } }));
+  assert.equal(r.state.boostGates.length, 1);
+  r.advance(50);
+  assert.equal(A.itemArmed, true, 're-armed right after use');
+  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, anchor: { x: 900, y: 700 }, pouch: { x: 900, y: 800 } }));
+  assert.equal(r.state.stones.length, 1);
+  // abilities have no cooldown
+  r.rules.onAbility(msg({ type: 'Ability' as const, team: 'A' as Team, kind: 'ghost' as const }));
+  assert.equal(r.state.cooldowns.A.ghost, 0);
+  r.rules.onAbility(msg({ type: 'Ability' as const, team: 'A' as Team, kind: 'ghost' as const }));
+  assert.ok(A.ghostUntil > r.clock.now);
+  // switching off: nothing stays armed for free
+  toggle(r, 'allItems', false);
+  assert.equal(A.itemArmed, false);
+});
 
 section('Border pull');
 test('BorderPull shifts a local section, then reforms without changing its width', () => {

@@ -55,14 +55,27 @@ La console Oz simule les poteaux tangibles (clic sur la miniature) et propose de
 
 1. Le pilote roule sur un pickup (icône sur la piste) : l'objet apparaît dans le bouton rond de son panneau.
 2. Il touche **UTILISER** : l'objet est armé pendant 5 s (halo doré sur le panneau du copilote).
-3. Le copilote fait le geste dans ces 5 s : **3 doigts rapprochés** (≤ 150 px) = lance-pierre, **2 doigts écartés** de 100 à 400 px = portail de boost.
+3. Le copilote fait le geste dans ces 5 s :
+   - **Lance-pierre** : pose **3 doigts** rapprochés (≤ 150 px). Deux doigts forment la fourche ; **tire le troisième vers l'arrière** puis relâche. La pierre part à l'opposé de la traction et va d'autant plus loin que l'élastique est tendu (jauge en %, aperçu de la trajectoire et de la zone d'impact). Une traction trop courte annule le tir sans perdre l'objet.
+   - **Portail de boost** : **2 doigts écartés** de 100 à 400 px.
 
 ### Tester sur PC (sans multitouch)
 
 Avec une souris, la barre en bas de la table affiche deux boutons (ou `?sim=1` pour les forcer) :
 
-- **✋ Simuler 3 doigts** puis un clic sur la table : lance-pierre à cet endroit.
+- **🏹 Simuler lance-pierre** puis **clic maintenu sur la fourche, glisser en arrière, relâcher** : la pierre part à l'opposé du glissement (la fourche virtuelle est dessinée de part et d'autre du point de clic).
 - **✌ Simuler 2 doigts** puis deux clics (100–400 px d'écart) : portail de boost.
+
+En **Mode PC · séquentiel**, le bouton n'est pas nécessaire pour le lance-pierre : dès qu'il est armé, un simple clic maintenu + glissé + relâché sur la table tire.
+
+### Boutons de test (Mode PC uniquement)
+
+Dans **Mode PC · séquentiel**, une barre orange « TEST (PC) » apparaît au-dessus de la barre de simulation. Le serveur ignore ces commandes dans les autres modes.
+
+- **🛡 Véhicules invincibles** : les deux voitures ne subissent plus aucun effet (dégâts, étourdissement, ralentissement). Une sortie de piste remet simplement la voiture au dernier checkpoint, sans panne.
+- **🎁 Tous les objets utilisables** : les deux équipes ont en permanence un objet armé, utilisable pour les deux gestes (lance-pierre et portail de boost) sans ramasser de pickup et sans limite d'usage. Les recharges du fantôme, de la destruction de mur et de l'élargissement sont ignorées.
+
+Les deux boutons sont des interrupteurs (orange = actif) et sont remis à zéro à la fin de la partie.
 
 L'objet doit d'abord être armé (étape 2). Pour ne pas rouler jusqu'à un pickup, la console Oz (`/oz`) a les boutons **+ Lance-pierre** / **+ Boost** (équipe choisie en haut) qui placent l'objet dans le stock.
 

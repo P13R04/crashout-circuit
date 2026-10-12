@@ -12,7 +12,7 @@ Le script `scripts/acceptance.ts` exécute les règles serveur avec une horloge 
 | T-03 | mur adverse : −10 HP, puis 1 s d'invulnérabilité ; mur allié sans effet (R-09) |
 | T-04 | deux poteaux alliés ≤ 500 px → un arc (remplace les murs) ; −10 HP et vitesse ×0,5 pendant 1,5 s |
 | T-05 | objet armé non utilisé après 5 s → perdu |
-| T-06 | lance-pierre : impact 0,8 s après le geste, −25 HP + étourdissement, adversaire uniquement |
+| T-06 | lance-pierre : impact 0,8 s après le geste, −100 HP (hors d'usage) + étourdissement, adversaire uniquement |
 | T-07 | portail plus long → boost plus fort (k = clamp(L/400, 0,3, 1)) |
 | T-08 | fantôme 3 s sans effet des éléments adverses, puis recharge 20 s |
 | T-09 | réparation seulement si les deux pads sont tenus ; relâcher l'un remet la jauge à 0 |

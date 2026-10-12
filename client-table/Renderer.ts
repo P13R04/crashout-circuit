@@ -9,7 +9,7 @@
 import type { GameState, Car, Team, Vec2, TrackGeometry } from '../server/types.js';
 import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PANELS, PLAY_AREA } from '../server/layout.js';
 import { HUD, drawItemIcon } from './HUD.js';
-import { TEAM_COLOR, TEAM_NAME, type View } from './view.js';
+import { TEAM_COLOR, TEAM_NAME, type View, type SlingPreview } from './view.js';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -60,6 +60,7 @@ export class Renderer {
     this.drawStones(ctx, state, now);
     for (const t of ['A', 'B'] as Team[]) this.drawCar(ctx, state.cars[t], now);
     this.drawEffects(ctx, view);
+    this.drawSling(ctx, state, view.sling);
     this.hud.draw(ctx, state, view);
     this.drawDisabledAlerts(ctx, state);
     if (state.phase === 'READY') this.drawRaceReady(ctx);
@@ -367,6 +368,7 @@ export class Renderer {
       const left = Math.max(0, s.impactAt - now);
       const t = 1 - left / total; // 0 → 1
       const R = state.params.stoneRadiusPx;
+      this.drawProjectile(ctx, s.from, s.target, s.launchedAt, s.impactAt, now);
       ctx.save();
       ctx.translate(s.target.x, s.target.y);
       ctx.strokeStyle = '#ff2a2a';
@@ -387,6 +389,94 @@ export class Renderer {
       ctx.fillText('⚠ PIERRE', 0, -R - 14);
       ctx.restore();
     }
+  }
+
+  /** The stone in flight: a lit disc that rises and falls above its ground shadow. */
+  private drawProjectile(ctx: Ctx, from: Vec2, to: Vec2, launchedAt: number, impactAt: number, now: number): void {
+    const span = Math.max(1, impactAt - launchedAt);
+    const f = Math.max(0, Math.min(1, (now - launchedAt) / span));
+    const at = (k: number) => ({ x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k });
+    const lift = (k: number) => 22 * Math.sin(Math.PI * k);
+    const p = at(f), h = lift(f);
+    ctx.save();
+    // comet trail
+    const t0 = Math.max(0, f - 0.22);
+    const q = at(t0);
+    const grad = ctx.createLinearGradient(q.x, q.y - lift(t0), p.x, p.y - h);
+    grad.addColorStop(0, 'rgba(255,200,120,0)');
+    grad.addColorStop(1, 'rgba(255,200,120,0.85)');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(q.x, q.y - lift(t0)); ctx.lineTo(p.x, p.y - h); ctx.stroke();
+    // ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, 8, 4, 0, 0, Math.PI * 2); ctx.fill();
+    // the stone
+    ctx.fillStyle = '#ffebc5';
+    ctx.shadowColor = '#ffad62';
+    ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.arc(p.x, p.y - h, 7 + 3 * Math.sin(Math.PI * f), 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  /**
+   * Slingshot while it is being drawn: the elastic from the two fork fingers to the
+   * pulled pouch, the dotted flight line, the landing zone and the strength.
+   */
+  private drawSling(ctx: Ctx, state: GameState, sling: SlingPreview | null): void {
+    if (!sling) return;
+    const { anchors, pouch, shot, idle } = sling;
+    const prm = state.params;
+    const ready = !idle && shot.valid;
+    const power = Math.max(0, Math.min(1, (shot.pull - prm.slingMinPullPx) / Math.max(1, prm.slingMaxPullPx - prm.slingMinPullPx)));
+    const band = ready ? `hsl(${Math.round(55 - 55 * power)}, 100%, 62%)` : 'rgba(255,255,255,0.55)';
+    const fork = { x: (anchors[0].x + anchors[1].x) / 2, y: (anchors[0].y + anchors[1].y) / 2 };
+    const teamColor = sling.team ? TEAM_COLOR[sling.team] : '#ffffff';
+
+    ctx.save();
+    if (ready) {
+      // flight line through the fork and the landing zone
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([4, 12]);
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(fork.x, fork.y); ctx.lineTo(shot.target.x, shot.target.y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = '#ff2a2a';
+      ctx.fillStyle = 'rgba(255,42,42,0.12)';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(shot.target.x, shot.target.y, prm.stoneRadiusPx, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+    // elastic band: anchor 1 → pouch → anchor 2
+    ctx.strokeStyle = band;
+    ctx.shadowColor = band;
+    ctx.shadowBlur = ready ? 16 : 0;
+    ctx.lineWidth = 4 + 6 * power;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(anchors[0].x, anchors[0].y);
+    ctx.lineTo(pouch.x, pouch.y);
+    ctx.lineTo(anchors[1].x, anchors[1].y);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // fork fingers and pouch
+    ctx.fillStyle = teamColor;
+    for (const a of anchors) { ctx.beginPath(); ctx.arc(a.x, a.y, 15, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = ready ? '#ffebc5' : 'rgba(255,255,255,0.7)';
+    ctx.beginPath(); ctx.arc(pouch.x, pouch.y, 12, 0, Math.PI * 2); ctx.fill();
+    // strength read-out, upright for the team that holds the item
+    ctx.save();
+    ctx.translate(pouch.x, pouch.y);
+    ctx.rotate(sling.team ? rotationTowardsTeam(sling.team, fork) : 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    const label = idle ? 'tirez en arrière' : ready ? `${Math.round(power * 100)} %` : 'tirez plus';
+    ctx.fillText(label, 0, 36);
+    ctx.restore();
+    ctx.restore();
   }
 
   private drawCar(ctx: Ctx, car: Car, now: number): void {
@@ -488,6 +578,41 @@ export class Renderer {
         case 'ghost': {
           ctx.strokeStyle = '#b06cff'; ctx.lineWidth = 4;
           ctx.beginPath(); ctx.arc(0, 0, 14 + 60 * k, 0, Math.PI * 2); ctx.stroke();
+          break;
+        }
+        case 'stoneHit': {
+          // Comic burst above the car: pops with an overshoot, shakes, then fades
+          const pop = k < 0.12 ? (k / 0.12) * 1.3 : k < 0.25 ? 1.3 - ((k - 0.12) / 0.13) * 0.3 : 1;
+          ctx.globalAlpha = k < 0.75 ? 1 : (1 - k) / 0.25;
+          ctx.translate(Math.sin(t / 35) * (k < 0.4 ? 3 : 0), -52);
+          ctx.rotate(rotationTowardsTeam(e.team, { x: e.x, y: e.y }) + (e.tilt ?? 0));
+          ctx.scale(pop, pop);
+          const text = e.text ?? 'POW !';
+          ctx.font = 'bold 34px Impact, monospace';
+          const R = Math.max(62, ctx.measureText(text).width * 0.62);
+          ctx.beginPath();
+          for (let i = 0; i < 20; i++) {
+            const a = (i / 20) * Math.PI * 2;
+            const r = i % 2 === 0 ? R : R * 0.68;
+            const px = Math.cos(a) * r, py = Math.sin(a) * r * 0.72;
+            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          ctx.fillStyle = '#ffd400';
+          ctx.strokeStyle = '#ff2a2a';
+          ctx.lineWidth = 6;
+          ctx.shadowColor = '#ff8a00';
+          ctx.shadowBlur = 20;
+          ctx.fill();
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.lineWidth = 5;
+          ctx.strokeStyle = '#ffffff';
+          ctx.strokeText(text, 0, 2);
+          ctx.fillStyle = '#d4001a';
+          ctx.fillText(text, 0, 2);
           break;
         }
         case 'hit': {
