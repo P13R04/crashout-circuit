@@ -170,7 +170,7 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 | C-04 | Destruction de mur | **Indépendant** (recharge) | Bouton + toucher un mur adverse | P1 |
 | C-05 | Poteaux électriques | Objets **tangibles** (stock de 2 par équipe) | Pose sur la table (Magicien d'Oz) | P1 |
 | C-06 | Réparation synchrone | Véhicule hors d'usage | Un doigt de chaque joueur sur son pad | **P0** |
-| C-07 | Élargir la piste | Indépendant (recharge) | Tirer le bord de piste vers l'extérieur | P2 |
+| C-07 | Déformer localement la piste | Indépendant | Deux doigts proches tirent un même bord vers l'extérieur | P2 |
 
 ### 7.2 Objets ramassés en piste (pickups)
 
@@ -212,8 +212,9 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 - Si l'un lâche, la jauge retombe. À 100 %: HP restaurés à 60 [EST], la voiture repart du dernier checkpoint.
 - Obligation de collaborer: le Copilote doit **revenir à sa station** (R-02).
 
-**C-07 Élargir la piste (P2)**
-- Geste: un doigt posé sur un bord de piste, tiré vers l'extérieur sur 20 à 60 px [EST]. La largeur locale augmente, les colliders sont recalculés.
+**C-07 Déformation locale de piste (P2)**
+- Geste: deux doigts posés près d'un même bord (≤ 130 px), tirés ensemble vers l'extérieur sur au moins 20 px. La ligne centrale se translate localement : les deux bords suivent et forment une double chicane, sans augmenter la largeur ni créer de zone cumulable.
+- Une seule déformation est active à la fois. Un nouveau geste déclenche immédiatement la suivante pendant que la précédente se reforme progressivement; une marge de sécurité évite une chute injuste pendant ce retour.
 - Recharge 20 s [EST]. À activer seulement si le temps le permet.
 
 ### 7.4 Budget de points tactiles
