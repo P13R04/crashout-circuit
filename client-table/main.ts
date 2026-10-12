@@ -133,14 +133,27 @@ function handleMessage(msg: ServerMessage): void {
     case 'State': {
       const prev = view.state;
       view.state = sync.apply(msg.state, msg.t);
-      if (!prev) { view.hpShown.A = view.state.cars.A.hp; view.hpShown.B = view.state.cars.B.hp; }
+      if (!prev || (prev.phase !== 'LOBBY' && msg.state.phase === 'LOBBY')) {
+        view.hpShown.A = view.state.cars.A.hp;
+        view.hpShown.B = view.state.cars.B.hp;
+        view.strokes.clear();
+        view.effects.length = 0;
+        gestures.releaseAll();
+      }
       statusEl.textContent = `Phase: ${msg.state.phase}`;
       statusEl.style.display = view.debug.on ? 'block' : 'none';
       break;
     }
     case 'PhaseChange':
       view.effects.length = 0;
-      if (msg.phase === 'MAP') view.strokes.clear();
+      if (msg.phase === 'MAP' || msg.phase === 'LOBBY') {
+        view.strokes.clear();
+        if (msg.phase === 'LOBBY') {
+          gestures.releaseAll();
+          view.hpShown.A = 100;
+          view.hpShown.B = 100;
+        }
+      }
       break;
     case 'Feedback':
       view.effects.push({ kind: msg.kind, x: msg.x, y: msg.y, team: msg.team, start: performance.now(), dur: effectDuration(msg.kind) });

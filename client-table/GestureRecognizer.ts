@@ -14,7 +14,7 @@
  *   destroy    tap on Destroy, then touch a wall     → Ability(destroy, targetId)
  *   stroke     MAP phase drawing                     → StrokeDraw(creator, pts)
  *   free       3 fingers ≤150 px / 2 fingers 100–400 → Slingshot / BoostGate
- *              one finger pulled off a track edge    → BorderPull
+ *              2 close fingers pulled from one edge  → BorderPull
  *
  * Team attribution (R-03): pad/button → station's team; free gesture → the team
  * whose Pilot armed the matching item; both armed → nearest station to the gesture.
@@ -28,6 +28,7 @@ import {
 } from '../server/layout.js';
 import { distToSegment, nearestOnTrack } from '../server/geometry.js';
 import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON } from './Renderer.js';
+import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON } from './Renderer.js';
 import type { View } from './view.js';
 
 export const MAX_CONTACTS = 10;
@@ -37,7 +38,9 @@ const BOOST_MIN_PX = 100;
 const BOOST_MAX_PX = 400;
 const EDGE_GRAB_PX = 20;
 const PULL_MIN_PX = 20;
-const PULL_MAX_PX = 60;
+const PULL_MAX_PX = 105;
+const PULL_PAIR_MAX_PX = 130;
+const PULL_EDGE_INDEX_GAP = 8;
 const TARGET_RADIUS_PX = 40;
 const TARGETING_MS = 3000;
 const PALM_MAX_PX = 140;        // contacts wider than this (logical px) are palms/arms
@@ -55,6 +58,7 @@ interface Contact {
   steer?: number;
   strokeTeam?: Team;
   outward?: Vec2; // border candidate: unit vector away from the centerline
+  edgeIndex?: number;
 }
 
 type Send = (msg: { type: string } & Record<string, unknown>) => void;
@@ -147,9 +151,18 @@ export class GestureRecognizer {
     this.contacts.set(c.id, c);
     this.view.debug.contacts = this.contacts.size;
 
+    const hit = (b: { x: number; y: number; w: number; h: number }) =>
+      p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+
+    // Reset button: accessible in all phases (returns state to launch)
+    if (hit(RESET_BUTTON)) {
+      c.zone = 'result';
+      this.send({ type: 'Reset' });
+      return;
+    }
+
     // 0 — lobby: start button
     if (state.phase === 'LOBBY') {
-      const hit = (b: { x: number; y: number; w: number; h: number }) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
       if (hit(START_TABLE_BUTTON) || hit(START_PC_BUTTON)) {
         c.zone = 'result';
         this.send({ type: 'StartGame', mode: hit(START_PC_BUTTON) ? 'pc' : 'table' });
@@ -295,6 +308,7 @@ export class GestureRecognizer {
       const hit = nearestOnTrack(p, state.track);
       if (Math.abs(hit.distance - hit.halfWidth) < EDGE_GRAB_PX && hit.distance > 1e-6) {
         c.outward = { x: (p.x - hit.closest.x) / hit.distance, y: (p.y - hit.closest.y) / hit.distance };
+        c.edgeIndex = hit.index;
       }
     }
     this.scheduleEvaluation();
@@ -314,7 +328,7 @@ export class GestureRecognizer {
       const last = s?.pts[s.pts.length - 1];
       if (s && last && Math.hypot(p.x - last.x, p.y - last.y) >= 2) s.pts.push(p);
     } else if (c.zone === 'free' && c.outward && !c.consumed) {
-      this.tryBorderPull(c);
+      this.tryBorderPullPair();
     }
   }
 
@@ -466,7 +480,7 @@ export class GestureRecognizer {
           free.forEach(c => { c.consumed = true; });
         }
       }
-    } else if (free.length === 2) {
+    } else if (free.length === 2 && !free.some(c => c.outward)) {
       const d = Math.hypot(free[0].x - free[1].x, free[0].y - free[1].y);
       if (d >= BOOST_MIN_PX && d <= BOOST_MAX_PX) {
         const mid = { x: (free[0].x + free[1].x) / 2, y: (free[0].y + free[1].y) / 2 };
@@ -484,21 +498,32 @@ export class GestureRecognizer {
     }
   }
 
-  private tryBorderPull(c: Contact): void {
+  /** Two nearby fingers must start on the same edge and move out together. */
+  private tryBorderPullPair(): void {
     const state = this.state;
-    if (!state || state.phase !== 'RACE' || !c.outward) return;
-    // A finger that is part of a 2/3-finger gesture is not a border pull
-    const others = [...this.contacts.values()].filter(o => o.zone === 'free' && o.id !== c.id);
-    if (others.length > 0) return;
-    const dx = c.x - c.sx, dy = c.y - c.sy;
-    const outward = dx * c.outward.x + dy * c.outward.y;
-    if (outward < PULL_MIN_PX) return;
+    if (!state || state.phase !== 'RACE') return;
+    const candidates = [...this.contacts.values()]
+      .filter(c => c.zone === 'free' && !c.consumed && c.outward && c.edgeIndex !== undefined);
+    if (candidates.length !== 2) return;
+    const [a, b] = candidates;
+    if (Math.hypot(a.sx - b.sx, a.sy - b.sy) > PULL_PAIR_MAX_PX) return;
+    const n = state.track?.centerline.length ?? 0;
+    if (n === 0) return;
+    const rawGap = Math.abs(a.edgeIndex! - b.edgeIndex!);
+    if (Math.min(rawGap, n - rawGap) > PULL_EDGE_INDEX_GAP) return;
+    const outward = { x: (a.outward!.x + b.outward!.x) / 2, y: (a.outward!.y + b.outward!.y) / 2 };
+    const outLen = Math.hypot(outward.x, outward.y);
+    if (outLen < 0.8) return;
+    outward.x /= outLen; outward.y /= outLen;
+    const dx = ((a.x - a.sx) + (b.x - b.sx)) / 2;
+    const dy = ((a.y - a.sy) + (b.y - b.sy)) / 2;
+    if (dx * outward.x + dy * outward.y < PULL_MIN_PX) return;
     const mag = Math.hypot(dx, dy);
     const k = Math.min(1, PULL_MAX_PX / mag);
-    const team = nearestStationTeam({ x: c.sx, y: c.sy });
-    if (this.view.now() < state.cooldowns[team].borderPull) return;
-    this.send({ type: 'BorderPull', x: c.sx, y: c.sy, dx: dx * k, dy: dy * k, team });
-    c.consumed = true;
+    const start = { x: (a.sx + b.sx) / 2, y: (a.sy + b.sy) / 2 };
+    const team = nearestStationTeam(start);
+    this.send({ type: 'BorderPull', x: start.x, y: start.y, dx: dx * k, dy: dy * k, team });
+    candidates.forEach(c => { c.consumed = true; });
   }
 
   private findHostileWall(state: GameState, team: Team, p: Vec2): string | null {

@@ -56,6 +56,7 @@ export class PhysicsLoop {
     if (s.phase === 'RACE' && s.track) {
       this.rules.expire(now);
       this.rules.expirePilotInputs(now);
+      this.rules.updateTrackDeformations(now);
       if (now >= s.sessionStartAt) {
         for (const team of TEAMS) {
           const car = s.cars[team];
@@ -113,7 +114,8 @@ export class PhysicsLoop {
     if (!track || car.disabled) return;
     const hit = nearestOnTrack(car.pos, track);
     const limit = hit.halfWidth - CAR_RADIUS;
-    if (hit.distance <= limit) return;
+    const reformGrace = this.rules.isTrackReforming() ? config.trackDeformSafetyPx : 0;
+    if (hit.distance <= limit + reformGrace) return;
 
     this.rules.fallOffTrack(team, now);
   }

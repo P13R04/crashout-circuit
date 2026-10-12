@@ -143,8 +143,13 @@ export class GameServer {
       case 'BorderPull':
         if (fromTable) this.rules.onBorderPull(msg);
         break;
+      case 'Reset':
+        if (fromTable || fromOz) {
+          this.rules.resetToLobby();
+        }
+        break;
       case 'NewGame':
-        if (fromTable && this.state.phase === 'RESULT') {
+        if (fromTable || fromOz) {
           this.rules.resetToLobby();
         }
         break;
@@ -176,12 +181,12 @@ export class GameServer {
     } satisfies PhaseChangeMsg);
   }
 
-  /** 30 Hz tick: the heavy field (the track) are omitted; clients keep the last copy. */
+  /** 30 Hz tick omits the heavy track, except while it is visibly reforming. */
   private broadcastTick(): void {
     this.broadcast({
       type: 'State',
       t: Date.now(),
-      state: { ...this.state, track: null },
+      state: { ...this.state, track: this.state.deformations.length ? this.state.track : null },
     } satisfies StateMsg);
   }
 

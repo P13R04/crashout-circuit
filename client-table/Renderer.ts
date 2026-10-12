@@ -25,6 +25,8 @@ export const PAUSE_BUTTON = { x: LOGICAL_W / 2 - 58, y: 14, w: 116, h: 38 };
 export const DRIVE_MODE_BUTTON = { x: LOGICAL_W / 2 - 120, y: 58, w: 240, h: 38 };
 export const MAP_GENERATE_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 export const RACE_START_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
+/** Reset button located in the vertical middle on the far right edge of the screen. */
+export const RESET_BUTTON = { x: LOGICAL_W - 134, y: LOGICAL_H / 2 - 32, w: 118, h: 64 };
 
 function wallEnds(pos: Vec2, angleDeg: number, len: number): [Vec2, Vec2] {
   const a = (angleDeg * Math.PI) / 180;
@@ -45,12 +47,12 @@ export class Renderer {
     if (!state) return;
     const ctx = this.ctx;
 
-    if (state.phase === 'LOBBY') { this.drawLobby(ctx); return; }
-    if (state.phase === 'MAP') { this.drawMap(ctx, state, view); return; }
+    if (state.phase === 'LOBBY') { this.drawLobby(ctx); this.drawResetButton(ctx); return; }
+    if (state.phase === 'MAP') { this.drawMap(ctx, state, view); this.drawResetButton(ctx); return; }
     if (state.phase !== 'READY' && state.phase !== 'RACE' && state.phase !== 'PAUSED' && state.phase !== 'RESULT') return;
     const now = view.now();
 
-    if (state.track) this.drawTrack(ctx, state.track, state.trackVersion);
+    if (state.track) this.drawTrack(ctx, state.track, state.trackVersion, state.deformations.length > 0);
     this.drawPickups(ctx, state, now);
     this.drawGates(ctx, state, now);
     this.drawWalls(ctx, state, now);
@@ -64,6 +66,34 @@ export class Renderer {
     if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); this.drawDriveModeButton(ctx, state); }
     if (state.phase === 'PAUSED') { this.drawPauseButton(ctx, 'REPRENDRE'); this.drawPaused(ctx); }
     if (state.phase === 'RESULT') this.drawResult(ctx, state);
+    this.drawResetButton(ctx);
+  }
+
+  private drawResetButton(ctx: Ctx): void {
+    const b = RESET_BUTTON;
+    ctx.save();
+    // Glowing neon red/coral badge on the right edge
+    ctx.fillStyle = 'rgba(255, 36, 72, 0.18)';
+    ctx.strokeStyle = '#ff3366';
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = '#ff3366';
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.roundRect(b.x, b.y, b.w, b.h, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('RESET', b.x + b.w / 2, b.y + b.h / 2 - 9);
+
+    ctx.fillStyle = 'rgba(255, 205, 220, 0.78)';
+    ctx.font = '11px monospace';
+    ctx.fillText('\u21ba ACCUEIL', b.x + b.w / 2, b.y + b.h / 2 + 13);
+    ctx.restore();
   }
 
   // ─── Lobby ────────────────────────────────────────────────────────────────
@@ -103,7 +133,10 @@ export class Renderer {
 
   // ─── Track ────────────────────────────────────────────────────────────────
 
-  private drawTrack(ctx: Ctx, track: TrackGeometry, version: number): void {
+  private drawTrack(ctx: Ctx, track: TrackGeometry, version: number, dynamic = false): void {
+    // During a pull the geometry changes every frame. Painting directly avoids
+    // allocating a full-screen cached canvas at the simulation rate.
+    if (dynamic) { this.paintTrack(ctx, track); return; }
     const canvas = ctx.canvas;
     const key = `${version}:${canvas.width}x${canvas.height}`;
     if (!this.trackLayer || this.trackLayerKey !== key) {

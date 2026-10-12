@@ -315,7 +315,8 @@ function catmullRom(pts: Vec2[]): Vec2[] {
 
 // ─── Step 8: computeGeometry ─────────────────────────────────────────────────
 
-type BaseGeometry = Omit<TrackGeometry, 'checkpoints' | 'startLine' | 'startPositions' | 'pickupPositions'>;
+type BaseGeometry = Omit<TrackGeometry,
+  'baseCenterline' | 'checkpoints' | 'startLine' | 'startPositions' | 'pickupPositions' | 'featureIndices'>;
 
 /**
  * Edges from a centerline and per-point widths. The loop is oriented so that the
@@ -424,9 +425,11 @@ function placeFeatures(geo: BaseGeometry, randomStart = true): TrackGeometry {
   const startIdx = (randomStart ? safePool[Math.floor(Math.random() * safePool.length)] : safePool[0]).idx;
 
   const checkpoints: Array<{ pos: Vec2; normal: Vec2 }> = [];
+  const checkpointIndices: number[] = [];
   for (let c = 0; c < CHECKPOINT_COUNT; c++) {
     const idx = (startIdx + Math.round((c / CHECKPOINT_COUNT) * n)) % n;
     checkpoints.push({ pos: centerline[idx], normal: perpendicular(tangentAt(centerline, idx)) });
+    checkpointIndices.push(idx);
   }
 
   const startNormal = perpendicular(tangentAt(centerline, startIdx));
@@ -442,15 +445,22 @@ function placeFeatures(geo: BaseGeometry, randomStart = true): TrackGeometry {
 
   // 4 pickup spots, halfway between checkpoint pairs
   const pickupPositions: Vec2[] = [];
+  const pickupIndices: number[] = [];
   for (let p = 0; p < PICKUP_COUNT; p++) {
     const idx = (startIdx + Math.round(((p + 0.5) / PICKUP_COUNT) * n)) % n;
     const normal = perpendicular(tangentAt(centerline, idx));
     const halfW = (widths[idx] ?? config.trackWidthBasePx) / 2;
     const lateral = halfW * 0.3 * (p % 2 === 0 ? 1 : -1);
     pickupPositions.push(add(centerline[idx], scale(normal, lateral)));
+    pickupIndices.push(idx);
   }
 
-  return { ...geo, checkpoints, startLine, startPositions, pickupPositions };
+  return {
+    ...geo,
+    baseCenterline: centerline.map(p => ({ ...p })),
+    checkpoints, startLine, startPositions, pickupPositions,
+    featureIndices: { checkpoints: checkpointIndices, start: startIdx, starts: [behind, behind], pickups: pickupIndices },
+  };
 }
 
 // ─── Step 10: validateGeometry ───────────────────────────────────────────────
