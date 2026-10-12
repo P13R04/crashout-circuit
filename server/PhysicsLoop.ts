@@ -81,8 +81,8 @@ export class PhysicsLoop {
       car.velocity = { x: 0, y: 0 };
       return;
     }
-    // Remote-control feel: a healthy car drives forward continuously.
-    const throttle = stunned ? 0 : 1;
+    // Auto mode drives continuously; pedal mode accelerates only while held.
+    const throttle = stunned ? 0 : this.state.driveMode === 'pedal' ? input.throttle : 1;
     const steer = stunned ? 0 : input.steer;
 
     const boost = now < car.boostUntil ? 1 + config.boostGain * car.boostK : 1;
@@ -90,7 +90,7 @@ export class PhysicsLoop {
     const maxFwd = config.vMaxFwd * boost * slow;
 
     const target = throttle * maxFwd;
-    const rate = config.accel;
+    const rate = throttle < car.speed / Math.max(maxFwd, 1) ? config.coastDecel : config.accel;
     const diff = target - car.speed;
     const stepV = rate * dt;
     car.speed += Math.abs(diff) <= stepV ? diff : Math.sign(diff) * stepV;

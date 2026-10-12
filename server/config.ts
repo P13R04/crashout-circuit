@@ -37,6 +37,7 @@ const defaults = {
   trackWidthMinPx: 90,
   vMaxFwd: 420,
   accel: 600,
+  coastDecel: 260,
   turnRate: 2.5,
   steerGain: 1.12,
   pilotInputTimeoutMs: 250,

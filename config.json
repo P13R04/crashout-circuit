@@ -30,6 +30,7 @@
   "trackWidthMinPx": 90,
   "vMaxFwd": 260,
   "accel": 320,
+  "coastDecel": 260,
   "turnRate": 2.8,
   "steerGain": 1.12,
   "pilotInputTimeoutMs": 250,

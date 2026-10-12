@@ -25,6 +25,8 @@ export interface View {
   effects: Effect[];
   /** Immediate touch feedback for the repair pads, before the server echoes it. */
   localPads: Record<string, boolean>;
+  /** Immediate feedback for the pilot acceleration pedals. */
+  localPedals: Record<Team, boolean>;
   /** Destroy-wall targeting mode, deadline in local Date.now() ms. */
   targeting: { team: Team; until: number } | null;
   strokes: Map<number, LocalStroke>;
@@ -46,6 +48,7 @@ export function createView(now: () => number): View {
     now,
     effects: [],
     localPads: {},
+    localPedals: { A: false, B: false },
     targeting: null,
     strokes: new Map(),
     sticks: { A: { x: 0, y: 0, active: false }, B: { x: 0, y: 0, active: false } },

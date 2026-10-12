@@ -72,14 +72,17 @@ function sendSteer(team: 'A' | 'B'): void {
   const steer = team === 'A'
     ? (down.has('q') ? -1 : down.has('d') ? 1 : 0)
     : (down.has('ArrowLeft') ? -1 : down.has('ArrowRight') ? 1 : 0);
-  conn.send({ type: 'PilotInput', team, throttle: 1, steer });
+  const throttle = view.state?.driveMode === 'pedal'
+    ? (team === 'A' ? Number(down.has('z')) : Number(down.has('ArrowUp')))
+    : 1;
+  conn.send({ type: 'PilotInput', team, throttle, steer });
 }
 // Match the touch-control heartbeat while a steering key is held. Do not emit
 // neutral keyboard frames otherwise: table and desktop controls share the same
 // protocol and must not overwrite one another.
 window.setInterval(() => {
-  if (down.has('q') || down.has('d')) sendSteer('A');
-  if (down.has('ArrowLeft') || down.has('ArrowRight')) sendSteer('B');
+  if (down.has('q') || down.has('d') || down.has('z')) sendSteer('A');
+  if (down.has('ArrowLeft') || down.has('ArrowRight') || down.has('ArrowUp')) sendSteer('B');
 }, 100);
 function updateKeyboardRepair(team: 'A' | 'B'): void {
   const active = team === 'A' ? down.has('a') && down.has('p') : down.has('m') && down.has('c');
@@ -95,6 +98,8 @@ window.addEventListener('keydown', (e) => {
   down.add(key);
   if (key === 'q' || key === 'd') sendSteer('A');
   if (key === 'ArrowLeft' || key === 'ArrowRight') { e.preventDefault(); sendSteer('B'); }
+  if (key === 'z') sendSteer('A');
+  if (key === 'ArrowUp') { e.preventDefault(); sendSteer('B'); }
   if (key === 'Escape' || key === ' ') { e.preventDefault(); conn.send({ type: 'Pause' }); }
   if (key === 'a' || key === 'p') updateKeyboardRepair('A');
   if (key === 'm' || key === 'c') updateKeyboardRepair('B');
@@ -113,6 +118,8 @@ window.addEventListener('keyup', (e) => {
   down.delete(key);
   if (key === 'q' || key === 'd') sendSteer('A');
   if (key === 'ArrowLeft' || key === 'ArrowRight') { e.preventDefault(); sendSteer('B'); }
+  if (key === 'z') sendSteer('A');
+  if (key === 'ArrowUp') { e.preventDefault(); sendSteer('B'); }
   if (key === 'a' || key === 'p') updateKeyboardRepair('A');
   if (key === 'm' || key === 'c') updateKeyboardRepair('B');
 });
