@@ -27,8 +27,7 @@ import {
   insidePanel, nearestStationTeam, type Role,
 } from '../server/layout.js';
 import { distToSegment, nearestOnTrack } from '../server/geometry.js';
-import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON } from './Renderer.js';
-import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON } from './Renderer.js';
+import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
 import type { View } from './view.js';
 
 export const MAX_CONTACTS = 10;
