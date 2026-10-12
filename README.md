@@ -43,9 +43,9 @@ En dev, ouvrir la table sur `http://localhost:5173/client-table/`, Oz sur `/clie
 ## Déroulement d'une partie
 
 1. **LOBBY** : choisir **Jouer sur table** (deux contacts simultanés) ou **Mode PC · séquentiel** (clics et demi-tracés successifs).
-2. **MAP** : deux contacts communs définissent une ligne qui partage la table. Chaque copilote part de son point, dessine sa moitié sans traverser la ligne, et rejoint le point opposé. Une fois les deux traits acceptés, les joueurs touchent **GÉNÉRER LE CIRCUIT**. Il n'y a pas de passage automatique.
-3. **PRÊT** : le circuit généré est affiché et les joueurs touchent **LANCER LA COURSE** lorsqu'ils sont en place.
-4. **RACE** : compte à rebours, 3 tours ou 5 minutes. La voiture avance continuellement à une vitesse volontairement modérée ; le pilote pose et fait glisser son doigt sur la bande de direction de son panneau, puis touche **UTILISER** pour armer l'objet ramassé. Quitter le ruban de piste est une chute : la voiture est hors d'usage jusqu'à la réparation synchronisée.
+2. **MAP** : deux contacts communs, posés ensemble et espacés d'au moins 360 px dans la zone de jeu, définissent une ligne qui partage la table (un contact isolé est abandonné après 4 s ; une ligne refusée affiche pourquoi). Chaque copilote part de son point, dessine sa moitié sans traverser la ligne, et rejoint le point opposé. Une fois les deux traits acceptés, les joueurs touchent **GÉNÉRER LE CIRCUIT**. Il n'y a pas de passage automatique.
+3. **PRÊT** : le circuit généré est affiché (un message prévient si le circuit prédéfini a remplacé le dessin) et les joueurs touchent **LANCER LA COURSE** lorsqu'ils sont en place.
+4. **RACE** : compte à rebours, 3 tours ou 5 minutes. La voiture avance continuellement à une vitesse volontairement modérée ; le pilote maintient gauche ou droite sur son panneau et touche **UTILISER** pour armer l'objet ramassé. Quitter le ruban de piste est une chute : la voiture est hors d'usage jusqu'à la réparation synchronisée.
 5. **PAUSE** : le bouton central, Échap ou Espace fige la course et ses compteurs.
 6. **RESULT** : classement, bouton « Nouvelle partie ».
 

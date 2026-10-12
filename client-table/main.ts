@@ -1,6 +1,6 @@
 import type { ServerMessage } from '../server/types.js';
 import { StateSync, connectWs } from '../client-shared/net.js';
-import { createView } from './view.js';
+import { createView, showDividerRefusal } from './view.js';
 import { Renderer } from './Renderer.js';
 import { GestureRecognizer } from './GestureRecognizer.js';
 import { playFeedback, unlock } from './Sound.js';
@@ -150,6 +150,10 @@ function handleMessage(msg: ServerMessage): void {
       break;
     case 'Feedback':
       view.effects.push({ kind: msg.kind, x: msg.x, y: msg.y, team: msg.team, start: performance.now(), dur: effectDuration(msg.kind) });
+      if (msg.kind === 'dividerTooShort' || msg.kind === 'dividerOutOfZone') {
+        view.pendingDivider = [];
+        showDividerRefusal(view, msg.kind === 'dividerTooShort' ? 'tooShort' : 'outOfZone');
+      }
       if (msg.kind === 'mapError') {
         view.mapErrorAt[msg.team] = performance.now();
         for (const s of view.strokes.values()) if (s.team === msg.team) s.rejectedAt = performance.now();

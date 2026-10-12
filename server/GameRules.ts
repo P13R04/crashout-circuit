@@ -15,7 +15,7 @@ import type {
 import { config } from './config.js';
 import { dist, distToSegment, nearestOnTrack, segmentsIntersect, wrapAngle } from './geometry.js';
 import { generate, generatePreset, validateStroke, rebuildEdges } from './MapGenerator.js';
-import { nearestStationTeam, LOGICAL_W } from './layout.js';
+import { nearestStationTeam, LOGICAL_W, checkDivider } from './layout.js';
 
 export const CAR_RADIUS = 10;
 export const WALL_HALF_THICKNESS = 4;
@@ -191,8 +191,13 @@ export class GameRules {
     if (s.phase !== 'MAP' || s.mapDivider || this.generating) return;
     const a = msg.a, b = msg.b;
     if (![a?.x, a?.y, b?.x, b?.y].every(Number.isFinite)) return;
-    // Keep points on-screen with comfortable edge margin, minimum 120px separation
-    if (dist(a, b) < 120 || [a, b].some(p => p.x < 40 || p.x > 1880 || p.y < 40 || p.y > 1040)) return;
+    // Same rule as the table's immediate check (layout.checkDivider): too short, or
+    // outside the free area of the table. The refusal is shown, never silent.
+    const verdict = checkDivider(a, b);
+    if (verdict !== 'ok') {
+      this.host.feedback(verdict === 'tooShort' ? 'dividerTooShort' : 'dividerOutOfZone', a.x, a.y, 'A');
+      return;
+    }
     s.mapDivider = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
     s.mapTargets = { A: [s.mapDivider[0], s.mapDivider[1]], B: [s.mapDivider[1], s.mapDivider[0]] };
     this.host.broadcastFull();
@@ -233,20 +238,17 @@ export class GameRules {
     void this.buildTrack();
   }
 
-  /** Signed distance in pixels to the divider: A is on its left, B on its right. */
+  /**
+   * A half-stroke belongs to its own side of the divider, but it may loop over it or
+   * cross it (a figure of eight is a legitimate circuit): it is refused only when most
+   * of it was drawn on the opponent's side.
+   */
   private staysInHalf(team: Team, pts: Vec2[], divider: [Vec2, Vec2]): boolean {
     const [a, b] = divider;
     const dx = b.x - a.x, dy = b.y - a.y;
     const len = Math.hypot(dx, dy) || 1;
-    // Calculate actual Euclidean pixel distance rather than unnormalized cross product.
-    // Near endpoints (within 160 px), grant generous 100 px tolerance; 65 px elsewhere.
-    return pts.every(p => {
-      const dToA = dist(p, a);
-      const dToB = dist(p, b);
-      const tolerance = (dToA < 160 || dToB < 160) ? 100 : 65;
-      const signedDist = (this.mapSide[team] * (dx * (p.y - a.y) - dy * (p.x - a.x))) / len;
-      return signedDist >= -tolerance;
-    });
+    const own = pts.filter(p => (this.mapSide[team] * (dx * (p.y - a.y) - dy * (p.x - a.x))) / len >= 0).length;
+    return own >= 0.4 * pts.length;
   }
 
   tickMap(now: number): void {

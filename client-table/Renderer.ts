@@ -7,7 +7,7 @@
  * applied per colour group (one path, one blur) instead of per segment.
  */
 import type { GameState, Car, Team, Vec2, TrackGeometry } from '../server/types.js';
-import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PANELS } from '../server/layout.js';
+import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PANELS, PLAY_AREA } from '../server/layout.js';
 import { HUD, drawItemIcon } from './HUD.js';
 import { TEAM_COLOR, TEAM_NAME, type View } from './view.js';
 
@@ -61,7 +61,7 @@ export class Renderer {
     this.drawEffects(ctx, view);
     this.hud.draw(ctx, state, view);
     this.drawDisabledAlerts(ctx, state);
-    if (state.phase === 'READY') this.drawRaceReady(ctx);
+    if (state.phase === 'READY') this.drawRaceReady(ctx, state);
     if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); }
     if (state.phase === 'PAUSED') { this.drawPauseButton(ctx, 'REPRENDRE'); this.drawPaused(ctx); }
     if (state.phase === 'RESULT') this.drawResult(ctx, state);
@@ -161,23 +161,52 @@ export class Renderer {
       for (let i = 1; i < list.length; i++) ctx.lineTo(list[i].x, list[i].y);
       ctx.closePath();
     };
+    const c = track.centerline;
+    const n = c.length;
 
-    // Dark surface between the two edges
-    ctx.beginPath();
-    path(track.outerEdge);
-    path(track.innerEdge, true);
-    ctx.fillStyle = '#0c1233';
-    ctx.fill('evenodd');
-
-    // Neon walls: one blurred path per colour
-    ctx.lineWidth = 5;
+    // Dark surface: the band of local half-width around the centerline (exactly what the
+    // physics counts as "on the track"), so that a track crossing itself is one surface
+    ctx.strokeStyle = '#0c1233';
+    ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      ctx.lineWidth = (track.widths[i] + track.widths[j]) / 2;
+      ctx.beginPath();
+      ctx.moveTo(c[i].x, c[i].y);
+      ctx.lineTo(c[j].x, c[j].y);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+
+    // Neon walls: one blurred path per colour. Where another part of the track runs
+    // over a wall (a crossing), the wall is left out so the junction stays open.
+    const cum: number[] = [0];
+    for (let i = 1; i <= n; i++) cum.push(cum[i - 1] + Math.hypot(c[i % n].x - c[i - 1].x, c[i % n].y - c[i - 1].y));
+    const covered = (pt: Vec2, k: number): boolean => {
+      for (let m = 0; m < n; m++) {
+        const g = Math.abs(cum[m] - cum[k]);
+        if (Math.min(g, cum[n] - g) < 200) continue;
+        if (Math.hypot(pt.x - c[m].x, pt.y - c[m].y) < track.widths[m] / 2 - 1) return true;
+      }
+      return false;
+    };
+    ctx.lineWidth = 5;
     for (const [pts, color] of [[track.outerEdge, OUTER_COLOR], [track.innerEdge, INNER_COLOR]] as const) {
+      const hidden = pts.map((pt, k) => covered(pt, k));
       ctx.shadowColor = color;
       ctx.shadowBlur = 22;
       ctx.strokeStyle = color;
       ctx.beginPath();
-      path(pts);
+      if (!hidden.some(Boolean)) path(pts);
+      else {
+        for (let k = 0; k < n; k++) {
+          const k2 = (k + 1) % n;
+          if (hidden[k] || hidden[k2]) continue;
+          ctx.moveTo(pts[k].x, pts[k].y);
+          ctx.lineTo(pts[k2].x, pts[k2].y);
+        }
+      }
       ctx.stroke();
     }
     ctx.shadowBlur = 0;
@@ -523,14 +552,30 @@ export class Renderer {
     ctx.fillText(label, b.x + b.w / 2, b.y + 24); ctx.restore();
   }
 
-  private drawRaceReady(ctx: Ctx): void {
+  private drawRaceReady(ctx: Ctx, state: GameState): void {
     const b = RACE_START_BUTTON;
     ctx.save();
     ctx.fillStyle = 'rgba(4,8,31,0.56)'; ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
     ctx.fillStyle = 'rgba(255,64,129,0.18)'; ctx.strokeStyle = '#ff4081'; ctx.lineWidth = 4;
     ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 16); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.font = 'bold 31px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('LANCER LA COURSE', b.x + b.w / 2, b.y + 55); ctx.restore();
+    ctx.fillText('LANCER LA COURSE', b.x + b.w / 2, b.y + 55);
+    // The drawing could not be used: say so before the race, once for each side of the table
+    if (state.track?.preset) {
+      for (const rot of [0, Math.PI]) {
+        ctx.save();
+        ctx.translate(LOGICAL_W / 2, LOGICAL_H / 2);
+        ctx.rotate(rot);
+        ctx.fillStyle = '#ffb300'; ctx.shadowColor = '#ffb300'; ctx.shadowBlur = 12;
+        ctx.font = 'bold 26px monospace';
+        ctx.fillText('CIRCUIT PRÉDÉFINI UTILISÉ', 0, -b.h / 2 - 62);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.font = '19px monospace';
+        ctx.fillText('Vos deux tracés n’ont pas pu former un circuit valide.', 0, -b.h / 2 - 32);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
   }
 
   private drawPaused(ctx: Ctx): void {
@@ -590,6 +635,11 @@ export class Renderer {
     if (!targets) {
       ctx.save();
       ctx.textAlign = 'center';
+
+      // Where the anchor points may be placed (anything else is refused with a message)
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 2; ctx.setLineDash([12, 10]);
+      ctx.strokeRect(PLAY_AREA.x0, PLAY_AREA.y0, PLAY_AREA.x1 - PLAY_AREA.x0, PLAY_AREA.y1 - PLAY_AREA.y0);
+      ctx.setLineDash([]);
 
       // Title
       ctx.fillStyle = '#ffffff'; ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 22;
