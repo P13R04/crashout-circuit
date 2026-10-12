@@ -63,8 +63,8 @@ gestures.onSimChange = (hint) => {
 
 window.addEventListener('pointerdown', unlock, { once: true });
 // Desktop local multiplayer adapter. It mirrors the table controls without
-// leaking keyboard rules into the game engine: Q/D and ←/→ only steer;
-// cars keep moving. A+P and M+C hold the two repair pads together.
+// leaking keyboard rules into the game engine: Q/D and ←/→ are the two
+// extremes of the same continuous steering input; cars keep moving.
 const down = new Set<string>();
 const repairHeld: Record<'A' | 'B', boolean> = { A: false, B: false };
 const keyName = (e: KeyboardEvent) => e.key.length === 1 ? e.key.toLowerCase() : e.key;
@@ -74,6 +74,13 @@ function sendSteer(team: 'A' | 'B'): void {
     : (down.has('ArrowLeft') ? -1 : down.has('ArrowRight') ? 1 : 0);
   conn.send({ type: 'PilotInput', team, throttle: 1, steer });
 }
+// Match the touch-control heartbeat while a steering key is held. Do not emit
+// neutral keyboard frames otherwise: table and desktop controls share the same
+// protocol and must not overwrite one another.
+window.setInterval(() => {
+  if (down.has('q') || down.has('d')) sendSteer('A');
+  if (down.has('ArrowLeft') || down.has('ArrowRight')) sendSteer('B');
+}, 100);
 function updateKeyboardRepair(team: 'A' | 'B'): void {
   const active = team === 'A' ? down.has('a') && down.has('p') : down.has('m') && down.has('c');
   if (active === repairHeld[team]) return;

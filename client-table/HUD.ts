@@ -1,11 +1,11 @@
 /**
  * HUD — the four corner panels (REQ-6.2), each rotated towards its own table edge.
- * Pilot panel: HP bar, RC left/right pads, stocked item, repair pad. Copilot panel: Ghost and Destroy
+ * Pilot panel: HP bar, continuous steering strip, stocked item, repair pad. Copilot panel: Ghost and Destroy
  * buttons with recharge rings, repair pad, "item armed" halo with countdown.
  */
 import type { GameState, Team, Car } from '../server/types.js';
 import {
-  PANELS, PANEL_H, panelWidth, padLocal, STEER_LEFT_LOCAL, STEER_RIGHT_LOCAL, ITEM_BTN_LOCAL, GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL,
+  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, ITEM_BTN_LOCAL, GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL,
   type PanelLayout,
 } from '../server/layout.js';
 import { TEAM_COLOR, TEAM_NAME, type View } from './view.js';
@@ -95,23 +95,25 @@ export class HUD {
     ctx.textAlign = 'left';
     ctx.fillText(`HP ${Math.round(car.hp)}`, bx + 8, by + 17);
 
-    // Remote-control steering: two large, unambiguous pads; the car advances by itself.
+    // Full-turn left/right strip: crossing its centre changes direction without lifting.
     const stick = view.sticks[team];
-    for (const [pad, label, active] of [
-      [STEER_LEFT_LOCAL, '◀', stick.active && stick.x < 0],
-      [STEER_RIGHT_LOCAL, '▶', stick.active && stick.x > 0],
-    ] as const) {
-      ctx.fillStyle = active ? `${color}55` : 'rgba(255,255,255,0.05)';
-      ctx.strokeStyle = active ? '#ffffff' : color;
-      ctx.lineWidth = active ? 4 : 2;
-      ctx.shadowColor = color; ctx.shadowBlur = active ? 18 : 0;
-      ctx.beginPath(); ctx.roundRect(pad.x - pad.w / 2, pad.y - pad.h / 2, pad.w, pad.h, 14); ctx.fill(); ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 36px monospace'; ctx.textAlign = 'center';
-      ctx.fillText(label, pad.x, pad.y + 13);
+    const area = STEER_AREA_LOCAL;
+    ctx.fillStyle = stick.active ? `${color}33` : 'rgba(255,255,255,0.05)';
+    ctx.strokeStyle = stick.active ? '#ffffff' : color;
+    ctx.lineWidth = stick.active ? 4 : 2;
+    ctx.beginPath(); ctx.roundRect(area.x - area.w / 2, area.y - area.h / 2, area.w, area.h, 14); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(area.x, area.y - area.h / 2 + 12); ctx.lineTo(area.x, area.y + area.h / 2 - 12); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 28px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('◀', area.x - area.w / 2 + 24, area.y + 10);
+    ctx.fillText('▶', area.x + area.w / 2 - 24, area.y + 10);
+    if (stick.active) {
+      const knobX = area.x + stick.x * (area.w / 2 - 18);
+      ctx.fillStyle = '#fff'; ctx.shadowColor = color; ctx.shadowBlur = 16;
+      ctx.beginPath(); ctx.arc(knobX, area.y, 15, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
     }
     ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('DIRECTION', (STEER_LEFT_LOCAL.x + STEER_RIGHT_LOCAL.x) / 2, 94);
+    ctx.fillText('DIRECTION · GLISSEZ', area.x, 94);
 
     // Item button: stocked item, tap to arm it (then the copilot has 5 s for the gesture)
     const b = ITEM_BTN_LOCAL;

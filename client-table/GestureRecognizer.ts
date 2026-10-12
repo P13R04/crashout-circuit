@@ -7,7 +7,7 @@
  * in multi-finger gestures, so the repair pads and the buttons stay independent
  * of gameplay gestures (T-09):
  *
- *   steer      pilot left/right pads; the car advances automatically → PilotInput
+ *   steer      pilot left/right strip; the car advances automatically → PilotInput
  *   item       pilot's item button tap               → UseItem(team)
  *   pad        finger on a repair pad                → PadHold(team, role, on)
  *   ghost      tap on the Ghost button               → Ability(ghost)
@@ -22,7 +22,7 @@
  */
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import {
-  LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_LEFT_LOCAL, STEER_RIGHT_LOCAL, ITEM_BTN_LOCAL,
+  LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_AREA_LOCAL, ITEM_BTN_LOCAL,
   GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL, worldToLocal, type PanelLayout,
   insidePanel, nearestStationTeam, type Role,
 } from '../server/layout.js';
@@ -52,7 +52,7 @@ interface Contact {
   consumed: boolean;
   padKey?: string;
   panel?: PanelLayout;
-  steer?: -1 | 1;
+  steer?: number;
   strokeTeam?: Team;
   outward?: Vec2; // border candidate: unit vector away from the centerline
 }
@@ -116,8 +116,10 @@ export class GestureRecognizer {
     canvas.addEventListener('pointermove', (e) => this.onMove(e), opts);
     canvas.addEventListener('pointerup', (e) => this.onUp(e), opts);
     canvas.addEventListener('pointercancel', (e) => this.onUp(e), opts);
+    canvas.addEventListener('lostpointercapture', (e) => this.onUp(e), opts);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    // Steering is streamed at up to 60 Hz while a steering pad is held
+    // A held steering touch also sends a heartbeat. The server uses it to
+    // neutralise a lost touch or a broken connection safely.
     setInterval(() => this.streamInputs(), 1000 / 60);
   }
 
@@ -216,15 +218,11 @@ export class GestureRecognizer {
     for (const panel of PANELS) {
       const l = worldToLocal(panel, p.x, p.y);
       if (panel.role === 'pilot') {
-        const steerPad = [
-          { box: STEER_LEFT_LOCAL, value: -1 as const },
-          { box: STEER_RIGHT_LOCAL, value: 1 as const },
-        ].find(({ box }) => Math.abs(l.x - box.x) <= box.w / 2 && Math.abs(l.y - box.y) <= box.h / 2);
-        if (steerPad) {
+        const steerArea = STEER_AREA_LOCAL;
+        if (Math.abs(l.x - steerArea.x) <= steerArea.w / 2 && Math.abs(l.y - steerArea.y) <= steerArea.h / 2) {
           if (this.sticks.has(panel.team)) { c.zone = 'rejected'; return; }
           c.zone = 'steer';
           c.panel = panel;
-          c.steer = steerPad.value;
           this.sticks.set(panel.team, c.id);
           this.updateSteer(c);
           return;
@@ -335,7 +333,11 @@ export class GestureRecognizer {
   // ─── Remote-control steering ─────────────────────────────────────────────
 
   private updateSteer(c: Contact): void {
-    if (!c.panel || !c.steer) return;
+    if (!c.panel) return;
+    const local = worldToLocal(c.panel, c.x, c.y);
+    // Match the keyboard: either half of the strip is a full left/right turn.
+    // Only the zone changes as the finger crosses the centre.
+    c.steer = local.x <= STEER_AREA_LOCAL.x ? -1 : 1;
     this.view.sticks[c.panel.team] = { x: c.steer, y: 0, active: true };
   }
 
@@ -345,24 +347,17 @@ export class GestureRecognizer {
     this.sendInput(team, 1, 0);
   }
 
-  /** 10 % deadzone, rescaled so the full range is still reachable. */
-  private static axis(v: number): number {
-    const dz = 0.1;
-    const a = Math.abs(v);
-    return a < dz ? 0 : Math.sign(v) * Math.min(1, (a - dz) / (1 - dz));
-  }
-
   private streamInputs(): void {
     for (const team of ['A', 'B'] as Team[]) {
       const st = this.view.sticks[team];
       if (!st.active) continue;
-      this.sendInput(team, 1, GestureRecognizer.axis(st.x));
+      this.sendInput(team, 1, st.x, true);
     }
   }
 
-  private sendInput(team: Team, throttle: number, steer: number): void {
+  private sendInput(team: Team, throttle: number, steer: number, force = false): void {
     const last = this.lastInput[team];
-    if (last.throttle === throttle && last.steer === steer) return;
+    if (!force && last.throttle === throttle && last.steer === steer) return;
     this.lastInput[team] = { throttle, steer };
     this.send({ type: 'PilotInput', team, throttle, steer });
   }

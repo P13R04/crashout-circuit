@@ -25,7 +25,7 @@ Cette fiche est la **seule source de vérité**. Chaque règle porte un identifi
 |---|---|---|
 | D1 | Moteur | WebApp. Navigateur plein écran sur la table. Canvas 2D (PixiJS si besoin de perf) |
 | D2 | Serveur | Node.js + WebSocket, **autoritaire** sur la physique et les règles |
-| D3 | Pilotage | **Table, station fixe** : avance continue, zones gauche/droite + bouton d'action. Un tangible orienté pourra remplacer ces zones sans changer la logique [DÉCISION] |
+| D3 | Pilotage | **Table, station fixe** : avance continue, bande de direction à deux zones franchissable + bouton d'action. Un tangible orienté pourra remplacer cette bande sans changer la logique [DÉCISION] |
 | D4 | Tangibles | Magicien d'Oz via une console web séparée. Format d'événements TUIO (`id`, `x`, `y`, `angle`) |
 | D5 | Attribution des joueurs | On ne suit **jamais un doigt vers une personne**. L'équipe se déduit du contexte (zone, bouton d'équipe, objet armé par le Pilote) |
 | D6 | Réparation | Action synchrone: **Pilote et Copilote posent chacun un doigt sur leur pad de station** (table). Remplace la « réparation localisée » [DÉCISION] |
@@ -127,8 +127,8 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 
 | Contrôle | Entrée | Valeur envoyée |
 |---|---|---|
-| Direction gauche | Zone fixe pilote, maintenue | `steer = -1` |
-| Direction droite | Zone fixe pilote, maintenue | `steer = 1` |
+| Direction gauche | Moitié gauche de la bande fixe pilote, maintenue et franchissable | `steer = -1` |
+| Direction droite | Moitié droite de la bande fixe pilote, maintenue et franchissable | `steer = 1` |
 | Bouton d'objet | Appui | `UseItem` (arme l'objet en stock) |
 
 ### 6.2 Véhicule (modèle simple)
@@ -136,9 +136,9 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 | Paramètre | Valeur par défaut |
 |---|---|
 | Vitesse max avant | 260 px/s [EST] |
-| Vitesse max arrière | 140 px/s [EST] |
+| Frein / marche arrière | Aucun : avance continue [DÉCISION] |
 | Accélération | 320 px/s² [EST] |
-| Vitesse de rotation max | 2,15 rad/s [EST] |
+| Vitesse de rotation max | 2,8 rad/s [EST] |
 | Gabarit | 24 × 14 px |
 | Sortie de piste | Chute : HP à 0, immobilisation puis réparation synchronisée au dernier checkpoint |
 
@@ -403,7 +403,7 @@ Affectation exacte des icônes de la maquette aux boutons: à régler au moment 
 | `destroyDisableS` / `destroyCooldownS` | 10 / 15 |
 | `wallLengthPx` / `arcMaxDistPx` | 120 / 500 |
 | `trackWidthBasePx` / `trackWidthMinPx` | 140 / 90 |
-| `vMaxFwd` / `vMaxRev` / `accel` / `turnRate` | 260 / 140 / 320 / 2,15 |
+| `vMaxFwd` / `accel` / `turnRate` / gain direction / expiration d'entrée | 260 / 320 / 2,8 / 1,12 / 250 ms |
 
 Tout est **[EST]**, à régler pendant les tests utilisateurs.
 

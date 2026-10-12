@@ -55,6 +55,7 @@ export class PhysicsLoop {
 
     if (s.phase === 'RACE' && s.track) {
       this.rules.expire(now);
+      this.rules.expirePilotInputs(now);
       if (now >= s.sessionStartAt) {
         for (const team of TEAMS) {
           const car = s.cars[team];
@@ -87,17 +88,16 @@ export class PhysicsLoop {
     const boost = now < car.boostUntil ? 1 + config.boostGain * car.boostK : 1;
     const slow = now < car.slowUntil ? config.arcSlowFactor : 1;
     const maxFwd = config.vMaxFwd * boost * slow;
-    const maxRev = config.vMaxRev * slow;
 
-    const target = throttle >= 0 ? throttle * maxFwd : throttle * maxRev;
+    const target = throttle * maxFwd;
     const rate = config.accel;
     const diff = target - car.speed;
     const stepV = rate * dt;
     car.speed += Math.abs(diff) <= stepV ? diff : Math.sign(diff) * stepV;
     // Boost and slow-down also act as a hard cap on the current speed
-    car.speed = Math.max(-maxRev, Math.min(maxFwd, car.speed));
+    car.speed = Math.max(0, Math.min(maxFwd, car.speed));
 
-    // Steering scales with speed so the car cannot spin on the spot; reversing flips it
+    // Steering scales with speed so the car cannot spin on the spot.
     const grip = Math.max(-1, Math.min(1, car.speed / 100));
     car.angle += steer * config.turnRate * grip * dt;
 

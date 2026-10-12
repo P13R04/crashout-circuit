@@ -155,6 +155,23 @@ test('steering turns the car', () => {
   r.advance(500);
   assert.notEqual(r.state.cars.A.angle, a0);
 });
+test('continuous pilot input is isolated per team and stale steering is neutralised', () => {
+  const r = raceRig();
+  r.rules.onPilotInput('A', msg({ type: 'PilotInput' as const, team: 'A' as Team, throttle: 1, steer: 0.45 }));
+  r.rules.onPilotInput('B', msg({ type: 'PilotInput' as const, team: 'B' as Team, throttle: 1, steer: -0.6 }));
+  assert.equal(r.rules.inputs.A.steer, 0.45 * config.steerGain);
+  assert.equal(r.rules.inputs.B.steer, -0.6 * config.steerGain);
+  r.advance(config.pilotInputTimeoutMs + 50);
+  assert.equal(r.rules.inputs.A.steer, 0);
+  assert.equal(r.rules.inputs.B.steer, 0);
+});
+test('tactile and keyboard steering receive the same configured small turn gain', () => {
+  const r = raceRig();
+  r.rules.onPilotInput('A', msg({ type: 'PilotInput' as const, team: 'A' as Team, throttle: 1, steer: 1 }));
+  r.rules.onPilotInput('B', msg({ type: 'PilotInput' as const, team: 'B' as Team, throttle: 1, steer: 1 }));
+  assert.equal(r.rules.inputs.A.steer, config.steerGain);
+  assert.equal(r.rules.inputs.B.steer, config.steerGain);
+});
 test('pause freezes race motion and resumes without consuming race time', () => {
   const r = raceRig();
   const car = r.state.cars.A;
