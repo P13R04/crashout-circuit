@@ -38,9 +38,11 @@ export const PANELS: PanelLayout[] = [
 export const PAD_LOCAL_COPILOT = { x: 140, y: 18, r: PAD_R };
 export const PAD_LOCAL_PILOT = { x: 250, y: 10, r: PAD_R };
 export const padLocal = (role: Role) => (role === 'pilot' ? PAD_LOCAL_PILOT : PAD_LOCAL_COPILOT);
-/** RC controls: the car advances continuously; hold one pad to steer. */
-export const STEER_LEFT_LOCAL = { x: -275, y: 10, w: 105, h: 130 };
-export const STEER_RIGHT_LOCAL = { x: -155, y: 10, w: 105, h: 130 };
+/**
+ * One steering strip split into two zones. A pilot may cross the centre without
+ * lifting their finger, while each half keeps the keyboard's full-turn feel.
+ */
+export const STEER_AREA_LOCAL = { x: -215, y: 10, w: 240, h: 130 };
 export const ITEM_BTN_LOCAL = { x: -20, y: 45, r: 40 };
 export const GHOST_BTN_LOCAL = { x: -150, y: 20, r: 42 };
 export const DESTROY_BTN_LOCAL = { x: -50, y: 20, r: 42 };

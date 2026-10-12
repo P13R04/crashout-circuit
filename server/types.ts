@@ -225,7 +225,8 @@ export interface BorderPullMsg extends BaseMsg {
 export interface PilotInputMsg extends BaseMsg {
   type: 'PilotInput';
   team: Team;
-  throttle: number; // [-1, 1]
+  /** Reserved for a future control scheme; the current table mode advances continuously. */
+  throttle: number;
   steer: number;    // [-1, 1]
 }
 

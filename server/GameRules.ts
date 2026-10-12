@@ -128,6 +128,8 @@ export class GameRules {
     A: { throttle: 1, steer: 0 },
     B: { throttle: 1, steer: 0 },
   };
+  /** Last received control heartbeat per team; stale steering is neutralised. */
+  private lastPilotInputAt: Record<Team, number> = { A: 0, B: 0 };
   /** Full operator/TUIO log of pylon events (T-11, task 15). */
   readonly tangibleLog: TangibleLogEntry[] = [];
 
@@ -267,6 +269,7 @@ export class GameRules {
       car.angle = Math.atan2(tan.y, tan.x);
       s.cars[team] = car;
       this.inputs[team] = { throttle: 1, steer: 0 };
+      this.lastPilotInputAt[team] = this.now;
       s.repairProgress[team] = 0;
       s.cooldowns[team] = { ghost: 0, destroy: 0, borderPull: 0 };
     }
@@ -330,7 +333,19 @@ export class GameRules {
 
   onPilotInput(team: Team, msg: PilotInputMsg): void {
     if (!Number.isFinite(msg.throttle) || !Number.isFinite(msg.steer)) return;
-    this.inputs[team] = { throttle: 1, steer: clamp(msg.steer, -1, 1) };
+    const steer = clamp(msg.steer, -1, 1);
+    this.inputs[team] = {
+      throttle: 1,
+      steer: steer * config.steerGain,
+    };
+    this.lastPilotInputAt[team] = this.now;
+  }
+
+  /** Safety net for a lost pointer-up, a crashed client or a dropped WebSocket. */
+  expirePilotInputs(now: number): void {
+    for (const team of TEAMS) {
+      if (now - this.lastPilotInputAt[team] > config.pilotInputTimeoutMs) this.inputs[team].steer = 0;
+    }
   }
 
   /** UseItem: arm the stocked item for `armWindowS` seconds (REQ-4.1.3). */
