@@ -27,9 +27,9 @@ import {
   GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL, worldToLocal, type PanelLayout,
   insidePanel, nearestStationTeam, checkDivider, inPlayArea, type Role,
 } from '../server/layout.js';
-import { distToSegment, nearestOnTrack } from '../server/geometry.js';
+import { distToSegment, nearestOnTrack, slingshotShot } from '../server/geometry.js';
 import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
-import type { View } from './view.js';
+import { REFUSAL_COLOR, showDividerRefusal, type View } from './view.js';
 
 export const MAX_CONTACTS = 10;
 /** The second divider contact must come within this delay of the first (or the first is dropped). */
@@ -52,7 +52,7 @@ const TARGET_RADIUS_PX = 40;
 const TARGETING_MS = 3000;
 const PALM_MAX_PX = 140;        // contacts wider than this (logical px) are palms/arms
 
-type Zone = 'steer' | 'pedal' | 'item' | 'pad' | 'ghost' | 'destroy' | 'stroke' | 'target' | 'result' | 'pause' | 'mode' | 'free' | 'rejected';
+type Zone = 'simsling' | 'steer' | 'pedal' | 'item' | 'pad' | 'ghost' | 'destroy' | 'stroke' | 'target' | 'result' | 'pause' | 'mode' | 'free' | 'rejected';
 
 interface Contact {
   id: number;
@@ -371,6 +371,10 @@ export class GestureRecognizer {
     if (c.zone === 'pad' && c.padKey) this.padUp(c.padKey, c.id);
     if (c.zone === 'steer' && c.panel) this.releaseStick(c.panel.team);
     if (c.zone === 'pedal' && c.panel) this.releasePedal(c.panel.team);
+    // On the table both points are put down together: a lifted finger stops waiting
+    if (c.zone === 'target' && c.id === this.pendingContact && this.state?.mapMode !== 'pc') {
+      this.armPendingTimer(DIVIDER_RELEASE_GRACE_MS);
+    }
     if (c.zone === 'stroke') {
       const s = this.view.strokes.get(c.strokeKey ?? -1);
       if (s) {

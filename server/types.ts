@@ -101,6 +101,8 @@ export interface TrackGeometry {
   pickupPositions: Vec2[];
   /** Indices of feature anchors in the centerline, kept aligned when it moves. */
   featureIndices: { checkpoints: number[]; start: number; starts: number[]; pickups: number[] };
+  /** True for the predefined circuit: the players' drawing could not be used. */
+  preset?: boolean;
 }
 
 /** A local sideways displacement of the road, never a permanent width change. */
@@ -113,8 +115,6 @@ export interface TrackDeformation {
   /** Set when a newer deformation takes over, then the old one eases back. */
   releaseAt: number | null;
   strength: number;
-  /** True for the predefined circuit: the players' drawing could not be used. */
-  preset?: boolean;
 }
 
 export interface MapTargets {

@@ -63,7 +63,7 @@ export class Renderer {
     this.drawSling(ctx, state, view.sling);
     this.hud.draw(ctx, state, view);
     this.drawDisabledAlerts(ctx, state);
-    if (state.phase === 'READY') this.drawRaceReady(ctx);
+    if (state.phase === 'READY') this.drawRaceReady(ctx, state);
     if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); this.drawDriveModeButton(ctx, state); }
     if (state.phase === 'PAUSED') { this.drawPauseButton(ctx, 'REPRENDRE'); this.drawPaused(ctx); }
     if (state.phase === 'RESULT') this.drawResult(ctx, state);
@@ -700,7 +700,7 @@ export class Renderer {
     ctx.fillText(`PILOTAGE · ${pedal ? 'PÉDALE' : 'AUTO'}`, b.x + b.w / 2, b.y + 24); ctx.restore();
   }
 
-  private drawRaceReady(ctx: Ctx): void {
+  private drawRaceReady(ctx: Ctx, state: GameState): void {
     const b = RACE_START_BUTTON;
     ctx.save();
     ctx.fillStyle = 'rgba(4,8,31,0.56)'; ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
