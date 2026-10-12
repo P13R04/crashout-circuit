@@ -27,7 +27,7 @@ import {
   insidePanel, nearestStationTeam, type Role,
 } from '../server/layout.js';
 import { distToSegment, nearestOnTrack } from '../server/geometry.js';
-import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON } from './Renderer.js';
+import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON } from './Renderer.js';
 import type { View } from './view.js';
 
 export const MAX_CONTACTS = 10;
@@ -143,9 +143,18 @@ export class GestureRecognizer {
     this.contacts.set(c.id, c);
     this.view.debug.contacts = this.contacts.size;
 
+    const hit = (b: { x: number; y: number; w: number; h: number }) =>
+      p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+
+    // Reset button: accessible in all phases (returns state to launch)
+    if (hit(RESET_BUTTON)) {
+      c.zone = 'result';
+      this.send({ type: 'Reset' });
+      return;
+    }
+
     // 0 — lobby: start button
     if (state.phase === 'LOBBY') {
-      const hit = (b: { x: number; y: number; w: number; h: number }) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
       if (hit(START_TABLE_BUTTON) || hit(START_PC_BUTTON)) {
         c.zone = 'result';
         this.send({ type: 'StartGame', mode: hit(START_PC_BUTTON) ? 'pc' : 'table' });
