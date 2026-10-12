@@ -8,7 +8,7 @@
  * Time comes from an injectable clock so sessions can be replayed in tests (T-11).
  */
 import type {
-  GameState, Team, Vec2, Phase, ItemKind, Car, Wall, MapTargets,
+  GameState, Team, Vec2, Phase, ItemKind, Car, Wall, MapTargets, TrackGeometry,
   StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGateMsg, AbilityMsg, BorderPullMsg,
   PilotInputMsg, UseItemMsg, TangibleMovedMsg, TangibleRemovedMsg, OzTriggerMsg,
 } from './types.js';
@@ -23,9 +23,6 @@ const MAP_DURATION_MS = 30_000;
 const COUNTDOWN_MS = 3_000;
 const MAX_STROKE_POINTS = 4_000;
 const PICKUP_RADIUS = 30;
-const WIDEN_STEP_PX = 40;
-const WIDEN_MAX_PX = 260;
-const WIDEN_COOLDOWN_S = 20;
 const TEAMS: Team[] = ['A', 'B'];
 
 export interface RulesHost {
@@ -92,6 +89,7 @@ export function createInitialState(): GameState {
       B: { ghost: 0, destroy: 0, borderPull: 0 },
     },
     track: null,
+    deformations: [],
     winner: null,
     sessionStartAt: Date.now(),
     mapTargets: null,
@@ -111,7 +109,9 @@ export function createInitialState(): GameState {
       ghostCooldownS: config.ghostCooldownS,
       destroyCooldownS: config.destroyCooldownS,
       destroyDisableS: config.destroyDisableS,
-      borderPullCooldownS: WIDEN_COOLDOWN_S,
+      borderPullCooldownS: 0,
+      trackDeformHoldS: config.trackDeformHoldS,
+      trackDeformRelaxS: config.trackDeformRelaxS,
       stoneTelegraphS: config.stoneTelegraphS,
       stoneRadiusPx: config.stoneRadiusPx,
       boostLenMinPx: config.boostLenMinPx,
@@ -139,6 +139,7 @@ export class GameRules {
   private idCounter = 0;
   private generating = false;
   private pausedAt = 0;
+  private deformCounter = 0;
   private rng: () => number;
 
   constructor(
@@ -170,6 +171,7 @@ export class GameRules {
     s.mapDeadline = 0;
     s.mapMode = mode;
     s.track = null;
+    s.deformations = [];
     s.trackVersion++;
     this.strokes = { A: null, B: null };
     this.generating = false;
@@ -260,6 +262,7 @@ export class GameRules {
     const s = this.state;
     this.generating = true;
     s.track = track;
+    s.deformations = [];
     s.trackVersion++;
     for (const team of TEAMS) {
       const car = makeCar(team);
@@ -621,36 +624,121 @@ export class GameRules {
     return [{ x: w.pos.x - hx, y: w.pos.y - hy }, { x: w.pos.x + hx, y: w.pos.y + hy }];
   }
 
-  // ─── Border pull (C-07) ────────────────────────────────────────────────────
+  // ─── Local border pull (C-07) ──────────────────────────────────────────────
 
   onBorderPull(msg: BorderPullMsg): void {
     const s = this.state;
     const track = s.track;
     if (s.phase !== 'RACE' || !track || ![msg.x, msg.y, msg.dx, msg.dy].every(Number.isFinite)) return;
     const pull = Math.hypot(msg.dx, msg.dy);
-    if (pull < 20 || pull > 60) return;
+    if (pull < 20 || pull > config.trackDeformMaxShiftPx * 1.8) return;
     const team = msg.team ?? nearestStationTeam({ x: msg.x, y: msg.y });
-    const now = this.now;
-    if (now < s.cooldowns[team].borderPull) return;
-    this.widenTrack({ x: msg.x, y: msg.y }, team, 'borderPull');
-    s.cooldowns[team].borderPull = now + WIDEN_COOLDOWN_S * 1000;
+    this.deformTrack({ x: msg.x, y: msg.y }, { x: msg.dx, y: msg.dy }, team);
   }
 
-  /** Raise the width of the 5 centerline points closest to `at`, then rebuild edges. */
-  private widenTrack(at: Vec2, team: Team, why: string): void {
+  /**
+   * Shift a short piece of the centerline sideways. Both edges follow the same
+   * displacement, so this creates a temporary double chicane rather than a
+   * wider road. A new pull starts immediately while the prior one reforms.
+   */
+  private deformTrack(at: Vec2, drag: Vec2, team: Team): void {
     const track = this.state.track;
     if (!track) return;
-    const n = track.centerline.length;
     const hit = nearestOnTrack(at, track);
-    for (let k = -2; k <= 2; k++) {
-      const i = (hit.index + k + n) % n;
-      track.widths[i] = Math.min(WIDEN_MAX_PX, track.widths[i] + WIDEN_STEP_PX * (k === 0 ? 1 : 1 - Math.abs(k) * 0.25));
+    // Keep only the component that goes out through the grabbed edge.
+    const edge = { x: at.x - hit.closest.x, y: at.y - hit.closest.y };
+    const edgeLen = Math.hypot(edge.x, edge.y);
+    if (edgeLen < 1e-6) return;
+    const outward = { x: edge.x / edgeLen, y: edge.y / edgeLen };
+    const projected = drag.x * outward.x + drag.y * outward.y;
+    if (projected < 20) return;
+    const amount = Math.min(config.trackDeformMaxShiftPx, projected);
+    const now = this.now;
+
+    // There is one active gesture only. Older local shifts remain briefly as
+    // they ease home, which makes repeated interventions continuous.
+    for (const deformation of this.state.deformations) {
+      if (deformation.releaseAt === null) deformation.releaseAt = now;
     }
+    this.state.deformations.push({
+      id: `deform-${++this.deformCounter}`,
+      index: hit.index,
+      dx: outward.x * amount,
+      dy: outward.y * amount,
+      createdAt: now,
+      releaseAt: null,
+      strength: 0,
+    });
+    this.updateTrackDeformations(now);
+    this.host.feedback('trackDeformed', hit.closest.x, hit.closest.y, team);
+  }
+
+  /** Rebuild the transient road from the immutable centerline every simulation step. */
+  updateTrackDeformations(now: number): void {
+    const track = this.state.track;
+    if (!track || this.state.deformations.length === 0) return;
+    const rampMs = config.trackDeformRampS * 1000;
+    const holdMs = config.trackDeformHoldS * 1000;
+    const relaxMs = config.trackDeformRelaxS * 1000;
+    let changed = false;
+
+    for (const d of this.state.deformations) {
+      if (d.releaseAt === null && now >= d.createdAt + rampMs + holdMs) d.releaseAt = now;
+      const next = d.releaseAt === null
+        ? clamp((now - d.createdAt) / rampMs, 0, 1)
+        : clamp(1 - (now - d.releaseAt) / relaxMs, 0, 1);
+      if (Math.abs(next - d.strength) > 1e-5) changed = true;
+      d.strength = next;
+    }
+    // A just-created pull starts at strength 0, so only discard a deformation
+    // once its release animation has actually reached zero.
+    const kept = this.state.deformations.filter(d => d.releaseAt === null || d.strength > 0);
+    if (kept.length !== this.state.deformations.length) changed = true;
+    this.state.deformations = kept;
+
+    if (!changed) return;
+    const n = track.baseCenterline.length;
+    const radius = config.trackDeformRadiusPoints;
+    track.centerline = track.baseCenterline.map((base, i) => {
+      let x = base.x, y = base.y;
+      for (const d of this.state.deformations) {
+        const delta = Math.abs(i - d.index);
+        const circular = Math.min(delta, n - delta);
+        if (circular > radius) continue;
+        const falloff = Math.cos((circular / (radius + 1)) * Math.PI / 2);
+        x += d.dx * d.strength * falloff;
+        y += d.dy * d.strength * falloff;
+      }
+      return { x, y };
+    });
     rebuildEdges(track);
+    this.alignTrackFeatures(track);
     this.state.trackVersion++;
-    this.host.feedback('trackWidened', hit.closest.x, hit.closest.y, team);
-    this.host.broadcastFull();
-    void why;
+  }
+
+  /** Keep lap marks and checkpoints locked to their centerline anchors. */
+  private alignTrackFeatures(track: TrackGeometry): void {
+    const tangent = (index: number) => {
+      const n = track.centerline.length;
+      const a = track.centerline[(index - 1 + n) % n];
+      const b = track.centerline[(index + 1) % n];
+      const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      return { x: (b.x - a.x) / length, y: (b.y - a.y) / length };
+    };
+    track.checkpoints.forEach((checkpoint, i) => {
+      const index = track.featureIndices.checkpoints[i];
+      checkpoint.pos = { ...track.centerline[index] };
+      const t = tangent(index);
+      checkpoint.normal = { x: -t.y, y: t.x };
+    });
+    const start = track.featureIndices.start;
+    const t = tangent(start);
+    track.startLine = { pos: { ...track.centerline[start] }, normal: { x: -t.y, y: t.x } };
+  }
+
+  /** A small grace band prevents an easing edge from unfairly dropping a car. */
+  isTrackReforming(): boolean {
+    return this.state.deformations.some(d => d.releaseAt !== null);
   }
 
   // ─── Oz fallback actions (REQ-7.2) ─────────────────────────────────────────
@@ -710,7 +798,23 @@ export class GameRules {
         const at = typeof params.x === 'number' && typeof params.y === 'number'
           ? { x: params.x, y: params.y }
           : aheadOf(s.cars[team], 10).p;
-        this.widenTrack(at, team, 'oz');
+        const hit = nearestOnTrack(at, track);
+        const n = track.centerline.length;
+        const a = track.centerline[(hit.index - 1 + n) % n];
+        const b = track.centerline[(hit.index + 1) % n];
+        const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+        const fallback = { x: -(b.y - a.y) / len, y: (b.x - a.x) / len };
+        const dx = typeof params.dx === 'number' ? params.dx : fallback.x * config.trackDeformMaxShiftPx * 0.8;
+        const dy = typeof params.dy === 'number' ? params.dy : fallback.y * config.trackDeformMaxShiftPx * 0.8;
+        // Oz chooses a side explicitly, as a tangible would be put on an edge;
+        // the operator's point itself may be anywhere over the road.
+        const dragLen = Math.hypot(dx, dy) || 1;
+        const side = { x: dx / dragLen, y: dy / dragLen };
+        const edge = {
+          x: hit.closest.x + side.x * hit.halfWidth * 0.95,
+          y: hit.closest.y + side.y * hit.halfWidth * 0.95,
+        };
+        this.deformTrack(edge, { x: dx, y: dy }, team);
         break;
       }
     }

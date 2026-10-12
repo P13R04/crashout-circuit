@@ -51,7 +51,7 @@ export class Renderer {
     if (state.phase !== 'READY' && state.phase !== 'RACE' && state.phase !== 'PAUSED' && state.phase !== 'RESULT') return;
     const now = view.now();
 
-    if (state.track) this.drawTrack(ctx, state.track, state.trackVersion);
+    if (state.track) this.drawTrack(ctx, state.track, state.trackVersion, state.deformations.length > 0);
     this.drawPickups(ctx, state, now);
     this.drawGates(ctx, state, now);
     this.drawWalls(ctx, state, now);
@@ -132,7 +132,10 @@ export class Renderer {
 
   // ─── Track ────────────────────────────────────────────────────────────────
 
-  private drawTrack(ctx: Ctx, track: TrackGeometry, version: number): void {
+  private drawTrack(ctx: Ctx, track: TrackGeometry, version: number, dynamic = false): void {
+    // During a pull the geometry changes every frame. Painting directly avoids
+    // allocating a full-screen cached canvas at the simulation rate.
+    if (dynamic) { this.paintTrack(ctx, track); return; }
     const canvas = ctx.canvas;
     const key = `${version}:${canvas.width}x${canvas.height}`;
     if (!this.trackLayer || this.trackLayerKey !== key) {

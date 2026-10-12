@@ -49,7 +49,7 @@ En dev, ouvrir la table sur `http://localhost:5173/client-table/`, Oz sur `/clie
 5. **PAUSE** : le bouton central, Échap ou Espace fige la course et ses compteurs.
 6. **RESULT** : classement, bouton « Nouvelle partie ».
 
-La console Oz simule les poteaux tangibles (clic sur la miniature) et propose des actions de secours (obstacle, boost, panne, élargir, circuit de secours).
+La console Oz simule les poteaux tangibles (clic sur la miniature) et propose des actions de secours (obstacle, boost, panne, déformation locale, circuit de secours).
 
 ## Activer un objet
 
@@ -65,6 +65,10 @@ Avec une souris, la barre en bas de la table affiche deux boutons (ou `?sim=1` p
 - **✌ Simuler 2 doigts** puis deux clics (100–400 px d'écart) : portail de boost.
 
 L'objet doit d'abord être armé (étape 2). Pour ne pas rouler jusqu'à un pickup, la console Oz (`/oz`) a les boutons **+ Lance-pierre** / **+ Boost** (équipe choisie en haut) qui placent l'objet dans le stock.
+
+### Déformer un bord de piste
+
+Deux doigts sont posés près du **même bord**, à moins de 130 px l’un de l’autre, puis glissent ensemble vers l’extérieur. La piste ne s’élargit pas : sa ligne centrale se décale localement et les deux bords suivent, ce qui forme une double chicane temporaire. Une nouvelle déformation peut commencer immédiatement ; la précédente revient progressivement à sa forme de référence. Les paramètres de durée et d’amplitude sont dans `config.json` (`trackDeform*`).
 
 ### Clavier pour une partie locale à deux pilotes
 

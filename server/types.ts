@@ -87,6 +87,8 @@ export interface Cooldown {
 
 export interface TrackGeometry {
   centerline: Vec2[];   // N=256 points
+  /** Immutable reference used to rebuild temporary local deformations. */
+  baseCenterline: Vec2[];
   outerEdge: Vec2[];
   innerEdge: Vec2[];
   widths: number[];
@@ -94,6 +96,20 @@ export interface TrackGeometry {
   startLine: { pos: Vec2; normal: Vec2 };
   startPositions: Vec2[];
   pickupPositions: Vec2[];
+  /** Indices of feature anchors in the centerline, kept aligned when it moves. */
+  featureIndices: { checkpoints: number[]; start: number; starts: number[]; pickups: number[] };
+}
+
+/** A local sideways displacement of the road, never a permanent width change. */
+export interface TrackDeformation {
+  id: string;
+  index: number;
+  dx: number;
+  dy: number;
+  createdAt: number;
+  /** Set when a newer deformation takes over, then the old one eases back. */
+  releaseAt: number | null;
+  strength: number;
 }
 
 export interface MapTargets {
@@ -111,7 +127,10 @@ export interface GameParams {
   ghostCooldownS: number;
   destroyCooldownS: number;
   destroyDisableS: number;
+  /** Retained for compatible clients; local deformation no longer has a cooldown. */
   borderPullCooldownS: number;
+  trackDeformHoldS: number;
+  trackDeformRelaxS: number;
   stoneTelegraphS: number;
   stoneRadiusPx: number;
   boostLenMinPx: number;
@@ -133,6 +152,8 @@ export interface GameState {
   repairPads: Record<string, RepairPad>; // key: "A-pilot" | "A-copilot" | "B-pilot" | "B-copilot"
   cooldowns: Record<Team, Cooldown>;
   track: TrackGeometry | null;
+  /** One active pull at a time; earlier pulls may briefly be reforming. */
+  deformations: TrackDeformation[];
   winner: Team | 'draw' | null;
   sessionStartAt: number;
   /** Imposed target points of each copilot, set on entering the MAP phase. */

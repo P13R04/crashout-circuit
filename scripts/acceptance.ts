@@ -452,19 +452,31 @@ test('HP 0 → car stops and ignores the pilot', () => {
 // ─── Border pull (C-07) ──────────────────────────────────────────────────────
 
 section('Border pull');
-test('BorderPull widens locally, then 20 s cooldown', () => {
+test('BorderPull shifts a local section, then reforms without changing its width', () => {
   const r = raceRig();
   const track = r.state.track!;
   const i = 40;
   const before = track.widths[i];
   const edge = track.outerEdge[i];
-  const send = () => r.rules.onBorderPull(msg({ type: 'BorderPull' as const, x: edge.x, y: edge.y, dx: 30, dy: 0, team: 'A' as Team }));
+  const center = track.centerline[i];
+  const outward = { x: edge.x - center.x, y: edge.y - center.y };
+  const len = Math.hypot(outward.x, outward.y);
+  const send = () => r.rules.onBorderPull(msg({ type: 'BorderPull' as const, x: edge.x, y: edge.y, dx: outward.x / len * 70, dy: outward.y / len * 70, team: 'A' as Team }));
+  const base = { ...center };
   send();
-  assert.ok(track.widths[i] > before);
-  const after = track.widths[i];
+  r.advance(config.trackDeformRampS * 1000 + 50);
+  assert.equal(track.widths[i], before, 'road width is preserved');
+  assert.ok(Math.hypot(track.centerline[i].x - base.x, track.centerline[i].y - base.y) > 40, 'centerline shifts');
+  assert.equal(r.state.deformations.length, 1);
+
+  // A fresh gesture is immediately accepted and begins easing the previous one home.
   send();
-  assert.equal(track.widths[i], after, 'cooldown');
-  assert.ok(Math.hypot(track.outerEdge[i].x - track.innerEdge[i].x, track.outerEdge[i].y - track.innerEdge[i].y) > before);
+  assert.ok(r.state.deformations.some(d => d.releaseAt !== null), 'previous deformation reforms');
+  r.advance((config.trackDeformRelaxS + config.trackDeformRampS + 0.2) * 1000);
+  assert.equal(r.state.deformations.length, 1, 'only the latest deformation remains');
+  r.advance((config.trackDeformHoldS + config.trackDeformRelaxS + 0.2) * 1000);
+  assert.equal(r.state.deformations.length, 0, 'temporary deformation fully reforms');
+  assert.ok(Math.hypot(track.centerline[i].x - base.x, track.centerline[i].y - base.y) < 1, 'reference path is restored');
 });
 
 // ─── Oz fallback & T-11 replay ───────────────────────────────────────────────
@@ -478,6 +490,7 @@ test('OzTrigger obstacle / boost / breakdown / widen / fallbackTrack', () => {
   r.rules.onOzTrigger(msg({ type: 'OzTrigger' as const, kind: 'boost', params: { team: 'A' } }));
   assert.equal(r.state.boostGates.length, 1);
   r.rules.onOzTrigger(msg({ type: 'OzTrigger' as const, kind: 'widen', params: { team: 'A' } }));
+  assert.equal(r.state.deformations.length, 1, 'Oz uses the same temporary local deformation');
   r.rules.onOzTrigger(msg({ type: 'OzTrigger' as const, kind: 'breakdown', params: { team: 'B' } }));
   assert.ok(r.state.cars.B.disabled);
   const v = r.state.trackVersion;

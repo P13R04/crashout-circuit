@@ -130,8 +130,6 @@ function handleMessage(msg: ServerMessage): void {
         view.hpShown.A = view.state.cars.A.hp;
         view.hpShown.B = view.state.cars.B.hp;
         view.strokes.clear();
-        view.pendingDivider = [];
-        view.mapNotice = null;
         view.effects.length = 0;
         gestures.releaseAll();
       }
@@ -143,8 +141,6 @@ function handleMessage(msg: ServerMessage): void {
       view.effects.length = 0;
       if (msg.phase === 'MAP' || msg.phase === 'LOBBY') {
         view.strokes.clear();
-        view.pendingDivider = [];
-        view.mapNotice = null;
         if (msg.phase === 'LOBBY') {
           gestures.releaseAll();
           view.hpShown.A = 100;
