@@ -71,6 +71,7 @@ export function makeCar(team: Team): Car {
 export function createInitialState(): GameState {
   return {
     phase: 'LOBBY',
+    driveMode: 'auto',
     tick: 0,
     cars: { A: makeCar('A'), B: makeCar('B') },
     walls: [],
@@ -367,10 +368,18 @@ export class GameRules {
     if (!Number.isFinite(msg.throttle) || !Number.isFinite(msg.steer)) return;
     const steer = clamp(msg.steer, -1, 1);
     this.inputs[team] = {
-      throttle: 1,
+      throttle: clamp(msg.throttle, 0, 1),
       steer: steer * config.steerGain,
     };
     this.lastPilotInputAt[team] = this.now;
+  }
+
+  /** Shared central control: cars either drive continuously or require a held pedal. */
+  toggleDriveMode(): void {
+    if (this.state.phase !== 'RACE') return;
+    this.state.driveMode = this.state.driveMode === 'auto' ? 'pedal' : 'auto';
+    for (const team of TEAMS) this.inputs[team].throttle = 0;
+    this.host.broadcastFull();
   }
 
   /** Safety net for a lost pointer-up, a crashed client or a dropped WebSocket. */

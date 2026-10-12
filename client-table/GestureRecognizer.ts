@@ -22,12 +22,12 @@
  */
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import {
-  LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_AREA_LOCAL, ITEM_BTN_LOCAL,
+  LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_AREA_LOCAL, PEDAL_LOCAL, ITEM_BTN_LOCAL,
   GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL, worldToLocal, type PanelLayout,
   insidePanel, nearestStationTeam, checkDivider, inPlayArea, type Role,
 } from '../server/layout.js';
 import { distToSegment, nearestOnTrack } from '../server/geometry.js';
-import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON } from './Renderer.js';
+import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
 import type { View } from './view.js';
 
 export const MAX_CONTACTS = 10;
@@ -48,7 +48,7 @@ const TARGET_RADIUS_PX = 40;
 const TARGETING_MS = 3000;
 const PALM_MAX_PX = 140;        // contacts wider than this (logical px) are palms/arms
 
-type Zone = 'steer' | 'item' | 'pad' | 'ghost' | 'destroy' | 'stroke' | 'target' | 'result' | 'pause' | 'free' | 'rejected';
+type Zone = 'steer' | 'pedal' | 'item' | 'pad' | 'ghost' | 'destroy' | 'stroke' | 'target' | 'result' | 'pause' | 'mode' | 'free' | 'rejected';
 
 interface Contact {
   id: number;
@@ -76,6 +76,8 @@ export class GestureRecognizer {
   private padTouches = new Map<string, Set<number>>();
   /** team → pointerId of the finger holding that team's steering pad. */
   private sticks = new Map<Team, number>();
+  /** team → pointerId of the finger holding that team's acceleration pedal. */
+  private pedals = new Map<Team, number>();
   private lastInput: Record<Team, { throttle: number; steer: number }> = {
     A: { throttle: 0, steer: 0 }, B: { throttle: 0, steer: 0 },
   };
@@ -219,6 +221,10 @@ export class GestureRecognizer {
       if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
         c.zone = 'pause'; this.send({ type: 'Pause' }); return;
       }
+      const mode = DRIVE_MODE_BUTTON;
+      if (state.phase === 'RACE' && p.x >= mode.x && p.x <= mode.x + mode.w && p.y >= mode.y && p.y <= mode.y + mode.h) {
+        c.zone = 'mode'; this.send({ type: 'ToggleDriveMode' }); return;
+      }
     }
     if (state.phase !== 'RACE') { c.zone = 'rejected'; return; }
 
@@ -233,6 +239,15 @@ export class GestureRecognizer {
           c.panel = panel;
           this.sticks.set(panel.team, c.id);
           this.updateSteer(c);
+          return;
+        }
+        if (state.driveMode === 'pedal' && Math.abs(l.x - PEDAL_LOCAL.x) <= PEDAL_LOCAL.w / 2 && Math.abs(l.y - PEDAL_LOCAL.y) <= PEDAL_LOCAL.h / 2) {
+          if (this.pedals.has(panel.team)) { c.zone = 'rejected'; return; }
+          c.zone = 'pedal';
+          c.panel = panel;
+          this.pedals.set(panel.team, c.id);
+          this.view.localPedals[panel.team] = true;
+          this.sendCurrentInput(panel.team);
           return;
         }
         if (Math.hypot(l.x - ITEM_BTN_LOCAL.x, l.y - ITEM_BTN_LOCAL.y) <= ITEM_BTN_LOCAL.r + 6) {
@@ -329,10 +344,7 @@ export class GestureRecognizer {
 
     if (c.zone === 'pad' && c.padKey) this.padUp(c.padKey, c.id);
     if (c.zone === 'steer' && c.panel) this.releaseStick(c.panel.team);
-    // On the table both points are put down together: a lifted finger stops waiting
-    if (c.zone === 'target' && c.id === this.pendingContact && this.state?.mapMode !== 'pc') {
-      this.armPendingTimer(DIVIDER_RELEASE_GRACE_MS);
-    }
+    if (c.zone === 'pedal' && c.panel) this.releasePedal(c.panel.team);
     if (c.zone === 'stroke') {
       const s = this.view.strokes.get(c.strokeKey ?? -1);
       if (s) {
@@ -412,14 +424,28 @@ export class GestureRecognizer {
   private releaseStick(team: Team): void {
     this.sticks.delete(team);
     this.view.sticks[team] = { x: 0, y: 0, active: false };
-    this.sendInput(team, 1, 0);
+    this.sendCurrentInput(team);
+  }
+
+  private releasePedal(team: Team): void {
+    this.pedals.delete(team);
+    this.view.localPedals[team] = false;
+    this.sendCurrentInput(team);
+  }
+
+  private currentThrottle(team: Team): number {
+    return this.state?.driveMode === 'pedal' ? (this.pedals.has(team) ? 1 : 0) : 1;
+  }
+
+  private sendCurrentInput(team: Team, force = false): void {
+    const stick = this.view.sticks[team];
+    this.sendInput(team, this.currentThrottle(team), stick.active ? stick.x : 0, force);
   }
 
   private streamInputs(): void {
     for (const team of ['A', 'B'] as Team[]) {
-      const st = this.view.sticks[team];
-      if (!st.active) continue;
-      this.sendInput(team, 1, st.x, true);
+      if (!this.view.sticks[team].active && !this.pedals.has(team)) continue;
+      this.sendCurrentInput(team, true);
     }
   }
 
@@ -463,9 +489,13 @@ export class GestureRecognizer {
     }
     this.padTouches.clear();
     for (const team of ['A', 'B'] as Team[]) {
+      this.pedals.delete(team);
+      this.view.localPedals[team] = false;
+    }
+    for (const team of ['A', 'B'] as Team[]) {
       this.releaseStick(team);
       this.lastInput[team] = { throttle: 1e9, steer: 1e9 }; // force the neutral frame out
-      this.sendInput(team, 1, 0);
+      this.sendCurrentInput(team);
     }
     this.contacts.clear();
     this.view.debug.contacts = 0;

@@ -463,6 +463,23 @@ test('tactile and keyboard steering receive the same configured small turn gain'
   assert.equal(r.rules.inputs.A.steer, config.steerGain);
   assert.equal(r.rules.inputs.B.steer, config.steerGain);
 });
+test('central drive mode switches all cars to a held-pedal acceleration model', () => {
+  const r = raceRig();
+  const car = r.state.cars.A;
+  r.rules.toggleDriveMode();
+  assert.equal(r.state.driveMode, 'pedal');
+  car.speed = 100;
+  r.rules.onPilotInput('A', msg({ type: 'PilotInput' as const, team: 'A' as Team, throttle: 0, steer: 0 }));
+  r.physics.step(r.clock.now += 100, 0.1);
+  assert.ok(car.speed < 100 && car.speed > 0, 'released pedal coasts toward a stop');
+  r.rules.onPilotInput('A', msg({ type: 'PilotInput' as const, team: 'A' as Team, throttle: 1, steer: 0 }));
+  const before = car.speed;
+  r.physics.step(r.clock.now += 100, 0.1);
+  assert.ok(car.speed > before, 'held pedal accelerates');
+  car.speed = config.vMaxFwd;
+  r.physics.step(r.clock.now += 100, 0.1);
+  assert.equal(car.speed, config.vMaxPedal, 'pedal mode uses its lower maximum speed');
+});
 test('pause freezes race motion and resumes without consuming race time', () => {
   const r = raceRig();
   const car = r.state.cars.A;

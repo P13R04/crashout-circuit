@@ -5,7 +5,7 @@
  */
 import type { GameState, Team, Car } from '../server/types.js';
 import {
-  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, ITEM_BTN_LOCAL, GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL,
+  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, ITEM_BTN_LOCAL, GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL,
   type PanelLayout,
 } from '../server/layout.js';
 import { TEAM_COLOR, TEAM_NAME, type View } from './view.js';
@@ -114,6 +114,17 @@ export class HUD {
     }
     ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
     ctx.fillText('DIRECTION · GLISSEZ', area.x, 94);
+
+    if (state.driveMode === 'pedal') {
+      const p = PEDAL_LOCAL;
+      const active = view.localPedals[team];
+      ctx.fillStyle = active ? `${color}66` : 'rgba(255,255,255,0.08)';
+      ctx.strokeStyle = active ? '#ffffff' : color; ctx.lineWidth = active ? 4 : 2;
+      ctx.beginPath(); ctx.roundRect(p.x - p.w / 2, p.y - p.h / 2, p.w, p.h, 14); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+      ctx.fillText('ACCÉLÉRER', p.x, p.y - 4);
+      ctx.font = '20px monospace'; ctx.fillText('▲', p.x, p.y + 25);
+    }
 
     // Item button: stocked item, tap to arm it (then the copilot has 5 s for the gesture)
     const b = ITEM_BTN_LOCAL;

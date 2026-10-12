@@ -22,6 +22,7 @@ export const START_TABLE_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 8
 export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 20, w: 520, h: 72 };
 export const RESULT_BUTTON = { x: LOGICAL_W / 2 - 200, y: LOGICAL_H / 2 - 45, w: 400, h: 90 };
 export const PAUSE_BUTTON = { x: LOGICAL_W / 2 - 58, y: 14, w: 116, h: 38 };
+export const DRIVE_MODE_BUTTON = { x: LOGICAL_W / 2 - 120, y: 58, w: 240, h: 38 };
 export const MAP_GENERATE_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 export const RACE_START_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 /** Reset button located in the vertical middle on the far right edge of the screen. */
@@ -61,8 +62,8 @@ export class Renderer {
     this.drawEffects(ctx, view);
     this.hud.draw(ctx, state, view);
     this.drawDisabledAlerts(ctx, state);
-    if (state.phase === 'READY') this.drawRaceReady(ctx, state);
-    if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); }
+    if (state.phase === 'READY') this.drawRaceReady(ctx);
+    if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); this.drawDriveModeButton(ctx, state); }
     if (state.phase === 'PAUSED') { this.drawPauseButton(ctx, 'REPRENDRE'); this.drawPaused(ctx); }
     if (state.phase === 'RESULT') this.drawResult(ctx, state);
     this.drawResetButton(ctx);
@@ -552,7 +553,17 @@ export class Renderer {
     ctx.fillText(label, b.x + b.w / 2, b.y + 24); ctx.restore();
   }
 
-  private drawRaceReady(ctx: Ctx, state: GameState): void {
+  private drawDriveModeButton(ctx: Ctx, state: GameState): void {
+    const b = DRIVE_MODE_BUTTON;
+    const pedal = state.driveMode === 'pedal';
+    ctx.save(); ctx.fillStyle = pedal ? 'rgba(255,190,55,0.35)' : 'rgba(4,8,31,0.82)';
+    ctx.strokeStyle = pedal ? '#ffbe37' : '#ffffff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 9); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(`PILOTAGE · ${pedal ? 'PÉDALE' : 'AUTO'}`, b.x + b.w / 2, b.y + 24); ctx.restore();
+  }
+
+  private drawRaceReady(ctx: Ctx): void {
     const b = RACE_START_BUTTON;
     ctx.save();
     ctx.fillStyle = 'rgba(4,8,31,0.56)'; ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
