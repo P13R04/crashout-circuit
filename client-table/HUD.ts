@@ -73,9 +73,9 @@ export class HUD {
   private drawFrame(ctx: Ctx, panel: PanelLayout): void {
     const PANEL_W = panelWidth(panel.role);
     const color = TEAM_COLOR[panel.team];
-    ctx.fillStyle = 'rgba(6,10,32,0.88)';
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.fillStyle = 'rgba(6,10,32,0.15)';
+    ctx.strokeStyle = `${color}44`;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.roundRect(-PANEL_W / 2, -PANEL_H / 2, PANEL_W, PANEL_H, 18);
     ctx.fill();

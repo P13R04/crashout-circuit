@@ -13,7 +13,7 @@ import type {
   PilotInputMsg, UseItemMsg, TangibleMovedMsg, TangibleRemovedMsg, OzTriggerMsg, TestToggleMsg,
 } from './types.js';
 import { config } from './config.js';
-import { dist, distToSegment, nearestOnTrack, segmentsIntersect, slingshotShot, wrapAngle } from './geometry.js';
+import { dist, distToSegment, nearestOnTrack, segmentsIntersect, slingshotShot, wrapAngle, clampToTrackRibbon, isInsideTrackRibbon } from './geometry.js';
 import { generate, generatePreset, validateStroke, rebuildEdges } from './MapGenerator.js';
 import { nearestStationTeam, LOGICAL_W, checkDivider } from './layout.js';
 
@@ -218,21 +218,46 @@ export class GameRules {
       .filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))
       .slice(0, MAX_STROKE_POINTS)
       .map(p => ({ x: p.x, y: p.y }));
-    const [p1, p2] = s.mapTargets[team];
     if (pts.length < 2) return;
-    // If the player started at p2 and drew towards p1, reverse so it canonicalizes p1→p2
-    if (dist(pts[0], p2) < 160 && dist(pts[pts.length - 1], p1) < 160) {
-      pts = pts.reverse();
-    }
-    if (!validateStroke(pts, p1, p2) || !this.staysInHalf(team, pts, s.mapDivider)) {
-      const last = pts[pts.length - 1] ?? p1;
+
+    const P1 = s.mapDivider[0];
+    const P2 = s.mapDivider[1];
+
+    // Check if the stroke starts near one anchor and ends near the other (in either direction)
+    const dStartP1 = dist(pts[0], P1);
+    const dStartP2 = dist(pts[0], P2);
+    const dEndP1 = dist(pts[pts.length - 1], P1);
+    const dEndP2 = dist(pts[pts.length - 1], P2);
+
+    const fwd = dStartP1 <= 160 && dEndP2 <= 160; // P1 -> P2
+    const rev = dStartP2 <= 160 && dEndP1 <= 160; // P2 -> P1
+
+    if (!fwd && !rev) {
+      const last = pts[pts.length - 1] ?? P1;
       this.host.feedback('mapError', last.x, last.y, team);
       return;
     }
-    // Once accepted, lock the endpoints exactly to the common anchors. This
-    // makes a near miss inside the target ring a clean, continuous circuit.
-    pts[0] = { ...p1 };
-    pts[pts.length - 1] = { ...p2 };
+
+    if (!validateStroke(pts, P1, P2) || !this.staysInHalf(team, pts, s.mapDivider)) {
+      const last = pts[pts.length - 1] ?? P1;
+      this.host.feedback('mapError', last.x, last.y, team);
+      return;
+    }
+
+    // Auto-orient strokes so that:
+    // Team A connects P1 -> P2
+    // Team B connects P2 -> P1
+    // This allows drawing in either direction while ensuring seamless loop closure.
+    if (team === 'A') {
+      if (rev) pts = pts.reverse();
+      pts[0] = { ...P1 };
+      pts[pts.length - 1] = { ...P2 };
+    } else {
+      if (fwd) pts = pts.reverse();
+      pts[0] = { ...P2 };
+      pts[pts.length - 1] = { ...P1 };
+    }
+
     this.strokes[team] = pts;
     s.mapStrokes[team] = true;
     this.host.broadcastFull();
@@ -301,7 +326,7 @@ export class GameRules {
     for (const pad of Object.values(s.repairPads)) { pad.held = false; pad.startedAt = 0; }
     s.walls = []; s.arcs = []; s.boostGates = []; s.stones = [];
     s.pickups = track.pickupPositions.map((pos, i) => ({
-      id: i, pos: { ...pos }, kind: this.randomItem(), respawnAt: 0,
+      id: i, pos: clampToTrackRibbon(pos, track, 25), kind: this.randomItem(), respawnAt: 0,
     }));
     s.winner = null;
     s.sessionStartAt = waitForPlayers ? 0 : this.now + COUNTDOWN_MS;
@@ -801,6 +826,23 @@ export class GameRules {
     const start = track.featureIndices.start;
     const t = tangent(start);
     track.startLine = { pos: { ...track.centerline[start] }, normal: { x: -t.y, y: t.x } };
+
+    // Keep pickups clamped on the track ribbon during deformations
+    if (track.featureIndices.pickups) {
+      track.featureIndices.pickups.forEach((idx, i) => {
+        const tg = tangent(idx);
+        const normal = { x: -tg.y, y: tg.x };
+        const halfW = (track.widths[idx] ?? config.trackWidthBasePx) / 2;
+        const lateral = halfW * 0.3 * (i % 2 === 0 ? 1 : -1);
+        const rawPos = {
+          x: track.centerline[idx].x + normal.x * lateral,
+          y: track.centerline[idx].y + normal.y * lateral,
+        };
+        const safe = clampToTrackRibbon(rawPos, track, 25);
+        track.pickupPositions[i] = safe;
+        if (this.state.pickups[i]) this.state.pickups[i].pos = { ...safe };
+      });
+    }
   }
 
   /** A small grace band prevents an easing edge from unfairly dropping a car. */
@@ -895,7 +937,14 @@ export class GameRules {
     s.walls = s.walls.filter(w => !w.expiresAt || w.expiresAt > now);
 
     for (const p of s.pickups) {
-      if (p.respawnAt !== 0 && p.respawnAt <= now) { p.respawnAt = 0; p.kind = this.randomItem(); }
+      if (p.respawnAt !== 0 && p.respawnAt <= now) {
+        p.respawnAt = 0;
+        p.kind = this.randomItem();
+        if (s.track) {
+          const origin = s.track.pickupPositions[p.id] ?? p.pos;
+          p.pos = clampToTrackRibbon(origin, s.track, 25);
+        }
+      }
     }
     for (const team of TEAMS) {
       const car = s.cars[team];

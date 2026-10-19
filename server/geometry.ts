@@ -67,6 +67,37 @@ export function wrapAngle(a: number): number {
   return a;
 }
 
+/**
+ * Check if a point is within the drivable track ribbon (with an optional safety margin from the outer edge).
+ */
+export function isInsideTrackRibbon(p: Vec2, track: TrackGeometry, marginPx = 25): boolean {
+  if (!track || !track.centerline || track.centerline.length === 0) return false;
+  const hit = nearestOnTrack(p, track);
+  return hit.distance <= Math.max(0, hit.halfWidth - marginPx);
+}
+
+/**
+ * Clamp a position so that it is guaranteed to lie within the drivable track ribbon.
+ * If the position is already inside (with marginPx from the edge), it is unchanged.
+ * If it is outside or too close to the neon edge, it is pulled onto the ribbon towards the centerline.
+ */
+export function clampToTrackRibbon(p: Vec2, track: TrackGeometry, marginPx = 25): Vec2 {
+  if (!track || !track.centerline || track.centerline.length === 0) return { ...p };
+  const hit = nearestOnTrack(p, track);
+  const maxAllowedDist = Math.max(0, hit.halfWidth - marginPx);
+  if (hit.distance <= maxAllowedDist) {
+    return { ...p };
+  }
+  if (hit.distance < 1e-6) {
+    return { ...hit.closest };
+  }
+  const ratio = maxAllowedDist / hit.distance;
+  return {
+    x: hit.closest.x + (p.x - hit.closest.x) * ratio,
+    y: hit.closest.y + (p.y - hit.closest.y) * ratio,
+  };
+}
+
 // ─── Slingshot ──────────────────────────────────────────────────────────────
 
 export interface SlingshotParams {

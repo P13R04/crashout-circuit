@@ -379,7 +379,21 @@ export class GestureRecognizer {
       const s = this.view.strokes.get(c.strokeKey ?? -1);
       if (s) {
         s.done = true;
-        if (s.pts.length >= 2) this.send({ type: 'StrokeDraw', creator: s.team, pts: s.pts });
+        if (s.pts.length >= 2) {
+          // Double check creator team based on where points actually went
+          const p1 = this.state?.mapTargets?.A[0];
+          const p2 = this.state?.mapTargets?.A[1];
+          if (p1 && p2) {
+            const dx = p2.x - p1.x, dy = p2.y - p1.y;
+            const len = Math.hypot(dx, dy) || 1;
+            let sum = 0;
+            for (const pt of s.pts) {
+              sum += (dx * (pt.y - p1.y) - dy * (pt.x - p1.x)) / len >= 0 ? 1 : -1;
+            }
+            s.team = sum >= 0 ? 'A' : 'B';
+          }
+          this.send({ type: 'StrokeDraw', creator: s.team, pts: s.pts });
+        }
       }
     }
     if (c.zone === 'simsling') this.releaseSimSling(c);
@@ -741,7 +755,9 @@ export class GestureRecognizer {
     const p2 = state.mapTargets.A[1]; // Anchor 2
     const d1 = Math.hypot(p.x - p1.x, p.y - p1.y);
     const d2 = Math.hypot(p.x - p2.x, p.y - p2.y);
-    const TOLERANCE = 150;
+    const TOLERANCE = 160;
+
+    if (d1 > TOLERANCE && d2 > TOLERANCE) return null;
 
     // Which side of the divider line is the touch?
     const dx = p2.x - p1.x, dy = p2.y - p1.y;
@@ -749,19 +765,14 @@ export class GestureRecognizer {
     // cross >= 0 -> Team A side; cross < 0 -> Team B side
     const touchSideTeam: Team = cross >= 0 ? 'A' : 'B';
 
-    if (d1 <= TOLERANCE) {
-      if (!state.mapStrokes.A) return 'A';
-      if (!state.mapStrokes.B) return 'B';
-      return touchSideTeam;
-    }
-    if (d2 <= TOLERANCE) {
-      if (!state.mapStrokes.B) return 'B';
-      if (!state.mapStrokes.A) return 'A';
-      return touchSideTeam;
-    }
-    if (d1 <= TOLERANCE * 1.5 || d2 <= TOLERANCE * 1.5) {
-      return touchSideTeam;
-    }
-    return null;
+    const hasA = state.mapStrokes.A || [...this.view.strokes.values()].some(s => s.team === 'A');
+    const hasB = state.mapStrokes.B || [...this.view.strokes.values()].some(s => s.team === 'B');
+
+    if (hasA && !hasB) return 'B';
+    if (hasB && !hasA) return 'A';
+
+    if (cross > 20) return 'A';
+    if (cross < -20) return 'B';
+    return d1 <= d2 ? 'A' : 'B';
   }
 }

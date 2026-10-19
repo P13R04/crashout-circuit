@@ -14,7 +14,7 @@
 
 import type { Vec2, TrackGeometry } from './types.js';
 import { config } from './config.js';
-import { segmentsIntersect } from './geometry.js';
+import { segmentsIntersect, clampToTrackRibbon } from './geometry.js';
 import { PLAY_AREA } from './layout.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -481,12 +481,14 @@ function placeFeatures(geo: BaseGeometry, randomStart = true, preferredStart?: V
   // 4 pickup spots, halfway between checkpoint pairs
   const pickupPositions: Vec2[] = [];
   const pickupIndices: number[] = [];
+  const baseGeo = { centerline, widths } as TrackGeometry;
   for (let p = 0; p < PICKUP_COUNT; p++) {
     const idx = (startIdx + Math.round(((p + 0.5) / PICKUP_COUNT) * n)) % n;
     const normal = perpendicular(tangentAt(centerline, idx));
     const halfW = (widths[idx] ?? config.trackWidthBasePx) / 2;
     const lateral = halfW * 0.3 * (p % 2 === 0 ? 1 : -1);
-    pickupPositions.push(add(centerline[idx], scale(normal, lateral)));
+    const rawPos = add(centerline[idx], scale(normal, lateral));
+    pickupPositions.push(clampToTrackRibbon(rawPos, baseGeo, 25));
     pickupIndices.push(idx);
   }
 
@@ -704,7 +706,7 @@ function stretchMinorAxis(pts: Vec2[], factor: number): Vec2[] {
 function buildFromCenterline(raw: Vec2[], stretch = 1, preferredStart?: Vec2): TrackGeometry {
   let loop = relax(catmullRom(raw), 40);
   if (stretch !== 1) loop = stretchMinorAxis(loop, stretch);
-  return placeFeatures(computeGeometry(fitToPlayArea(loop)), false, preferredStart);
+  return placeFeatures(computeGeometry(loop), false, preferredStart);
 }
 
 // ─── The circuit is the drawing ──────────────────────────────────────────────
@@ -919,7 +921,8 @@ function denseRing(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2, boost: number, forc
  */
 function faithfulTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackGeometry | null {
   // First the drawing as it is (a deep dip across the divider is a deliberate crossing),
-  // then with every dip folded back (the classic bean)
+  // then with every dip folded back (the classic bean).
+  // The loop is used directly without fitToPlayArea so the track matches the drawing.
   for (const forceFold of [false, true]) {
     for (const [minAmp, boost] of AMPLITUDE_BOOSTS) {
       const dense = denseRing(a, b, P1, P2, boost, forceFold, minAmp);
@@ -933,7 +936,7 @@ function faithfulTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackGeometry 
           for (const sigma of EXTRA_SMOOTHING) {
             const loop = sigma === 0 ? rounded : evenRing(gaussianClosed(rounded, sigma));
             if (tightestRadius(loop) < MIN_CURVATURE_RADIUS) continue;
-            const geo = placeFeatures(computeGeometry(fitToPlayArea(loop)), false, P1);
+            const geo = placeFeatures(computeGeometry(loop), false, P1);
             if (validateGeometry(geo)) return geo;
             break; // drivable bends but invalid loop: more amplitude, not more smoothing
           }
@@ -971,7 +974,7 @@ function smoothestTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackGeometry
       for (const stretch of HEAVY_STRETCH) {
         const rounded = roundCorners(stretch === 1 ? loop : evenRing(stretchMinorAxis(loop, stretch)));
         if (tightestRadius(rounded) < MIN_CURVATURE_RADIUS) continue;
-        const geo = placeFeatures(computeGeometry(fitToPlayArea(rounded)), false, P1);
+        const geo = placeFeatures(computeGeometry(rounded), false, P1);
         if (validateGeometry(geo)) return geo;
       }
     }
@@ -995,7 +998,7 @@ function smoothestTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackGeometry
     const u = semiMajor * Math.cos(t), v = semiMinor * Math.sin(t);
     return { x: cx + u * mx - v * my, y: cy + u * my + v * mx };
   });
-  const geo = placeFeatures(computeGeometry(fitToPlayArea(signedArea(ellipse) < 0 ? ellipse.reverse() : ellipse)), false, P1);
+  const geo = placeFeatures(computeGeometry(signedArea(ellipse) < 0 ? ellipse.reverse() : ellipse), false, P1);
   return validateGeometry(geo) ? geo : null;
 }
 

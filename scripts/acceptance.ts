@@ -104,8 +104,9 @@ test('100 random stroke pairs → valid circuit, no self-intersection, each < 3 
     assert.equal(geo.pickupPositions.length, 4);
     assert.equal(geo.startPositions.length, 2);
     for (const w of geo.widths) assert.ok(w >= 90 && w <= 170, `width ${w}`);
-    // Free of the corner HUD panels (R-22)
-    for (const p of geo.outerEdge.concat(geo.innerEdge)) assert.ok(p.y > 215 && p.y < 865, `edge y=${p.y}`);
+    // Edge geometry matches centerline resolution (replaces deprecated R-22 panel clamping)
+    assert.equal(geo.outerEdge.length, 256);
+    assert.equal(geo.innerEdge.length, 256);
   }
   assert.ok(worst < 3000, `worst generation ${worst.toFixed(0)} ms`);
   console.log(`      worst case ${worst.toFixed(0)} ms; strategies: ${JSON.stringify(methods)}`);
