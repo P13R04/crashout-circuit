@@ -30,6 +30,7 @@ export interface LocalStroke {
   pts: Vec2[];
   rejectedAt?: number; // performance.now() of a server mapError
   done: boolean;
+  submitting?: boolean;
 }
 
 /** Everything the renderer and the HUD need besides the authoritative GameState. */
@@ -55,6 +56,7 @@ export interface View {
   mapErrorAt: Record<Team, number>;
   /** Points currently chosen during the two-point placement stage of MAP phase. */
   pendingDivider: Vec2[];
+  dividerSubmitting: boolean;
   /** Transient guidance notice shown during map creation. */
   mapNotice: { text: string; until: number; color?: string } | null;
   debug: { on: boolean; fps: number; frameMs: number; rtt: number; touchMs: number; contacts: number };
@@ -66,6 +68,25 @@ const DIVIDER_REFUSAL: Record<Exclude<DividerCheck, 'ok'>, string> = {
 };
 
 export const REFUSAL_COLOR = '#ff4040';
+
+export function showMapNotice(view: View, text: string, color = REFUSAL_COLOR): void {
+  view.mapNotice = { text, color, until: performance.now() + 4000 };
+}
+
+export function showMapError(view: View, kind: string, team: Team): void {
+  const start = team === 'A' ? 'P1' : 'P2';
+  const end = team === 'A' ? 'P2' : 'P1';
+  const messages: Record<string, string> = {
+    mapWrongStart: `Commencez dans le cercle ${start}.`,
+    mapWrongEnd: `Rejoignez ${end} avant de relâcher.`,
+    mapWrongSide: 'Dessinez votre partie dans la zone de votre équipe.',
+    mapWaitCyan: 'Équipe rose : patientez, le cyan trace en premier.',
+    mapLocked: `Le tracé ${team === 'A' ? 'cyan' : 'rose'} est déjà validé.`,
+    mapCancelled: 'Contact interrompu : recommencez depuis le cercle de départ.',
+    mapError: 'Tracé trop court ou incomplet : reliez les deux cercles.',
+  };
+  showMapNotice(view, messages[kind] ?? messages.mapError);
+}
 
 /** Tell the players why the dividing line was refused (a refusal is never silent). */
 export function showDividerRefusal(view: View, reason: Exclude<DividerCheck, 'ok'>): void {
@@ -89,6 +110,7 @@ export function createView(now: () => number): View {
     hpShown: { A: 100, B: 100 },
     mapErrorAt: { A: -1e9, B: -1e9 },
     pendingDivider: [],
+    dividerSubmitting: false,
     mapNotice: null,
     debug: { on: false, fps: 0, frameMs: 0, rtt: 0, touchMs: 0, contacts: 0 },
   };

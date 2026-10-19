@@ -42,8 +42,8 @@ En dev, ouvrir la table sur `http://localhost:5173/client-table/`, Oz sur `/clie
 
 ## Déroulement d'une partie
 
-1. **LOBBY** : choisir **Jouer sur table** (deux contacts simultanés) ou **Mode PC · séquentiel** (clics et demi-tracés successifs).
-2. **MAP** : deux contacts communs définissent une ligne qui partage la table. Chaque copilote part de son point, dessine sa moitié sans traverser la ligne, et rejoint le point opposé. Une fois les deux traits acceptés, les joueurs touchent **GÉNÉRER LE CIRCUIT**. Il n'y a pas de passage automatique.
+1. **LOBBY** : choisir **Jouer sur table** (au doigt) ou **Mode PC · séquentiel** (à la souris). Les deux modes suivent le même ordre cyan puis rose.
+2. **MAP** : un joueur cyan touche pour placer **P1**, puis un joueur rose touche pour placer **P2**. P1 reste enregistré après le retrait du doigt, sans délai d'expiration ; un P2 refusé n'efface pas P1. Les points définissent la ligne de partage. Le cyan trace **P1 → P2** dans sa zone, puis, après validation, le rose trace **P2 → P1** dans la sienne. L'ordre et le sens sont bloquants : le trait validé est verrouillé. Le départ et le relâchement doivent être dans les cercles visibles (rayon 95 px). Les flèches et les consignes, lisibles des deux côtés de la table, ne concernent que l'équipe active. Les boucles et croisements restent possibles. Après les deux validations, les joueurs touchent **GÉNÉRER LE CIRCUIT** ; il n'y a pas de génération automatique.
 3. **PRÊT** : le circuit généré est affiché et les joueurs touchent **LANCER LA COURSE** lorsqu'ils sont en place.
 4. **RACE** : compte à rebours, 3 tours ou 5 minutes. Le bouton central **PILOTAGE** alterne entre **AUTO** (avance continue) et **PÉDALE** (chaque pilote maintient sa pédale pour accélérer, puis ralentit jusqu'à l'arrêt). La bande de direction et **UTILISER** restent disponibles dans les deux modes. Quitter le ruban de piste est une chute : la voiture est hors d'usage jusqu'à la réparation synchronisée.
 5. **PAUSE** : le bouton central, Échap ou Espace fige la course et ses compteurs.
@@ -92,7 +92,7 @@ Deux doigts sont posés près du **même bord**, à moins de 130 px l’un de l�
 
 `A` ou `M` seuls activent l'objet. Lorsque les deux touches de réparation sont maintenues, le prototype simule les deux appuis synchrones des postes pilote et copilote.
 
-En mode PC, cliquez d’abord les deux extrémités de la séparation, puis dessinez une moitié après l’autre. Le départ et la fin d’un tracé sont validés dans le grand cercle lumineux : relâcher à l’intérieur suffit, le point est recalé automatiquement sur l’ancre exacte.
+En mode PC comme sur table, placez P1 cyan puis P2 rose, puis dessinez cyan de P1 à P2 et rose de P2 à P1. Relâcher à l'intérieur du cercle cible suffit : le point est recalé sur l'ancre exacte. Un contact interrompu ou un relâchement trop tôt permet de recommencer le tracé actif. Un doigt supplémentaire ne remplace pas le geste en cours. **RESET** permet de reprendre toute la création depuis l'accueil. Les barres de simulation et de test PC sont masquées pendant la création et l'aperçu du circuit.
 
 ## Tests et outils
 

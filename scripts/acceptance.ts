@@ -310,7 +310,7 @@ test('two shared divider contacts then two half-strokes wait for confirmation be
   r.rules.onMapDivider(msg({ type: 'MapDivider' as const, a: { x: 480, y: 540 }, b: { x: 1440, y: 540 } }));
   const t = r.state.mapTargets!;
   r.rules.onStrokeDraw(msg({ type: 'StrokeDraw' as const, creator: 'A' as Team, pts: [t.A[0], { x: t.A[0].x + 10, y: t.A[0].y }] }));
-  assert.ok(r.feedback.includes('mapError'));
+  assert.ok(r.feedback.includes('mapWrongEnd'));
   assert.equal(r.state.mapStrokes.A, false);
   const aStroke = [t.A[0], { x: 700, y: 680 }, { x: 1100, y: 760 }, t.A[1]];
   const bStroke = [t.B[0], { x: 1220, y: 390 }, { x: 820, y: 320 }, t.B[1]];
@@ -364,75 +364,153 @@ function tableClient(mode: 'table' | 'pc') {
   state.mapMode = mode;
   view.state = state;
   const sent: Array<{ type: string } & Record<string, unknown>> = [];
-  new GestureRecognizer(canvas, view, m => sent.push(m));
-  const ev = (id: number, p: Vec2) => ({ pointerId: id, clientX: p.x, clientY: p.y, timeStamp: 0, preventDefault() {} });
+  const gestures = new GestureRecognizer(canvas, view, m => sent.push(m));
+  const ev = (id: number, p: Vec2, type: string) => ({ type, pointerId: id, clientX: p.x, clientY: p.y, timeStamp: 0, preventDefault() {} });
   return {
-    view, sent,
-    down: (id: number, p: Vec2) => handlers.pointerdown(ev(id, p)),
-    up: (id: number, p: Vec2) => handlers.pointerup(ev(id, p)),
+    view, sent, gestures,
+    down: (id: number, p: Vec2) => handlers.pointerdown(ev(id, p, 'pointerdown')),
+    move: (id: number, p: Vec2) => handlers.pointermove(ev(id, p, 'pointermove')),
+    up: (id: number, p: Vec2) => handlers.pointerup(ev(id, p, 'pointerup')),
+    cancel: (id: number, p: Vec2) => handlers.pointercancel(ev(id, p, 'pointercancel')),
     dividers: () => sent.filter(m => m.type === 'MapDivider'),
   };
 }
-test('issue #3: an isolated contact never pairs with one made 5 s later', () => {
+test('guided MAP: P1 survives a lifted finger and a long wait, on table and PC', () => {
   mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
   try {
     for (const mode of ['table', 'pc'] as const) {
       const c = tableClient(mode);
-      c.down(1, { x: 600, y: 540 });
-      c.up(1, { x: 600, y: 540 });
-      mock.timers.tick(5000);
-      assert.equal(c.view.pendingDivider.length, 0, `${mode}: the isolated contact expired`);
-      assert.ok(c.view.mapNotice, `${mode}: the players are told`);
-      c.down(2, { x: 1400, y: 540 });
-      c.up(2, { x: 1400, y: 540 });
-      assert.equal(c.dividers().length, 0, `${mode}: no dividing line from two contacts 5 s apart`);
-      assert.equal(c.view.pendingDivider.length, 1, `${mode}: the new contact starts a fresh wait`);
+      const p1 = { x: 600, y: 540 }, p2 = { x: 1400, y: 540 };
+      c.down(1, p1); c.up(1, p1);
+      mock.timers.tick(60_000);
+      assert.deepEqual(c.view.pendingDivider, [p1]);
+      c.down(2, { x: 650, y: 540 }); c.up(2, { x: 650, y: 540 });
+      assert.equal(c.dividers().length, 0);
+      assert.match(c.view.mapNotice!.text, /360/);
+      assert.deepEqual(c.view.pendingDivider, [p1], 'refusing P2 preserves P1');
+      c.down(3, { x: 60, y: 60 }); c.up(3, { x: 60, y: 60 });
+      assert.match(c.view.mapNotice!.text, /zone/);
+      assert.deepEqual(c.view.pendingDivider, [p1]);
+      c.down(4, p2); c.up(4, p2);
+      assert.equal(c.dividers().length, 1);
+      assert.deepEqual(c.dividers()[0].a, p1);
+      assert.deepEqual(c.dividers()[0].b, p2);
+      c.down(5, { x: 1000, y: 500 });
+      assert.equal(c.dividers().length, 1, 'extra contacts cannot replace a pending divider');
     }
   } finally { mock.timers.reset(); }
 });
-test('issue #3: two simultaneous contacts make the dividing line; refusals show a message', () => {
+
+test('guided MAP: held placement contacts never turn into drawing contacts', () => {
   mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
   try {
-    const t = tableClient('table');
-    t.down(1, { x: 600, y: 540 });
-    mock.timers.tick(1500); // still held: not abandoned
-    t.down(2, { x: 1400, y: 540 });
-    assert.equal(t.dividers().length, 1);
-    assert.deepEqual(t.dividers()[0].a, { x: 600, y: 540 });
-
-    const close = tableClient('table');
-    close.down(1, { x: 600, y: 540 });
-    close.down(2, { x: 700, y: 540 });
-    assert.equal(close.dividers().length, 0);
-    assert.match(close.view.mapNotice!.text, /360/);
-
-    const out = tableClient('table');
-    out.down(1, { x: 60, y: 60 });
-    assert.equal(out.view.pendingDivider.length, 0);
-    assert.match(out.view.mapNotice!.text, /zone/);
-
-    // a finger lifted alone on the table is dropped within a second, a click on the PC is not
-    const lifted = tableClient('table');
-    lifted.down(1, { x: 600, y: 540 });
-    lifted.up(1, { x: 600, y: 540 });
-    mock.timers.tick(700);
-    assert.equal(lifted.view.pendingDivider.length, 0);
-    const click = tableClient('pc');
-    click.down(1, { x: 600, y: 540 });
-    click.up(1, { x: 600, y: 540 });
-    mock.timers.tick(2500);
-    click.down(1, { x: 1400, y: 540 });
-    assert.equal(click.dividers().length, 1, 'PC mode: successive clicks 2.5 s apart pair up');
+    const c = tableClient('table');
+    const p1 = { x: 600, y: 540 }, p2 = { x: 1400, y: 540 };
+    c.down(1, p1); c.down(2, p2);
+    assert.equal(c.dividers().length, 1);
+    const state = c.view.state!;
+    state.mapDivider = [p1, p2];
+    state.mapTargets = { A: [p1, p2], B: [p2, p1] };
+    c.move(1, { x: 800, y: 740 }); c.up(1, p2); c.up(2, p2);
+    assert.equal(c.view.strokes.size, 0);
+    assert.equal(c.sent.filter(m => m.type === 'StrokeDraw').length, 0);
   } finally { mock.timers.reset(); }
 });
-test('issue #3: with a mouse (same pointerId) the first half-stroke stays on screen', () => {
-  const c = tableClient('pc');
-  const state = c.view.state!;
-  state.mapDivider = [{ x: 600, y: 540 }, { x: 1400, y: 540 }];
-  state.mapTargets = { A: [state.mapDivider[0], state.mapDivider[1]], B: [state.mapDivider[1], state.mapDivider[0]] };
-  c.down(1, { x: 600, y: 540 }); c.up(1, { x: 700, y: 640 });
-  c.down(1, { x: 1400, y: 540 }); c.up(1, { x: 1300, y: 440 });
-  assert.deepEqual([...c.view.strokes.values()].map(s => s.team).sort(), ['A', 'B']);
+
+test('guided MAP: only active start works, concurrent fingers and in-flight duplicates are blocked', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  try {
+    for (const mode of ['table', 'pc'] as const) {
+      const c = tableClient(mode);
+      const state = c.view.state!;
+      const p1 = { x: 600, y: 540 }, p2 = { x: 1400, y: 540 };
+      state.mapDivider = [p1, p2]; state.mapTargets = { A: [p1, p2], B: [p2, p1] };
+      c.down(1, p2); c.up(1, p1);
+      assert.equal(c.view.strokes.size, 0, 'rose cannot start first');
+      assert.match(c.view.mapNotice!.text, /cyan trace en premier/);
+      c.down(1, { x: 600, y: 636 }); c.up(1, p2);
+      assert.equal(c.view.strokes.size, 0, 'outside the visible 95 px ring');
+      c.down(1, { x: 600, y: 635 });
+      c.move(1, { x: 950, y: 740 });
+      c.down(2, p1); c.move(2, { x: 900, y: 680 }); c.up(2, p2);
+      assert.equal(c.view.strokes.size, 1, 'second finger cannot replace first');
+      c.up(1, p2);
+      const sent = c.sent.filter(m => m.type === 'StrokeDraw');
+      assert.equal(sent.length, 1);
+      assert.deepEqual((sent[0].pts as Vec2[]).at(-1), p2, 'release position is included');
+      c.down(1, p1); c.up(1, p2);
+      assert.equal(c.sent.filter(m => m.type === 'StrokeDraw').length, 1, 'wait for server validation');
+      state.mapStrokes.A = true;
+      c.down(1, p1); c.up(1, p2);
+      assert.match(c.view.mapNotice!.text, /cyan.*déjà validé/);
+      c.down(1, p2); c.move(1, { x: 950, y: 340 }); c.up(1, p1);
+      assert.deepEqual(c.sent.filter(m => m.type === 'StrokeDraw').map(m => m.creator), ['A', 'B']);
+      assert.deepEqual([...c.view.strokes.values()].map(s => s.team), ['A', 'B'], 'same mouse id keeps both halves');
+    }
+  } finally { mock.timers.reset(); }
+});
+
+test('guided MAP: early release and cancellation can be retried without advancing', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  try {
+    const c = tableClient('table');
+    const p1 = { x: 600, y: 540 }, p2 = { x: 1400, y: 540 };
+    c.view.state!.mapDivider = [p1, p2];
+    c.view.state!.mapTargets = { A: [p1, p2], B: [p2, p1] };
+    c.down(1, p1); c.move(1, { x: 900, y: 720 }); c.up(1, { x: 1000, y: 700 });
+    assert.match(c.view.mapNotice!.text, /Rejoignez P2/);
+    assert.ok([...c.view.strokes.values()][0].rejectedAt !== undefined);
+    c.down(1, p1); c.move(1, p2); c.cancel(1, p2);
+    assert.match(c.view.mapNotice!.text, /interrompu/);
+    assert.equal(c.sent.filter(m => m.type === 'StrokeDraw').length, 0);
+    c.down(1, p1); c.move(1, { x: 900, y: 720 });
+    c.gestures.releaseAll();
+    c.down(1, p1); c.move(1, { x: 900, y: 720 }); c.up(1, p2);
+    assert.equal(c.sent.filter(m => m.type === 'StrokeDraw').length, 1, 'retry after lost connection/hidden tab');
+  } finally { mock.timers.reset(); }
+});
+
+test('guided MAP: server enforces order, endpoints, locked halves and final confirmation', async () => {
+  const r = rig();
+  r.rules.enterMap();
+  const p1 = { x: 480, y: 540 }, p2 = { x: 1440, y: 540 };
+  r.rules.onMapDivider(msg({ type: 'MapDivider', a: p1, b: p2 }));
+  const a = [p1, { x: 700, y: 700 }, { x: 1100, y: 740 }, p2];
+  const b = [p2, { x: 1200, y: 380 }, { x: 800, y: 340 }, p1];
+  const submit = (creator: Team, pts: Vec2[]) => r.rules.onStrokeDraw(msg({ type: 'StrokeDraw', creator, pts }));
+  submit('B', b);
+  assert.equal(r.feedback.at(-1), 'mapWaitCyan');
+  assert.equal(r.state.mapStrokes.B, false);
+  submit('A', [...a].reverse());
+  assert.equal(r.feedback.at(-1), 'mapWrongStart');
+  submit('A', [p1, ...a.slice(1, -1), { x: 1440, y: 636 }]);
+  assert.equal(r.feedback.at(-1), 'mapWrongEnd');
+  submit('A', [p1, { x: 650, y: 350 }, { x: 800, y: 340 }, { x: 1000, y: 340 }, { x: 1200, y: 350 }, p2]);
+  assert.equal(r.feedback.at(-1), 'mapWrongSide');
+  assert.equal(r.state.mapStrokes.A, false);
+  submit('A', a);
+  assert.equal(r.feedback.at(-1), 'mapAccepted');
+  assert.equal(r.state.mapStrokes.A, true);
+  r.rules.onGenerateTrack();
+  await Promise.resolve();
+  assert.equal(r.state.phase, 'MAP', 'one accepted half is not enough');
+  submit('A', a);
+  assert.equal(r.feedback.at(-1), 'mapLocked');
+  submit('B', [...b].reverse());
+  assert.equal(r.feedback.at(-1), 'mapWrongStart');
+  submit('B', b);
+  assert.equal(r.feedback.at(-1), 'mapAccepted');
+  assert.deepEqual(r.state.mapStrokes, { A: true, B: true });
+  assert.equal(r.state.phase, 'MAP', 'two halves still require confirmation');
+  submit('B', b);
+  assert.equal(r.feedback.at(-1), 'mapLocked');
+  r.rules.onGenerateTrack();
+  await Promise.resolve();
+  assert.equal(r.state.phase, 'READY');
+  r.rules.resetToLobby();
+  r.rules.enterMap();
+  assert.deepEqual(r.state.mapStrokes, { A: false, B: false });
+  assert.equal(r.state.mapDivider, null);
 });
 
 // ─── Physics ─────────────────────────────────────────────────────────────────

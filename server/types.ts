@@ -167,14 +167,14 @@ export interface GameState {
   deformations: TrackDeformation[];
   winner: Team | 'draw' | null;
   sessionStartAt: number;
-  /** Imposed target points of each copilot, set on entering the MAP phase. */
+  /** Ordered start/end targets for each team, set after the two anchor placements. */
   mapTargets: MapTargets | null;
   /** The two shared contacts that split the table before either half is drawn. */
   mapDivider: [Vec2, Vec2] | null;
-  /** Which copilot strokes have been accepted so far. */
+  /** Accepted and locked halves: cyan A first, then rose B. Also determines the active turn. */
   mapStrokes: Record<Team, boolean>;
   mapDeadline: number;          // ms timestamp, 0 when not in MAP
-  /** Table uses two concurrent contacts; PC uses the same actions sequentially. */
+  /** Both modes place and draw sequentially; PC also enables racing test controls. */
   mapMode: 'table' | 'pc' | null;
   /** Repair gauge per team, 0..1 (C-06). */
   repairProgress: Record<Team, number>;

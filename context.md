@@ -95,7 +95,7 @@ Chaque coin porte un **panneau HUD** orienté vers son joueur (voir §11).
 ## 5. Création de la carte
 
 ### 5.1 Principe
-Deux joueurs (un par équipe) posent d'abord deux contacts communs : leur ligne partage la table en deux moitiés. Chacun part de son extrémité, reste dans sa moitié, et rejoint l'autre extrémité. Le système complète et mélange les deux demi-tracés en un circuit unique.
+Un joueur de l'équipe cyan place P1, puis un joueur de l'équipe rose place P2 : leur ligne partage la table en deux moitiés. Le premier point persiste après le retrait du doigt et n'expire pas. Le cyan trace P1→P2, puis le rose trace P2→P1 après validation du cyan. L'ordre et le sens sont imposés côté client et serveur ; un trait accepté est verrouillé. N'importe quel joueur de chaque équipe peut participer. La table ne reconnaît pas les personnes : elle attribue les contacts selon l'étape affichée. Les deux demi-tracés forment un circuit unique, généré uniquement sur confirmation manuelle.
 
 Interprétation retenue de « ils se remplissent l'un l'autre »: chaque joueur remplit ses deux points, et le circuit final contient les deux contributions [?, à confirmer avec l'équipe].
 
@@ -103,8 +103,8 @@ Interprétation retenue de « ils se remplissent l'un l'autre »: chaque joueur 
 
 | Étape | Règle |
 |---|---|
-| 1. Ligne de partage | Deux contacts simultanés (mode table ; un contact isolé est abandonné après 4 s, ou 0,6 s après avoir été levé) espacés d'au moins 360 px, tous deux dans la zone de jeu (x 170–1750, y 300–780). Sinon la ligne est refusée **avec un message** (trop proches / hors zone), côté table et côté serveur (`checkDivider`). |
-| 2. Tracé | Un joueur trace A→B dans le demi-plan gauche de la ligne ; l'autre B→A dans le demi-plan droit. Tracé valide s'il touche les deux points (rayon 60 px), fait ≥ 300 px et est dessiné en majorité de son côté : il **peut** boucler sur lui-même ou franchir la ligne (circuit en 8). |
+| 1. Ligne de partage | Deux contacts successifs : P1 cyan puis P2 rose, espacés d'au moins 360 px, tous deux dans la zone de jeu (x 170–1750, y 300–780). P1 persiste sans expiration. Un P2 trop proche ou hors zone est refusé **avec un message**, sans effacer P1. Même règle sur table et PC (`checkDivider`). |
+| 2. Tracé | Cyan P1→P2 dans le demi-plan gauche de la ligne, puis rose P2→P1 dans le demi-plan droit. Départ et dernier point dans les cercles visibles (rayon 95 px partagé entre rendu, gestes et serveur), longueur ≥ 150 px. Les tracés inversés sont refusés. La tolérance de côté existante reste de 40 % des points dans le demi-plan de l'équipe : le trait **peut** boucler sur lui-même ou franchir la ligne (circuit en 8). Un seul geste à la fois ; les tracés validés sont verrouillés. |
 | 3. Fermeture | Les deux demi-tracés, accrochés exactement aux deux points communs, forment **directement la boucle fermée** : le circuit est le dessin. |
 | 4. Amplitude | Le dessin est pris **tel quel**. Seulement si la boucle n'est pas roulable, les demi-tracés sont étirés latéralement **au minimum nécessaire** (90 → 150 px d'amplitude max, puis ×1,2 … ×2,2). Un petit écart de l'autre côté de la ligne (≤ 70 px) est replié (d' = \|d\|) ; un franchissement plus profond est conservé tel quel. |
 | 5. Nettoyage | Rééchantillonnage (4 px), lissage gaussien **sans retard** (σ = 7 px) contre le tremblement de la main seulement, puis 256 points. Pas de filtre 1€ ni de relaxation : ils décalent et rétrécissent le tracé. Résultat mesuré : à plus de 140 px des deux ancres, le circuit passe à ≈ 1 px du dessin. |
@@ -377,7 +377,7 @@ Affectation exacte des icônes de la maquette aux boutons: à régler au moment 
 
 | ID | Critère |
 |---|---|
-| T-01 | Deux joueurs tracent simultanément; un circuit valide est produit en < 3 s |
+| T-01 | Deux joueurs placent P1 cyan puis P2 rose et tracent successivement cyan P1→P2 puis rose P2→P1 ; l'ordre et le sens sont bloquants ; après confirmation, un circuit valide est produit en < 3 s |
 | T-02 | Un Pilote conduit via QR code sans installation; latence < 80 ms |
 | T-03 | Un mur adverse retire 10 HP, avec 1 s d'invulnérabilité |
 | T-04 | Deux poteaux alliés génèrent un arc électrique; la voiture adverse perd 10 HP et ralentit |
@@ -447,7 +447,7 @@ Tout est **[EST]**, à régler pendant les tests utilisateurs.
 
 ## 17. Hypothèses à valider par l'équipe
 
-1. Les deux créateurs de carte sont **les Copilotes** (§5.1).
+1. **Confirmé le 19 octobre 2026** : n'importe quel joueur de chaque équipe peut créer la carte ; placement et tracés suivent l'ordre cyan puis rose (§5.1).
 2. Interprétation du « remplissage mutuel » et du « mélange » des deux circuits (§5.1, §5.2 étape 5).
 3. Les équipes sont installées sur les deux **grands côtés** de la table (§3).
 4. Le Pilote a **un doigt sur la table** (pad) en plus de son smartphone pour la réparation (C-06).

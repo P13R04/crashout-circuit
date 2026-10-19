@@ -29,13 +29,10 @@ import {
 } from '../server/layout.js';
 import { distToSegment, nearestOnTrack, slingshotShot } from '../server/geometry.js';
 import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
-import { REFUSAL_COLOR, showDividerRefusal, type View } from './view.js';
+import { showDividerRefusal, showMapError, showMapNotice, type View } from './view.js';
+import { activeMapTeam, inMapAnchor, mapEndpointError } from '../server/mapCreation.js';
 
 export const MAX_CONTACTS = 10;
-/** The second divider contact must come within this delay of the first (or the first is dropped). */
-export const DIVIDER_PAIR_MS = 4000;
-/** On the table, a finger lifted from the first point still counts for this long (contact bounce). */
-const DIVIDER_RELEASE_GRACE_MS = 600;
 const SETTLE_MS = 180;          // wait for all fingers to land before judging a gesture
 const SLING_CLUSTER_PX = 150;   // the three fingers must land together...
 const SLING_ROLE_MIN_PX = 14;   // ...then the one that moves this far is the pouch...
@@ -74,9 +71,6 @@ type Send = (msg: { type: string } & Record<string, unknown>) => void;
 export class GestureRecognizer {
   private contacts = new Map<number, Contact>();
   private strokeSeq = 0;
-  /** Contact that placed the first divider point, and the timer that drops it. */
-  private pendingContact: number | null = null;
-  private pendingTimer: ReturnType<typeof setTimeout> | null = null;
   private padTouches = new Map<string, Set<number>>();
   /** team → pointerId of the finger holding that team's steering pad. */
   private sticks = new Map<Team, number>();
@@ -100,8 +94,6 @@ export class GestureRecognizer {
   private slingPuller: number | null = null;
   /** Mouse stand-in: the press (fork) point and the dragging pointer. */
   private simSling: { id: number; anchor: Vec2 } | null = null;
-  /** Two clicks in desktop mode, or two simultaneous touches on the table. */
-  private mapDividerPoints: Vec2[] = [];
   onSimChange: (hint: string) => void = () => {};
 
   simulate(kind: 'slingshot' | 'boost' | null): void {
@@ -192,8 +184,7 @@ export class GestureRecognizer {
       return;
     }
 
-    // 2 — MAP: two shared contacts establish the divider, then each half starts
-    // from its own endpoint. Desktop clicks use the same sequence (desync mode).
+    // 2 — MAP: cyan places P1, rose places P2, then cyan draws before rose.
     if (state.phase === 'MAP') {
       const generate = MAP_GENERATE_BUTTON;
       if (state.mapStrokes.A && state.mapStrokes.B && p.x >= generate.x && p.x <= generate.x + generate.w && p.y >= generate.y && p.y <= generate.y + generate.h) {
@@ -201,7 +192,7 @@ export class GestureRecognizer {
       }
       if (!state.mapTargets) {
         c.zone = 'target';
-        this.placeDividerPoint(c, p, state.mapMode);
+        this.placeDividerPoint(p);
         return;
       }
       const team = this.mapStrokeStartTeam(state, p);
@@ -371,15 +362,23 @@ export class GestureRecognizer {
     if (c.zone === 'pad' && c.padKey) this.padUp(c.padKey, c.id);
     if (c.zone === 'steer' && c.panel) this.releaseStick(c.panel.team);
     if (c.zone === 'pedal' && c.panel) this.releasePedal(c.panel.team);
-    // On the table both points are put down together: a lifted finger stops waiting
-    if (c.zone === 'target' && c.id === this.pendingContact && this.state?.mapMode !== 'pc') {
-      this.armPendingTimer(DIVIDER_RELEASE_GRACE_MS);
-    }
     if (c.zone === 'stroke') {
       const s = this.view.strokes.get(c.strokeKey ?? -1);
       if (s) {
         s.done = true;
-        if (s.pts.length >= 2) this.send({ type: 'StrokeDraw', creator: s.team, pts: s.pts });
+        const targets = this.state?.mapTargets?.[s.team];
+        // pointerup can contain the final movement; never validate using an older move.
+        const end = this.toLogical(e);
+        s.pts.push(end);
+        const error = e.type === 'pointercancel' || e.type === 'lostpointercapture'
+          ? 'mapCancelled' : targets ? mapEndpointError(s.pts, ...targets) : 'mapCancelled';
+        if (error) {
+          s.rejectedAt = performance.now();
+          showMapError(this.view, error, s.team);
+        } else {
+          s.submitting = true;
+          this.send({ type: 'StrokeDraw', creator: s.team, pts: s.pts });
+        }
       }
     }
     if (c.zone === 'simsling') this.releaseSimSling(c);
@@ -389,57 +388,22 @@ export class GestureRecognizer {
 
   // ─── Divider (the two shared contacts) ───────────────────────────────────
 
-  /**
-   * First contact: wait for the other player's. Second contact: the line is sent, or a
-   * message says why it is refused. An isolated contact never waits for long: it is
-   * dropped after DIVIDER_PAIR_MS (or right after being lifted on the table), so a
-   * palm or a stray touch cannot pair with a contact made much later.
-   */
-  private placeDividerPoint(c: Contact, p: Vec2, mode: 'table' | 'pc' | null): void {
+  /** P1 persists until P2 is accepted or the session is reset, on table and PC alike. */
+  private placeDividerPoint(p: Vec2): void {
     const view = this.view;
+    if (view.dividerSubmitting) return;
     if (!inPlayArea(p)) { showDividerRefusal(view, 'outOfZone'); return; }
     const first = view.pendingDivider[0];
     if (!first) {
       view.pendingDivider = [{ ...p }];
-      this.pendingContact = c.id;
-      this.armPendingTimer(DIVIDER_PAIR_MS);
-      view.mapNotice = {
-        text: mode === 'pc'
-          ? 'Point P1 posé ! Cliquez pour placer le point P2.'
-          : 'Point P1 posé ! L’autre joueur pose le point P2 maintenant.',
-        until: performance.now() + DIVIDER_PAIR_MS,
-        color: '#00e5ff',
-      };
+      view.mapNotice = null;
       return;
     }
     const verdict = checkDivider(first, p);
     if (verdict !== 'ok') { showDividerRefusal(view, verdict); return; }
-    this.dropPendingDivider();
+    view.dividerSubmitting = true;
     view.mapNotice = null;
     this.send({ type: 'MapDivider', a: first, b: { ...p } });
-  }
-
-  private armPendingTimer(ms: number): void {
-    if (this.pendingTimer) clearTimeout(this.pendingTimer);
-    this.pendingTimer = setTimeout(() => {
-      this.dropPendingDivider();
-      const shown = this.view.mapNotice;
-      if (shown && shown.color === REFUSAL_COLOR && shown.until > performance.now()) return; // keep the reason
-      this.view.mapNotice = {
-        text: this.state?.mapMode === 'pc'
-          ? 'Point P1 expiré : recommencez.'
-          : 'Contact isolé abandonné : les deux points doivent être posés ensemble.',
-        until: performance.now() + 3500,
-        color: '#ffb300',
-      };
-    }, ms);
-  }
-
-  private dropPendingDivider(): void {
-    if (this.pendingTimer) clearTimeout(this.pendingTimer);
-    this.pendingTimer = null;
-    this.pendingContact = null;
-    this.view.pendingDivider = [];
   }
 
   // ─── Remote-control steering ─────────────────────────────────────────────
@@ -514,6 +478,10 @@ export class GestureRecognizer {
 
   /** Release everything (WebSocket lost, tab hidden) so no pad stays "held" on the server. */
   releaseAll(): void {
+    this.view.dividerSubmitting = false;
+    for (const [key, stroke] of this.view.strokes) {
+      if (!this.state?.mapStrokes[stroke.team]) this.view.strokes.delete(key);
+    }
     for (const key of [...this.padTouches.keys()]) {
       const [team, role] = key.split('-') as [Team, Role];
       this.view.localPads[key] = false;
@@ -737,31 +705,21 @@ export class GestureRecognizer {
 
   private mapStrokeStartTeam(state: GameState, p: Vec2): Team | null {
     if (!state.mapTargets) return null;
-    const p1 = state.mapTargets.A[0]; // Anchor 1
-    const p2 = state.mapTargets.A[1]; // Anchor 2
-    const d1 = Math.hypot(p.x - p1.x, p.y - p1.y);
-    const d2 = Math.hypot(p.x - p2.x, p.y - p2.y);
-    const TOLERANCE = 150;
-
-    // Which side of the divider line is the touch?
-    const dx = p2.x - p1.x, dy = p2.y - p1.y;
-    const cross = dx * (p.y - p1.y) - dy * (p.x - p1.x);
-    // cross >= 0 -> Team A side; cross < 0 -> Team B side
-    const touchSideTeam: Team = cross >= 0 ? 'A' : 'B';
-
-    if (d1 <= TOLERANCE) {
-      if (!state.mapStrokes.A) return 'A';
-      if (!state.mapStrokes.B) return 'B';
-      return touchSideTeam;
+    const team = activeMapTeam(state);
+    if (!team) return null;
+    // A second finger must not erase the current stroke or submit a second copy.
+    if ([...this.view.strokes.values()].some(s => s.team === team && (!s.done || s.submitting))) {
+      showMapNotice(this.view, 'Un seul tracé à la fois : terminez le geste en cours.', '#ffd400');
+      return null;
     }
-    if (d2 <= TOLERANCE) {
-      if (!state.mapStrokes.B) return 'B';
-      if (!state.mapStrokes.A) return 'A';
-      return touchSideTeam;
+    const [start, end] = state.mapTargets[team];
+    if (!inMapAnchor(p, start)) {
+      showMapError(this.view, inMapAnchor(p, end)
+        ? team === 'A' ? 'mapWaitCyan' : 'mapLocked'
+        : 'mapWrongStart', inMapAnchor(p, end) ? team === 'A' ? 'B' : 'A' : team);
+      return null;
     }
-    if (d1 <= TOLERANCE * 1.5 || d2 <= TOLERANCE * 1.5) {
-      return touchSideTeam;
-    }
-    return null;
+    this.view.mapNotice = null;
+    return team;
   }
 }

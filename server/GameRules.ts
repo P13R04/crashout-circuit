@@ -16,6 +16,7 @@ import { config } from './config.js';
 import { dist, distToSegment, nearestOnTrack, segmentsIntersect, slingshotShot, wrapAngle } from './geometry.js';
 import { generate, generatePreset, validateStroke, rebuildEdges } from './MapGenerator.js';
 import { nearestStationTeam, LOGICAL_W, checkDivider } from './layout.js';
+import { activeMapTeam, mapEndpointError } from './mapCreation.js';
 
 export const CAR_RADIUS = 10;
 export const WALL_HALF_THICKNESS = 4;
@@ -214,19 +215,21 @@ export class GameRules {
     if (s.phase !== 'MAP' || !s.mapTargets || !s.mapDivider || this.generating) return;
     const team = msg.creator;
     if (team !== 'A' && team !== 'B') return;
-    let pts = (msg.pts ?? [])
+    const [p1, p2] = s.mapTargets[team];
+    if (s.mapStrokes[team] || activeMapTeam(s) !== team) {
+      this.host.feedback(s.mapStrokes[team] ? 'mapLocked' : 'mapWaitCyan', p1.x, p1.y, team);
+      return;
+    }
+    const pts = (msg.pts ?? [])
       .filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))
       .slice(0, MAX_STROKE_POINTS)
       .map(p => ({ x: p.x, y: p.y }));
-    const [p1, p2] = s.mapTargets[team];
-    if (pts.length < 2) return;
-    // If the player started at p2 and drew towards p1, reverse so it canonicalizes p1→p2
-    if (dist(pts[0], p2) < 160 && dist(pts[pts.length - 1], p1) < 160) {
-      pts = pts.reverse();
-    }
-    if (!validateStroke(pts, p1, p2) || !this.staysInHalf(team, pts, s.mapDivider)) {
+    const error = mapEndpointError(pts, p1, p2)
+      ?? (!validateStroke(pts, p1, p2) ? 'mapError' : null)
+      ?? (!this.staysInHalf(team, pts, s.mapDivider) ? 'mapWrongSide' : null);
+    if (error) {
       const last = pts[pts.length - 1] ?? p1;
-      this.host.feedback('mapError', last.x, last.y, team);
+      this.host.feedback(error, last.x, last.y, team);
       return;
     }
     // Once accepted, lock the endpoints exactly to the common anchors. This
@@ -236,6 +239,7 @@ export class GameRules {
     this.strokes[team] = pts;
     s.mapStrokes[team] = true;
     this.host.broadcastFull();
+    this.host.feedback('mapAccepted', p2.x, p2.y, team);
   }
 
   /** The shared button is the explicit handoff from drawing to generation. */

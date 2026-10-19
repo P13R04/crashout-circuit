@@ -43,7 +43,12 @@ function noise(dur: number, gain = 0.2): void {
 
 /** Server `Feedback.kind` → sound. */
 export function playFeedback(kind: string): void {
+  if (kind.startsWith('map') && kind !== 'mapAccepted') {
+    tone(200, 0.2, 'square', 0.1);
+    return;
+  }
   switch (kind) {
+    case 'mapAccepted': tone(660, 0.1, 'sine', 0.12); tone(990, 0.15, 'sine', 0.12, undefined, 0.1); break;
     case 'stoneWarning': tone(880, 0.12, 'square', 0.08); tone(880, 0.12, 'square', 0.08, undefined, 0.2); tone(880, 0.12, 'square', 0.08, undefined, 0.4); break;
     case 'stoneHit': tone(160, 0.28, 'square', 0.22, 55); noise(0.18, 0.25); break;
     case 'stoneImpact': noise(0.35, 0.3); tone(120, 0.3, 'sawtooth', 0.2, 40); break;
