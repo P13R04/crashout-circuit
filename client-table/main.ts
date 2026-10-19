@@ -1,6 +1,6 @@
 import type { ServerMessage } from '../server/types.js';
 import { StateSync, connectWs } from '../client-shared/net.js';
-import { createView, showDividerRefusal } from './view.js';
+import { createView, showDividerRefusal, showMapError, showMapNotice } from './view.js';
 import { Renderer } from './Renderer.js';
 import { GestureRecognizer } from './GestureRecognizer.js';
 import { playFeedback, unlock } from './Sound.js';
@@ -43,7 +43,7 @@ const simBar = document.getElementById('sim') as HTMLDivElement;
 const sim3 = document.getElementById('sim3') as HTMLButtonElement;
 const sim2 = document.getElementById('sim2') as HTMLButtonElement;
 const simHint = document.getElementById('sim-hint') as HTMLSpanElement;
-if (urlParams.get('sim') === '1' || window.matchMedia('(pointer: fine)').matches) simBar.classList.add('on');
+const showSimulation = urlParams.get('sim') === '1' || window.matchMedia('(pointer: fine)').matches;
 let simKind: 'slingshot' | 'boost' | null = null;
 const setSim = (k: 'slingshot' | 'boost' | null): void => {
   simKind = simKind === k ? null : k;
@@ -71,7 +71,9 @@ testItems.addEventListener('click', () =>
   conn.send({ type: 'TestToggle', flag: 'allItems', on: !view.state?.testMode.allItems }));
 function syncTestBar(): void {
   const st = view.state;
-  testBar.classList.toggle('on', st?.mapMode === 'pc');
+  const racing = st?.phase === 'RACE' || st?.phase === 'PAUSED';
+  testBar.classList.toggle('on', st?.mapMode === 'pc' && racing);
+  simBar.classList.toggle('on', showSimulation && racing);
   testInvincible.classList.toggle('active', !!st?.testMode.invincible);
   testItems.classList.toggle('active', !!st?.testMode.allItems);
 }
@@ -148,10 +150,27 @@ function handleMessage(msg: ServerMessage): void {
     case 'State': {
       const prev = view.state;
       view.state = sync.apply(msg.state, msg.t);
+      if (view.state.mapTargets) {
+        view.pendingDivider = [];
+        view.dividerSubmitting = false;
+      }
+      for (const stroke of view.strokes.values()) {
+        if (view.state.mapStrokes[stroke.team] && view.state.mapTargets) {
+          stroke.submitting = false;
+          stroke.done = true;
+          stroke.rejectedAt = undefined;
+          const [start, end] = view.state.mapTargets[stroke.team];
+          stroke.pts[0] = { ...start };
+          stroke.pts[stroke.pts.length - 1] = { ...end };
+        }
+      }
       if (!prev || (prev.phase !== 'LOBBY' && msg.state.phase === 'LOBBY')) {
         view.hpShown.A = view.state.cars.A.hp;
         view.hpShown.B = view.state.cars.B.hp;
         view.strokes.clear();
+        view.pendingDivider = [];
+        view.dividerSubmitting = false;
+        view.mapNotice = null;
         view.effects.length = 0;
         gestures.releaseAll();
       }
@@ -164,6 +183,9 @@ function handleMessage(msg: ServerMessage): void {
       view.effects.length = 0;
       if (msg.phase === 'MAP' || msg.phase === 'LOBBY') {
         view.strokes.clear();
+        view.pendingDivider = [];
+        view.dividerSubmitting = false;
+        view.mapNotice = null;
         if (msg.phase === 'LOBBY') {
           gestures.releaseAll();
           view.hpShown.A = 100;
@@ -172,18 +194,28 @@ function handleMessage(msg: ServerMessage): void {
       }
       break;
     case 'Feedback':
-      view.effects.push({ kind: msg.kind, x: msg.x, y: msg.y, team: msg.team, start: performance.now(), dur: effectDuration(msg.kind) });
       if (msg.kind === 'dividerTooShort' || msg.kind === 'dividerOutOfZone') {
-        view.pendingDivider = [];
+        view.dividerSubmitting = false;
         showDividerRefusal(view, msg.kind === 'dividerTooShort' ? 'tooShort' : 'outOfZone');
       }
       view.effects.push({
         kind: msg.kind, x: msg.x, y: msg.y, team: msg.team, start: performance.now(), dur: effectDuration(msg.kind),
         ...(msg.kind === 'stoneHit' ? { text: HIT_WORDS[Math.floor(Math.random() * HIT_WORDS.length)], tilt: (Math.random() - 0.5) * 0.5 } : {}),
       });
-      if (msg.kind === 'mapError') {
+      if (msg.kind.startsWith('map') && msg.kind !== 'mapAccepted') {
+        showMapError(view, msg.kind, msg.team);
         view.mapErrorAt[msg.team] = performance.now();
-        for (const s of view.strokes.values()) if (s.team === msg.team) s.rejectedAt = performance.now();
+        for (const s of view.strokes.values()) {
+          if (s.team === msg.team && !view.state?.mapStrokes[s.team]) {
+            s.rejectedAt = performance.now();
+            s.submitting = false;
+          }
+        }
+      }
+      if (msg.kind === 'mapAccepted') {
+        showMapNotice(view, msg.team === 'A'
+          ? '✓ Cyan validé — équipe rose, à vous !'
+          : '✓ Les deux tracés sont validés.', '#3ddc84');
       }
       playFeedback(msg.kind);
       break;
