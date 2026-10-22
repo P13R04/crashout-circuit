@@ -43,9 +43,17 @@ export const padLocal = (role: Role) => (role === 'pilot' ? PAD_LOCAL_PILOT : PA
  * lifting their finger, while each half keeps the keyboard's full-turn feel.
  */
 export const STEER_AREA_LOCAL = { x: -215, y: 10, w: 240, h: 130 };
-export const ITEM_BTN_LOCAL = { x: -20, y: 45, r: 40 };
-export const GHOST_BTN_LOCAL = { x: -150, y: 20, r: 42 };
-export const DESTROY_BTN_LOCAL = { x: -50, y: 20, r: 42 };
+export const POWER_BTN_LOCAL = { x: -162, y: 15, r: 44 };
+export const CHARGE_ZONE_LOCAL = { x: -43, y: 12, w: 118, h: 104 };
+
+export function chargeZoneTeam(p: Vec2): Team | null {
+  for (const panel of PANELS.filter(p => p.role === 'copilot')) {
+    const l = worldToLocal(panel, p.x, p.y);
+    const z = CHARGE_ZONE_LOCAL;
+    if (Math.abs(l.x - z.x) <= z.w / 2 && Math.abs(l.y - z.y) <= z.h / 2) return panel.team;
+  }
+  return null;
+}
 
 export function panelOf(team: Team, role: Role): PanelLayout {
   return PANELS.find(p => p.team === team && p.role === role)!;

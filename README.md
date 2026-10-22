@@ -1,108 +1,110 @@
 # Crashout Circuit
 
-Jeu de course asymétrique pour grande table multitouch. Tout se joue sur la table, sans smartphone. Deux équipes (pilote + copilote) : le pilote conduit depuis son poste fixe avec deux commandes directionnelles et le copilote transforme la piste ou gêne l'équipe adverse. Voir `.kiro/specs/crashout-circuit/` pour les spécifications.
+Prototype de course asymétrique pour une grande table multitouch et un ordinateur « magicien d’Oz » sur le même Wi-Fi. Deux équipes ont chacune un pilote et un copilote. Le serveur partage et valide l’état de jeu ; Oz remplace pour l’instant les capteurs des objets tangibles.
 
-## Prérequis
+## Lancer et connecter les deux écrans
 
-- Node.js ≥ 20
-- Un navigateur Chromium (Chrome / Edge) pour la table
-
-## Installation
+Node.js ≥ 20 et Chrome / Edge sont recommandés.
 
 ```bash
 npm install
-```
-
-## Lancer l'application
-
-### Mode normal (recommandé)
-
-```bash
 npm run build
 npm start
 ```
 
-Le serveur écoute sur le port 3000 (`PORT=4000 npm start` pour en changer). Il sert la table et la console Oz.
+- **Table** : `http://localhost:3000/` sur l’ordinateur relié à la table, en plein écran.
+- **Magicien d’Oz** : `http://<ip-de-la-table>:3000/oz` sur un autre ordinateur du même Wi-Fi. L’adresse exacte est affichée au démarrage et dans la console Oz. `localhost` désigne toujours l’ordinateur sur lequel le navigateur est ouvert.
+- Pour changer le port : `PORT=3100 npm start`.
 
-| Client | URL |
-|---|---|
-| Table (plein écran, F11) | `http://localhost:3000/` |
-| Console Magicien d'Oz (tablette) | `http://<ip-du-pc>:3000/oz` |
+Le serveur doit rester ouvert pendant la séance. Les deux appareils doivent pouvoir communiquer sur le réseau local (un Wi-Fi invité qui isole les appareils ne convient pas). Ce prototype est prévu pour le réseau local de la séance ; il n’implémente pas de compte utilisateur.
 
-La console Oz doit être sur le même réseau local que le PC qui fait tourner le serveur.
-
-### Mode développement
+### Développement
 
 ```bash
-npm run build:server   # une première fois, le serveur tourne depuis dist/
-npm run dev            # serveur (rechargement auto) + Vite sur http://localhost:5173
+npm run build:server
+npm run dev
 ```
 
-En dev, ouvrir la table sur `http://localhost:5173/client-table/`, Oz sur `/client-oz/` ; Vite relaie le WebSocket vers le port 3000. Après une modification du code serveur, relancer `npm run build:server`.
+Ouvrir `http://localhost:5173/client-table/` et `http://localhost:5173/client-oz/`. Vite relaie les échanges et les API vers le serveur du port 3000. Après une modification du serveur, relancer `npm run build:server`.
 
-## Déroulement d'une partie
+## Déroulement
 
-1. **LOBBY** : choisir **Jouer sur table** (deux contacts simultanés) ou **Mode PC · séquentiel** (clics et demi-tracés successifs).
-2. **MAP** : deux contacts communs définissent une ligne qui partage la table. Chaque copilote part de son point, dessine sa moitié sans traverser la ligne, et rejoint le point opposé. Une fois les deux traits acceptés, les joueurs touchent **GÉNÉRER LE CIRCUIT**. Il n'y a pas de passage automatique.
-3. **PRÊT** : le circuit généré est affiché et les joueurs touchent **LANCER LA COURSE** lorsqu'ils sont en place.
-4. **RACE** : compte à rebours, 3 tours ou 5 minutes. La voiture avance continuellement à une vitesse volontairement modérée ; le pilote pose et fait glisser son doigt sur la bande de direction de son panneau, puis touche **UTILISER** pour armer l'objet ramassé. Quitter le ruban de piste est une chute : la voiture est hors d'usage jusqu'à la réparation synchronisée.
-5. **PAUSE** : le bouton central, Échap ou Espace fige la course et ses compteurs.
-6. **RESULT** : classement, bouton « Nouvelle partie ».
+1. Choisir **Jouer sur table** ou **Mode PC · séquentiel**.
+2. Deux contacts définissent la séparation ; chaque copilote dessine sa moitié vers le point opposé. Sur PC, les contacts et tracés sont successifs.
+3. Toucher **GÉNÉRER LE CIRCUIT**, puis **LANCER LA COURSE** sur la table. Le lancement, la pause et la remise à zéro appartiennent aux joueurs.
+4. Le pilote conduit avec la bande gauche / droite. La voiture avance automatiquement. Il n’a plus de bouton pour utiliser les objets.
+5. Le copilote utilise **POWER** pour son objet ramassé, réalise les gestes et répare avec le pilote. Oz gère seul l’activation des tangibles.
+6. Une sortie de piste immobilise la voiture. Maintenir les deux pads de réparation pour la remettre en jeu. La pause fige la course et les durées des effets.
 
-La console Oz simule les poteaux tangibles (clic sur la miniature) et propose des actions de secours (obstacle, boost, panne, déformation locale, circuit de secours).
+## POWER et objets ramassés
 
-## Activer un objet
+Les boutons nommés **FANTÔME** et **DÉTRUIRE** ont été retirés de la zone copilote. Le copilote possède un seul bouton d’action, **POWER**, plus la zone tangible et le pad de réparation.
 
-1. Le pilote roule sur un pickup (icône sur la piste) : l'objet apparaît dans le bouton rond de son panneau.
-2. Il touche **UTILISER** : l'objet est armé pendant 5 s (halo doré sur le panneau du copilote).
-3. Le copilote fait le geste dans ces 5 s : **3 doigts rapprochés** (≤ 150 px) = lance-pierre, **2 doigts écartés** de 100 à 400 px = portail de boost.
+1. La voiture ramasse un objet lorsque son stock est vide. Son icône apparaît comme information dans le poste copilote.
+2. **Seul POWER du copilote de l’équipe propriétaire peut armer ce stock.** POWER adverse ne l’arme pas. Appuyer plusieurs fois ne prolonge pas la fenêtre.
+3. Pendant les **5 secondes** configurées, le geste correspondant est disponible sur la surface partagée : **3 doigts rapprochés** pour le lance-pierre, **2 doigts espacés de 100 à 400 px** pour le portail de boost.
+4. L’armement est **neutre et volable** : le premier geste valide consomme l’objet armé du propriétaire, et l’effet appartient à l’équipe qui a exécuté le geste. Un lance-pierre volé peut donc toucher son ancien propriétaire ; un portail volé aide l’équipe qui l’a créé.
+5. Sans geste dans la fenêtre, l’objet est perdu, comme dans la règle précédente du prototype. Si deux stocks du même type sont armés, celui du poste le plus proche du geste est consommé. Un stock ne peut être consommé qu’une fois.
 
-### Tester sur PC (sans multitouch)
+La table tactile ne reconnaît pas l’identité d’une personne : l’équipe qui fait le geste est celle du poste copilote le plus proche. Les gestes et le vol fonctionnent sans connexion Oz. Le magicien n’attribue plus les gestes et ne peut pas donner, armer ou déclencher de bonus.
 
-Avec une souris, la barre en bas de la table affiche deux boutons (ou `?sim=1` pour les forcer) :
+### Tester les gestes à la souris
 
-- **✋ Simuler 3 doigts** puis un clic sur la table : lance-pierre à cet endroit.
-- **✌ Simuler 2 doigts** puis deux clics (100–400 px d'écart) : portail de boost.
+La barre de simulation apparaît avec une souris, ou avec `?sim=1`. Ramasser d’abord un objet avec la voiture, puis toucher **POWER** au poste copilote :
 
-L'objet doit d'abord être armé (étape 2). Pour ne pas rouler jusqu'à un pickup, la console Oz (`/oz`) a les boutons **+ Lance-pierre** / **+ Boost** (équipe choisie en haut) qui placent l'objet dans le stock.
+- **Simuler 3 doigts** puis un clic vise le lance-pierre.
+- **Simuler 2 doigts** puis deux clics définissent le portail.
 
-### Déformer un bord de piste
+Les simulations passent par les mêmes règles d’armement, de vol et de consommation que les gestes tactiles.
 
-Deux doigts sont posés près du **même bord**, à moins de 130 px l’un de l’autre, puis glissent ensemble vers l’extérieur. La piste ne s’élargit pas : sa ligne centrale se décale localement et les deux bords suivent, ce qui forme une double chicane temporaire. Une nouvelle déformation peut commencer immédiatement ; la précédente revient progressivement à sa forme de référence. Les paramètres de durée et d’amplitude sont dans `config.json` (`trackDeform*`).
+## Console Oz : uniquement les tangibles
 
-### Clavier pour une partie locale à deux pilotes
+La console montre le circuit, les zones copilote et un seul panneau de gestion. Les points verts de la liste indiquent les tangibles activés. Oz ne dispose d’aucune commande de partie ou de bonus ; cette séparation est également appliquée au serveur, y compris pour les anciennes commandes.
 
-| Équipe | Direction | Activer l'objet | Réparation synchronisée |
+1. Choisir un des **quatre identifiants**, son **type** (mur ou pilier électrique) et son **équipe**.
+2. Cliquer sur la carte pour le placer. Il peut être placé et déplacé **désactivé**, ce qui permet de préparer sa position sans produire d’effet.
+3. Cliquer sur **Activer / Désactiver** pour changer son état. Seul Oz peut le faire. Désactiver conserve sa position, son orientation et son équipe ; réactiver restaure son effet au même endroit. Les murs désactivés apparaissent en pointillés uniquement dans la console.
+4. Glisser le corps du mur ou sa poignée **1** pour le déplacer. Glisser la poignée **2** pour le tourner autour de **1**, qui reste fixe. La longueur du mur ne change pas ; l’aperçu est immédiat, même entre deux mises à jour réseau. Un clic de sélection ne déplace plus le mur.
+5. **Zone copilote** simule son dépôt dans la zone de son équipe ; on peut aussi le déplacer directement sur cette zone. Le dépôt coupe son effet. Oz peut alors marquer le tangible comme activé et le replacer sur le circuit. **POWER n’a aucun effet sur lui.**
+6. **Retirer** simule le retrait physique et efface le tangible. Modifier son type ou son équipe le désactive ; modifier un tangible placé conserve sa position.
+
+Deux piliers **activés**, placés sur le circuit par la même équipe à moins de **500 px logiques**, forment un arc électrique. Désactiver un pilier coupe l’arc ; le réactiver le restaure si la paire est toujours à portée. Chaque pilier participe à une seule paire. Un mur reste un mur.
+
+Les joueurs lancent et contrôlent la partie depuis la table. Les bonus fonctionnent sans magicien connecté. La nouvelle partie efface tous les tangibles. La console reste disponible avant le départ, pendant la course et en pause ; elle attend qu’un circuit existe pour autoriser les modifications.
+
+## Commandes et extensions futures
+
+Le jeu reçoit des **actions de jeu**, indépendantes des périphériques. `client-shared/controls.ts` est l’interface commune aux adaptateurs clavier et tactile : direction, POWER et gestes. Les types de messages sont dans `server/types.ts` ; les règles et la consommation des stocks restent validées dans `server/GameRules.ts`.
+
+Un futur adaptateur mobile pourra convertir un gyroscope en direction normalisée `[-1, 1]` et utiliser la même interface, sans modifier la physique. Aucun contrôle mobile, appairage ni accès aux capteurs n’est implémenté à ce stade. Un futur lecteur de tangibles pourra envoyer les mêmes actions de configuration, dépôt, activation, déplacement et retrait qu’Oz, après ajout de son rôle de connexion.
+
+| Équipe | Direction clavier | POWER du copilote | Réparation des deux postes |
 |---|---|---|---|
-| Cyan (A) | `Q` / `D` | `A` | maintenir `A` + `P` |
-| Rose (B) | `←` / `→` | `M` | maintenir `M` + `C` |
+| Cyan | `Q` / `D` | `A` | maintenir `A` + `P` |
+| Rose | `←` / `→` | `M` | maintenir `M` + `C` |
 
-`A` ou `M` seuls activent l'objet. Lorsque les deux touches de réparation sont maintenues, le prototype simule les deux appuis synchrones des postes pilote et copilote.
+Deux doigts proches saisissant le même bord de piste et glissant vers l’extérieur créent toujours une déformation locale temporaire. Les paramètres sont dans `config.json` ; relancer le serveur après modification.
 
-En mode PC, cliquez d’abord les deux extrémités de la séparation, puis dessinez une moitié après l’autre. Le départ et la fin d’un tracé sont validés dans le grand cercle lumineux : relâcher à l’intérieur suffit, le point est recalé automatiquement sur l’ancre exacte.
-
-## Tests et outils
+## Vérification
 
 ```bash
-npm run test:acceptance   # règles serveur et générateur de piste (T-01, T-03 à T-11)
-npm run typecheck         # vérification TypeScript des clients
+npm run typecheck
+npm run test:acceptance
+npm run test:network
+npm run build
 ```
 
-- Overlay de performance sur la table : `http://localhost:3000/?debug=1` (ou touche **F3**) — fps, RTT, latence tactile.
-- Journal des poteaux côté serveur : `GET /api/oz-log`.
-- Procédure de mesure sur la table réelle : `measures.md`.
-
-## Configuration
-
-Tous les paramètres de jeu (vitesses, dégâts, durées…) sont dans `config.json` ; ils sont lus au démarrage du serveur, sans recompilation. Relancer `npm start` après modification.
+Les tests couvrent génération, conduite, collisions, réparation, armement, vol, durée de pause, activation / placement / désactivation des tangibles, rotation à pivot fixe, interactions de déplacement, journal serveur rejoué, séparation des rôles réseau et récupération d’un état complet à la connexion. La validation matérielle des contacts simultanés et de la latence sur la table réelle reste à réaliser ; voir `measures.md`. L’affichage de diagnostic s’active avec `?debug=1` ou F3. Le journal des événements tangibles du serveur est disponible sur `/api/oz-log`.
 
 ## Structure
 
+```text
+server/          état autoritaire, règles, physique, génération, WebSocket
+client-table/    rendu Canvas, HUD, adaptateur tactile et clavier
+client-oz/       console du magicien et simulation des tangibles
+client-shared/   interface d’actions, connexion et synchronisation
+scripts/         tests des règles et du protocole réseau
+prototypes/      laboratoire historique, conservé sans modification
 ```
-server/          serveur Node.js autoritaire (WebSocket, physique 60 Hz, règles, génération de piste)
-client-table/    rendu Canvas, HUD (direction pilote, boutons copilote), reconnaissance des gestes
-client-oz/       console Magicien d'Oz
-client-shared/   connexion WebSocket et synchronisation d'état partagées
-scripts/         tests d'acceptation
-prototypes/      prototype de recherche « piste vivante » (historique, à ne pas modifier)
-```
+
+Les anciennes règles expérimentales fantôme / destruction restent dans le moteur pour référence, mais ne sont plus exposées comme boutons ou commandes de la table. Les spécifications historiques de `.kiro/` et le laboratoire ne décrivent donc pas toujours les commandes actuelles ; ce README décrit le prototype fonctionnel.

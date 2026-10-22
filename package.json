@@ -15,7 +15,8 @@
     "build:clients": "vite build",
     "start": "node dist/server/index.js",
     "typecheck": "tsc --noEmit",
-    "test:acceptance": "tsx scripts/acceptance.ts"
+    "test:acceptance": "tsx scripts/acceptance.ts",
+    "test:network": "tsx scripts/network-acceptance.ts"
   },
   "dependencies": {
     "ws": "^8.18.0"

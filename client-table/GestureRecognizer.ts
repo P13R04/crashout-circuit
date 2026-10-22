@@ -8,25 +8,23 @@
  * of gameplay gestures (T-09):
  *
  *   steer      pilot left/right strip; the car advances automatically → PilotInput
- *   item       pilot's item button tap               → UseItem(team)
+ *   item       copilot POWER tap                     → Power(team, copilot)
  *   pad        finger on a repair pad                → PadHold(team, role, on)
- *   ghost      tap on the Ghost button               → Ability(ghost)
- *   destroy    tap on Destroy, then touch a wall     → Ability(destroy, targetId)
  *   stroke     MAP phase drawing                     → StrokeDraw(creator, pts)
  *   free       3 fingers ≤150 px / 2 fingers 100–400 → Slingshot / BoostGate
  *              2 close fingers pulled from one edge  → BorderPull
  *
  * Team attribution (R-03): pad/button → station's team; free gesture → the team
- * whose Pilot armed the matching item; both armed → nearest station to the gesture.
+ * of the nearest station. An armed stock is a neutral opportunity.
  * No finger is ever tracked back to a person (REQ-5.1).
  */
+import { createControls } from '../client-shared/controls.js';
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import {
-  LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_AREA_LOCAL, ITEM_BTN_LOCAL,
-  GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL, worldToLocal, type PanelLayout,
+  LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_AREA_LOCAL, POWER_BTN_LOCAL, worldToLocal, type PanelLayout,
   insidePanel, nearestStationTeam, type Role,
 } from '../server/layout.js';
-import { distToSegment, nearestOnTrack } from '../server/geometry.js';
+import { nearestOnTrack } from '../server/geometry.js';
 import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON } from './Renderer.js';
 import type { View } from './view.js';
 
@@ -40,11 +38,9 @@ const PULL_MIN_PX = 20;
 const PULL_MAX_PX = 105;
 const PULL_PAIR_MAX_PX = 130;
 const PULL_EDGE_INDEX_GAP = 8;
-const TARGET_RADIUS_PX = 40;
-const TARGETING_MS = 3000;
 const PALM_MAX_PX = 140;        // contacts wider than this (logical px) are palms/arms
 
-type Zone = 'steer' | 'item' | 'pad' | 'ghost' | 'destroy' | 'stroke' | 'target' | 'result' | 'pause' | 'free' | 'rejected';
+type Zone = 'steer' | 'item' | 'pad' | 'stroke' | 'target' | 'result' | 'pause' | 'free' | 'rejected';
 
 interface Contact {
   id: number;
@@ -63,6 +59,7 @@ interface Contact {
 type Send = (msg: { type: string } & Record<string, unknown>) => void;
 
 export class GestureRecognizer {
+  private controls = createControls(msg => this.send(msg));
   private contacts = new Map<number, Contact>();
   private padTouches = new Map<string, Set<number>>();
   /** team → pointerId of the finger holding that team's steering pad. */
@@ -94,8 +91,8 @@ export class GestureRecognizer {
     if (!sim) return;
     if (sim.kind === 'slingshot') {
       const team = this.armedTeam('slingshot', p);
-      if (team) { this.send({ type: 'Slingshot', x: p.x, y: p.y, team }); this.onSimChange(''); }
-      else this.onSimChange("Aucune équipe n'a armé de lance-pierre (UTILISER d'abord)");
+      if (team) { this.controls.gesture('slingshot', team, p); this.onSimChange(''); }
+      else this.onSimChange("Aucune équipe n'a armé de lance-pierre (POWER d'abord)");
       this.sim = null;
       return;
     }
@@ -103,9 +100,9 @@ export class GestureRecognizer {
     const d = Math.hypot(p.x - sim.first.x, p.y - sim.first.y);
     const mid = { x: (p.x + sim.first.x) / 2, y: (p.y + sim.first.y) / 2 };
     const team = this.armedTeam('boost', mid);
-    if (!team) this.onSimChange("Aucune équipe n'a armé de boost (UTILISER d'abord)");
+    if (!team) this.onSimChange("Aucune équipe n'a armé de boost (POWER d'abord)");
     else if (d < 100 || d > 400) this.onSimChange(`Écart ${Math.round(d)} px : il doit être entre 100 et 400`);
-    else { this.send({ type: 'BoostGate', a: sim.first, b: p, team }); this.onSimChange(''); }
+    else { this.controls.gesture('boost', team, sim.first, p); this.onSimChange(''); }
     this.sim = null;
   }
 
@@ -230,11 +227,6 @@ export class GestureRecognizer {
           this.updateSteer(c);
           return;
         }
-        if (Math.hypot(l.x - ITEM_BTN_LOCAL.x, l.y - ITEM_BTN_LOCAL.y) <= ITEM_BTN_LOCAL.r + 6) {
-          c.zone = 'item';
-          this.send({ type: 'UseItem', team: panel.team });
-          return;
-        }
       }
       const pad = padLocal(panel.role);
       if (Math.hypot(l.x - pad.x, l.y - pad.y) <= pad.r + 6) {
@@ -243,21 +235,10 @@ export class GestureRecognizer {
         this.padDown(c.padKey, panel.team, panel.role, c.id);
         return;
       }
-      if (panel.role === 'copilot') {
-        if (Math.hypot(l.x - GHOST_BTN_LOCAL.x, l.y - GHOST_BTN_LOCAL.y) <= GHOST_BTN_LOCAL.r + 6) {
-          c.zone = 'ghost';
-          if (this.view.now() >= state.cooldowns[panel.team].ghost) {
-            this.send({ type: 'Ability', team: panel.team, kind: 'ghost' });
-          }
-          return;
-        }
-        if (Math.hypot(l.x - DESTROY_BTN_LOCAL.x, l.y - DESTROY_BTN_LOCAL.y) <= DESTROY_BTN_LOCAL.r + 6) {
-          c.zone = 'destroy';
-          if (this.view.now() >= state.cooldowns[panel.team].destroy) {
-            this.view.targeting = { team: panel.team, until: Date.now() + TARGETING_MS };
-          }
-          return;
-        }
+      if (panel.role === 'copilot' && Math.hypot(l.x - POWER_BTN_LOCAL.x, l.y - POWER_BTN_LOCAL.y) <= POWER_BTN_LOCAL.r + 6) {
+        c.zone = 'item';
+        this.controls.power(panel.team);
+        return;
       }
       // Rest of a panel: not a game surface
       if (Math.abs(l.x) <= panelWidth(panel.role) / 2 && Math.abs(l.y) <= PANEL_H / 2) { c.zone = 'rejected'; return; }
@@ -273,18 +254,6 @@ export class GestureRecognizer {
     // 4 — palm / arm rejection for everything that is not a pad
     const scale = LOGICAL_W / this.canvas.getBoundingClientRect().width;
     if (Math.max(e.width || 0, e.height || 0) * scale > PALM_MAX_PX) { c.zone = 'rejected'; return; }
-
-    // 5 — destroy-wall targeting: the next touch on a hostile wall picks it
-    const tg = this.view.targeting;
-    if (tg && tg.until > Date.now()) {
-      c.zone = 'target';
-      const id = this.findHostileWall(state, tg.team, p);
-      if (id) {
-        this.send({ type: 'Ability', team: tg.team, kind: 'destroy', targetId: id });
-        this.view.targeting = null;
-      }
-      return;
-    }
 
     // 6 — free contact: multi-finger gestures and border pull
     c.zone = 'free';
@@ -363,7 +332,7 @@ export class GestureRecognizer {
     const last = this.lastInput[team];
     if (!force && last.throttle === throttle && last.steer === steer) return;
     this.lastInput[team] = { throttle, steer };
-    this.send({ type: 'PilotInput', team, throttle, steer });
+    this.controls.steer(team, steer);
   }
 
   // ─── Repair pads ──────────────────────────────────────────────────────────
@@ -423,7 +392,7 @@ export class GestureRecognizer {
       return car.itemArmed && car.heldItem === kind && now < car.itemArmExpiry;
     });
     if (armed.length === 0) return null;
-    return armed.length === 1 ? armed[0] : nearestStationTeam(at);
+    return nearestStationTeam(at);
   }
 
   /**
@@ -441,7 +410,7 @@ export class GestureRecognizer {
       if (free.every(c => Math.hypot(c.x - cx, c.y - cy) <= SLING_CLUSTER_PX)) {
         const team = this.armedTeam('slingshot', { x: cx, y: cy });
         if (team) {
-          this.send({ type: 'Slingshot', x: cx, y: cy, team });
+          this.controls.gesture('slingshot', team, { x: cx, y: cy });
           free.forEach(c => { c.consumed = true; });
         }
       }
@@ -451,12 +420,7 @@ export class GestureRecognizer {
         const mid = { x: (free[0].x + free[1].x) / 2, y: (free[0].y + free[1].y) / 2 };
         const team = this.armedTeam('boost', mid);
         if (team) {
-          this.send({
-            type: 'BoostGate',
-            a: { x: free[0].x, y: free[0].y },
-            b: { x: free[1].x, y: free[1].y },
-            team,
-          });
+          this.controls.gesture('boost', team, { x: free[0].x, y: free[0].y }, { x: free[1].x, y: free[1].y });
           free.forEach(c => { c.consumed = true; });
         }
       }
@@ -489,24 +453,6 @@ export class GestureRecognizer {
     const team = nearestStationTeam(start);
     this.send({ type: 'BorderPull', x: start.x, y: start.y, dx: dx * k, dy: dy * k, team });
     candidates.forEach(c => { c.consumed = true; });
-  }
-
-  private findHostileWall(state: GameState, team: Team, p: Vec2): string | null {
-    let best: string | null = null;
-    let bestD = TARGET_RADIUS_PX;
-    for (const w of state.walls) {
-      if (w.team === team) continue;
-      const a = (w.angle * Math.PI) / 180;
-      const hx = (Math.cos(a) * w.lengthPx) / 2, hy = (Math.sin(a) * w.lengthPx) / 2;
-      const d = distToSegment(p, { x: w.pos.x - hx, y: w.pos.y - hy }, { x: w.pos.x + hx, y: w.pos.y + hy });
-      if (d < bestD) { bestD = d; best = w.id; }
-    }
-    for (const arc of state.arcs) {
-      if (arc.team === team) continue;
-      const d = distToSegment(p, arc.pylon1, arc.pylon2);
-      if (d < bestD) { bestD = d; best = arc.id; }
-    }
-    return best;
   }
 
   private mapStrokeStartTeam(state: GameState, p: Vec2): Team | null {

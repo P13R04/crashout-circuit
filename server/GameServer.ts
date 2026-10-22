@@ -104,8 +104,8 @@ export class GameServer {
       case 'PilotInput':
         if (fromTable && (msg.team === 'A' || msg.team === 'B')) this.rules.onPilotInput(msg.team, msg);
         break;
-      case 'UseItem':
-        if (fromTable && (msg.team === 'A' || msg.team === 'B')) this.rules.onUseItem(msg.team, msg);
+      case 'Power':
+        if (fromTable && msg.role === 'copilot' && (msg.team === 'A' || msg.team === 'B')) this.rules.onPower(msg.team, msg);
         break;
       case 'StartGame':
         if (fromTable && this.state.phase === 'LOBBY') this.rules.enterMap(msg.mode);
@@ -134,33 +134,28 @@ export class GameServer {
       case 'BoostGate':
         if (fromTable) this.rules.onBoostGate(msg);
         break;
-      case 'Ability':
-        if (fromTable) this.rules.onAbility(msg);
-        break;
       case 'BorderPull':
         if (fromTable) this.rules.onBorderPull(msg);
         break;
       case 'Reset':
-        if (fromTable || fromOz) {
+        if (fromTable) {
           this.rules.resetToLobby();
         }
         break;
       case 'NewGame':
-        if (fromTable || fromOz) {
+        if (fromTable) {
           this.rules.resetToLobby();
         }
         break;
       // Oz console (or a future TUIO bridge on the table) → server
+      case 'TangibleControl':
+        if (fromOz) this.rules.onTangibleControl(msg);
+        break;
       case 'TangibleMoved':
-        if (fromOz || fromTable) this.rules.onTangibleMoved(msg);
+        if (fromOz) this.rules.onTangibleMoved(msg);
         break;
       case 'TangibleRemoved':
-        if (fromOz || fromTable) this.rules.onTangibleRemoved(msg);
-        break;
-      case 'OzTrigger':
-        if (fromOz) {
-          this.rules.onOzTrigger(msg);
-        }
+        if (fromOz) this.rules.onTangibleRemoved(msg);
         break;
       default:
         break;

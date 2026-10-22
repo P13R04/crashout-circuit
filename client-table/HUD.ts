@@ -1,11 +1,11 @@
 /**
  * HUD — the four corner panels (REQ-6.2), each rotated towards its own table edge.
- * Pilot panel: HP bar, continuous steering strip, stocked item, repair pad. Copilot panel: Ghost and Destroy
- * buttons with recharge rings, repair pad, "item armed" halo with countdown.
+ * Pilot panel: HP, steering and repair. Copilot: POWER, tangible charging zone,
+ * repair and neutral armed-item countdown.
  */
 import type { GameState, Team, Car } from '../server/types.js';
 import {
-  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, ITEM_BTN_LOCAL, GHOST_BTN_LOCAL, DESTROY_BTN_LOCAL,
+  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, POWER_BTN_LOCAL, CHARGE_ZONE_LOCAL,
   type PanelLayout,
 } from '../server/layout.js';
 import { TEAM_COLOR, TEAM_NAME, type View } from './view.js';
@@ -49,7 +49,7 @@ export function drawItemIcon(ctx: Ctx, kind: 'slingshot' | 'boost', x: number, y
 
 export class HUD {
   draw(ctx: Ctx, state: GameState, view: View): void {
-    const now = view.now();
+    const now = state.phase === 'PAUSED' ? state.pausedAt : view.now();
     for (const panel of PANELS) {
       ctx.save();
       ctx.translate(panel.cx, panel.cy);
@@ -85,7 +85,7 @@ export class HUD {
 
     // HP bar (animated towards the real value by the main loop)
     const frac = Math.max(0, Math.min(1, view.hpShown[team] / state.params.hpMax));
-    const bx = -140, by = -62, bw = 290, bh = 22;
+    const bx = -70, by = -62, bw = 220, bh = 22;
     ctx.fillStyle = 'rgba(255,255,255,0.1)';
     ctx.fillRect(bx, by, bw, bh);
     ctx.fillStyle = frac > 0.5 ? '#3ddc84' : frac > 0.25 ? '#ffb020' : '#ff4040';
@@ -115,87 +115,59 @@ export class HUD {
     ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
     ctx.fillText('DIRECTION · GLISSEZ', area.x, 94);
 
-    // Item button: stocked item, tap to arm it (then the copilot has 5 s for the gesture)
-    const b = ITEM_BTN_LOCAL;
-    const armed = car.itemArmed;
-    ctx.fillStyle = armed ? 'rgba(255,225,74,0.25)' : car.heldItem ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)';
-    ctx.strokeStyle = armed ? '#ffe14a' : car.heldItem ? '#ffffff' : 'rgba(255,255,255,0.2)';
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = '12px monospace';
     ctx.textAlign = 'center';
-    if (car.heldItem) {
-      drawItemIcon(ctx, car.heldItem, b.x, b.y - 6, 18, armed ? '#ffe14a' : color);
-      ctx.fillStyle = armed ? '#ffe14a' : 'rgba(255,255,255,0.8)';
-      ctx.font = 'bold 11px monospace';
-      ctx.fillText(armed ? 'ARMÉ' : 'UTILISER', b.x, b.y + 26);
-    } else {
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
-      ctx.font = '11px monospace';
-      ctx.fillText('aucun', b.x, b.y - 2);
-      ctx.fillText('objet', b.x, b.y + 12);
-    }
+    ctx.fillText('CONDUITE', -20, 34);
+    ctx.fillText('POWER AU COPILOTE', -20, 54);
     ctx.textAlign = 'left';
     void now;
   }
 
   private drawCopilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
-    const PANEL_W = panelWidth('copilot');
-    const team = panel.team;
-    const car = state.cars[team];
-    const cd = state.cooldowns[team];
-    const p = state.params;
+    const car = state.cars[panel.team];
+    const color = TEAM_COLOR[panel.team];
+    const armed = car.itemArmed && now < car.itemArmExpiry;
+    const docked = Object.entries(state.tangibles).filter(([, t]) => t.dockTeam === panel.team);
+    const ready = docked.some(([, t]) => t.active);
+    const canPower = !!car.heldItem;
+    const b = POWER_BTN_LOCAL;
+    ctx.fillStyle = armed ? '#ffe14a33' : canPower ? `${color}22` : '#ffffff08';
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
+    ring(ctx, b.x, b.y, b.r, armed ? (car.itemArmExpiry - now) / (state.params.armWindowS * 1000) : 1,
+      armed ? '#ffe14a' : canPower ? color : '#586078', 4);
+    // Universal power symbol, independent of the stocked bonus.
+    ctx.strokeStyle = armed ? '#ffe14a' : '#fff'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(b.x, b.y - 6, 13, -Math.PI * 0.35, Math.PI * 1.35); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(b.x, b.y - 24); ctx.lineTo(b.x, b.y - 7); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 12px monospace';
+    ctx.fillText('POWER', b.x, b.y + 25);
 
-    // Ghost
-    const g = GHOST_BTN_LOCAL;
-    const ghostActive = car.ghostUntil > now;
-    const ghostLeft = Math.max(0, cd.ghost - now);
-    const ghostFrac = ghostActive ? (car.ghostUntil - now) / (p.ghostS * 1000)
-      : ghostLeft > 0 ? 1 - ghostLeft / (p.ghostCooldownS * 1000) : 1;
-    ctx.fillStyle = ghostActive ? 'rgba(170,90,255,0.35)' : 'rgba(255,255,255,0.05)';
-    ctx.beginPath(); ctx.arc(g.x, g.y, g.r, 0, Math.PI * 2); ctx.fill();
-    ring(ctx, g.x, g.y, g.r, ghostFrac, ghostActive ? '#b06cff' : ghostLeft > 0 ? '#6b7280' : '#3ddc84');
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('FANTÔME', g.x, g.y + 5);
-    if (ghostLeft > 0 && !ghostActive) ctx.fillText(`${Math.ceil(ghostLeft / 1000)}s`, g.x, g.y + g.r + 22);
+    const z = CHARGE_ZONE_LOCAL;
+    ctx.fillStyle = ready ? '#3ddc8422' : '#ffffff08';
+    ctx.strokeStyle = ready ? '#3ddc84' : color;
+    ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h, 12); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = ready ? '#3ddc84' : '#fff'; ctx.font = 'bold 11px monospace';
+    ctx.fillText(ready ? 'ACTIVÉ' : docked.length ? 'INACTIF' : 'TANGIBLE', z.x, z.y - 9);
+    ctx.font = '11px monospace';
+    ctx.fillText(docked.length ? docked.map(([id]) => `#${id}`).join(' ') : 'DÉPOSER ICI', z.x, z.y + 12);
+    ctx.fillStyle = '#ffffff99'; ctx.font = '10px monospace';
+    ctx.fillText(ready ? 'replacer sur piste' : 'activation par Oz', z.x, z.y + 32);
 
-    // Destroy wall
-    const d = DESTROY_BTN_LOCAL;
-    const dLeft = Math.max(0, cd.destroy - now);
-    const dFrac = dLeft > 0 ? 1 - dLeft / (p.destroyCooldownS * 1000) : 1;
-    const targeting = view.targeting && view.targeting.team === team && view.targeting.until > Date.now();
-    ctx.fillStyle = targeting ? 'rgba(255,150,40,0.4)' : 'rgba(255,255,255,0.05)';
-    ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.fill();
-    ring(ctx, d.x, d.y, d.r, targeting ? (view.targeting!.until - Date.now()) / 3000 : dFrac,
-      targeting ? '#ff9628' : dLeft > 0 ? '#6b7280' : '#3ddc84');
-    ctx.fillStyle = '#fff';
-    ctx.fillText('DÉTRUIRE', d.x, d.y + 5);
-    if (dLeft > 0 && !targeting) ctx.fillText(`${Math.ceil(dLeft / 1000)}s`, d.x, d.y + d.r + 22);
-    if (targeting) {
-      ctx.fillStyle = '#ff9628';
-      ctx.fillText('TOUCHEZ UN MUR', d.x, d.y - d.r - 10);
-    }
-
-    // Armed-item halo with countdown (5 s)
-    if (car.itemArmed && car.heldItem) {
-      const left = Math.max(0, car.itemArmExpiry - now);
-      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 120);
-      ctx.strokeStyle = `rgba(255,225,74,${0.5 + 0.5 * pulse})`;
-      ctx.lineWidth = 4;
-      ctx.shadowColor = '#ffe14a';
-      ctx.shadowBlur = 14;
-      ctx.beginPath();
-      ctx.roundRect(-PANEL_W / 2 + 4, -PANEL_H / 2 + 4, PANEL_W - 8, PANEL_H - 8, 16);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#ffe14a';
-      ctx.font = 'bold 15px monospace';
-      ctx.textAlign = 'right';
+    // A stocked icon is information only; POWER is the only activation button.
+    if (car.heldItem) {
+      drawItemIcon(ctx, car.heldItem, -180, 79, 9, armed ? '#ffe14a' : color);
+      ctx.fillStyle = armed ? '#ffe14a' : '#ffffffaa'; ctx.textAlign = 'left'; ctx.font = '11px monospace';
       const gesture = car.heldItem === 'slingshot' ? '3 doigts' : '2 doigts';
-      ctx.fillText(`✦ OBJET ARMÉ · ${gesture} · ${(left / 1000).toFixed(1)}s`, PANEL_W / 2 - 14, -PANEL_H / 2 + 24);
-      ctx.textAlign = 'left';
+      ctx.fillText(armed ? `${gesture} · ${Math.max(0, (car.itemArmExpiry - now) / 1000).toFixed(1)}s · VOLABLE` : 'Objet en stock', -162, 83);
+    }
+    if (armed) {
+      ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(-226, -96, 452, 192, 16); ctx.stroke();
     }
     ctx.textAlign = 'left';
-    void p;
+    void view;
   }
 
   /** Repair pad (160 px disc) with a ring filling while both partners hold their pad. */

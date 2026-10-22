@@ -56,6 +56,7 @@ export class Renderer {
     this.drawGates(ctx, state, now);
     this.drawWalls(ctx, state, now);
     this.drawArcs(ctx, state, now);
+    this.drawPylons(ctx, state);
     this.drawStones(ctx, state, now);
     for (const t of ['A', 'B'] as Team[]) this.drawCar(ctx, state.cars[t], now);
     this.drawEffects(ctx, view);
@@ -327,6 +328,17 @@ export class Renderer {
       ctx.fillStyle = TEAM_COLOR[arc.team];
       for (const e of [arc.pylon1, arc.pylon2]) { ctx.beginPath(); ctx.arc(e.x, e.y, 9, 0, Math.PI * 2); ctx.fill(); }
       ctx.restore();
+    }
+  }
+
+  private drawPylons(ctx: Ctx, state: GameState): void {
+    for (const [id, t] of Object.entries(state.tangibles)) {
+      if (t.status !== 'placed' || !t.active || t.kind !== 'pylon') continue;
+      const x = t.x * state.params.logicalWidth, y = t.y * state.params.logicalHeight;
+      ctx.save(); ctx.strokeStyle = TEAM_COLOR[t.team]; ctx.fillStyle = '#101a30'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(id, x, y + 4); ctx.restore();
     }
   }
 

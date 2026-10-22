@@ -25,8 +25,6 @@ export interface View {
   effects: Effect[];
   /** Immediate touch feedback for the repair pads, before the server echoes it. */
   localPads: Record<string, boolean>;
-  /** Destroy-wall targeting mode, deadline in local Date.now() ms. */
-  targeting: { team: Team; until: number } | null;
   strokes: Map<number, LocalStroke>;
   /** Joystick knob per team, normalized to the base radius (x right, y down), as drawn. */
   sticks: Record<Team, { x: number; y: number; active: boolean }>;
@@ -46,7 +44,6 @@ export function createView(now: () => number): View {
     now,
     effects: [],
     localPads: {},
-    targeting: null,
     strokes: new Map(),
     sticks: { A: { x: 0, y: 0, active: false }, B: { x: 0, y: 0, active: false } },
     hpShown: { A: 100, B: 100 },

@@ -1,4 +1,5 @@
 import type { ServerMessage } from '../server/types.js';
+import { createControls } from '../client-shared/controls.js';
 import { StateSync, connectWs } from '../client-shared/net.js';
 import { createView } from './view.js';
 import { Renderer } from './Renderer.js';
@@ -36,6 +37,7 @@ const conn = connectWs('/ws', {
   onClose: () => { statusEl.textContent = 'Déconnecté — reconnexion dans 2 s…'; gestures.releaseAll(); },
   onMessage: handleMessage,
 });
+const controls = createControls(m => conn.send(m));
 const gestures = new GestureRecognizer(canvas, view, (m) => conn.send(m));
 
 // PC testing: buttons that stand in for the 3- and 2-finger gestures (shown with a mouse or ?sim=1)
@@ -72,7 +74,7 @@ function sendSteer(team: 'A' | 'B'): void {
   const steer = team === 'A'
     ? (down.has('q') ? -1 : down.has('d') ? 1 : 0)
     : (down.has('ArrowLeft') ? -1 : down.has('ArrowRight') ? 1 : 0);
-  conn.send({ type: 'PilotInput', team, throttle: 1, steer });
+  controls.steer(team, steer);
 }
 // Match the touch-control heartbeat while a steering key is held. Do not emit
 // neutral keyboard frames otherwise: table and desktop controls share the same
@@ -98,13 +100,13 @@ window.addEventListener('keydown', (e) => {
   if (key === 'Escape' || key === ' ') { e.preventDefault(); conn.send({ type: 'Pause' }); }
   if (key === 'a' || key === 'p') updateKeyboardRepair('A');
   if (key === 'm' || key === 'c') updateKeyboardRepair('B');
-  // A/M alone activate the pilot's stocked item. Waiting briefly lets the
+  // A/M alone press the copilot's POWER button. Waiting briefly lets the
   // A+P / M+C repair chord win when the two players press in rhythm.
   if ((key === 'a' || key === 'm') && !e.repeat) {
     const team: 'A' | 'B' = key === 'a' ? 'A' : 'B';
     window.setTimeout(() => {
       const combo = team === 'A' ? down.has('a') && down.has('p') : down.has('m') && down.has('c');
-      if (!combo && down.has(key)) conn.send({ type: 'UseItem', team });
+      if (!combo && down.has(key)) controls.power(team);
     }, 120);
   }
 });

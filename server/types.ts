@@ -10,6 +10,15 @@ export type Team = 'A' | 'B';
 export type Phase = 'LOBBY' | 'MAP' | 'READY' | 'RACE' | 'PAUSED' | 'RESULT';
 export type ItemKind = 'slingshot' | 'boost';
 
+export interface Tangible {
+  x: number; y: number; angle: number; // normalized position, angle in degrees
+  kind: 'wall' | 'pylon';
+  team: Team;
+  active: boolean;
+  dockTeam: Team | null;
+  status: 'docked' | 'placed';
+}
+
 export interface Car {
   team: Team;
   pos: Vec2;
@@ -136,6 +145,7 @@ export interface GameParams {
   boostLenMinPx: number;
   boostLenMaxPx: number;
   repairHoldS: number;
+  wallLengthPx: number;
   logicalWidth: number;
   logicalHeight: number;
 }
@@ -156,6 +166,7 @@ export interface GameState {
   deformations: TrackDeformation[];
   winner: Team | 'draw' | null;
   sessionStartAt: number;
+  pausedAt: number;
   /** Imposed target points of each copilot, set on entering the MAP phase. */
   mapTargets: MapTargets | null;
   /** The two shared contacts that split the table before either half is drawn. */
@@ -170,7 +181,7 @@ export interface GameState {
   /** Incremented whenever `track` changes; State broadcasts omit the track otherwise. */
   trackVersion: number;
   /** Operator-reported pylons currently on the table, keyed by tangible id. */
-  tangibles: Record<number, { x: number; y: number; angle: number }>;
+  tangibles: Record<number, Tangible>;
   params: GameParams;
 }
 
@@ -242,7 +253,7 @@ export interface BorderPullMsg extends BaseMsg {
   team?: Team;
 }
 
-// Pilot joystick / item button on the table → Server
+// Semantic control actions; independent of the input device.
 export interface PilotInputMsg extends BaseMsg {
   type: 'PilotInput';
   team: Team;
@@ -251,9 +262,10 @@ export interface PilotInputMsg extends BaseMsg {
   steer: number;    // [-1, 1]
 }
 
-export interface UseItemMsg extends BaseMsg {
-  type: 'UseItem';
+export interface PowerMsg extends BaseMsg {
+  type: 'Power';
   team: Team;
+  role: 'copilot';
 }
 
 export interface StartGameMsg extends BaseMsg {
@@ -279,6 +291,15 @@ export interface TangibleRemovedMsg extends BaseMsg {
   id: 1 | 2 | 3 | 4;
 }
 
+/** Semantic lifecycle, shared by Oz and a future tangible sensor adapter. */
+export interface TangibleControlMsg extends BaseMsg {
+  type: 'TangibleControl';
+  id: 1 | 2 | 3 | 4;
+  action: 'configure' | 'dock' | 'activate' | 'deactivate';
+  team?: Team;
+  kind?: Tangible['kind'];
+}
+
 export interface NewGameMsg extends BaseMsg {
   type: 'NewGame';
 }
@@ -289,12 +310,6 @@ export interface ResetMsg extends BaseMsg {
 
 export interface PingMsg extends BaseMsg {
   type: 'Ping';
-}
-
-export interface OzTriggerMsg extends BaseMsg {
-  type: 'OzTrigger';
-  kind: string;
-  params: Record<string, unknown>;
 }
 
 // Server → All (broadcast)
@@ -333,12 +348,12 @@ export type ClientMessage =
   | AbilityMsg
   | BorderPullMsg
   | PilotInputMsg
-  | UseItemMsg
+  | PowerMsg
   | StartGameMsg
   | PauseMsg
   | TangibleMovedMsg
   | TangibleRemovedMsg
-  | OzTriggerMsg
+  | TangibleControlMsg
   | PingMsg
   | NewGameMsg
   | ResetMsg;

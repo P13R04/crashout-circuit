@@ -3,6 +3,7 @@ import { WebSocketServer } from 'ws';
 import { readFileSync, statSync } from 'fs';
 import { resolve, dirname, extname } from 'path';
 import { fileURLToPath } from 'url';
+import { networkInterfaces } from 'os';
 import { GameServer } from './GameServer.js';
 import { config } from './config.js';
 
@@ -36,6 +37,16 @@ function serveStatic(res: http.ServerResponse, filePath: string): boolean {
 // ── HTTP server ────────────────────────────────────────────────────────────────
 const httpServer = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://localhost`);
+
+  if (url.pathname === '/api/session') {
+    const port = (httpServer.address() as { port: number }).port;
+    const addresses = Object.values(networkInterfaces()).flat()
+      .filter(iface => iface?.family === 'IPv4' && !iface.internal)
+      .map(iface => `http://${iface!.address}:${port}/oz`);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ozUrls: addresses }));
+    return;
+  }
 
   // Full server-side journal of pylon events (task 15)
   if (url.pathname === '/api/oz-log') {

@@ -10,12 +10,12 @@
 import type {
   GameState, Team, Vec2, Phase, ItemKind, Car, Wall, MapTargets, TrackGeometry,
   StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGateMsg, AbilityMsg, BorderPullMsg,
-  PilotInputMsg, UseItemMsg, TangibleMovedMsg, TangibleRemovedMsg, OzTriggerMsg,
+  PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg,
 } from './types.js';
 import { config } from './config.js';
 import { dist, distToSegment, nearestOnTrack, segmentsIntersect, wrapAngle } from './geometry.js';
 import { generate, generatePreset, validateStroke, rebuildEdges } from './MapGenerator.js';
-import { nearestStationTeam, LOGICAL_W } from './layout.js';
+import { nearestStationTeam, LOGICAL_W, chargeZoneTeam, insidePanel, panelOf, localToWorld, CHARGE_ZONE_LOCAL } from './layout.js';
 
 export const CAR_RADIUS = 10;
 export const WALL_HALF_THICKNESS = 4;
@@ -34,7 +34,10 @@ export interface RulesHost {
 
 export interface TangibleLogEntry {
   t: number;
-  type: 'TangibleMoved' | 'TangibleRemoved';
+  type: 'TangibleMoved' | 'TangibleRemoved' | 'TangibleControl';
+  action?: TangibleControlMsg['action'];
+  team?: Team;
+  kind?: 'wall' | 'pylon';
   id: number;
   x?: number;
   y?: number;
@@ -42,7 +45,6 @@ export interface TangibleLogEntry {
 }
 
 export const other = (t: Team): Team => (t === 'A' ? 'B' : 'A');
-const teamOfTangible = (id: number): Team => (id <= 2 ? 'A' : 'B');
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 export function makeCar(team: Team): Car {
@@ -92,6 +94,7 @@ export function createInitialState(): GameState {
     deformations: [],
     winner: null,
     sessionStartAt: Date.now(),
+    pausedAt: 0,
     mapTargets: null,
     mapDivider: null,
     mapStrokes: { A: false, B: false },
@@ -117,6 +120,7 @@ export function createInitialState(): GameState {
       boostLenMinPx: config.boostLenMinPx,
       boostLenMaxPx: config.boostLenMaxPx,
       repairHoldS: config.repairHoldS,
+      wallLengthPx: config.wallLengthPx,
       logicalWidth: config.logicalWidth,
       logicalHeight: config.logicalHeight,
     },
@@ -176,6 +180,7 @@ export class GameRules {
     this.strokes = { A: null, B: null };
     this.generating = false;
     s.walls = []; s.arcs = []; s.boostGates = []; s.stones = []; s.pickups = [];
+    s.tangibles = {};
     s.winner = null;
     this.host.transition('MAP', { deadline: s.mapDeadline, mode });
     this.host.broadcastFull();
@@ -262,6 +267,8 @@ export class GameRules {
     const s = this.state;
     this.generating = true;
     s.track = track;
+    s.pausedAt = 0;
+    this.pausedAt = 0;
     s.deformations = [];
     s.trackVersion++;
     for (const team of TEAMS) {
@@ -283,8 +290,7 @@ export class GameRules {
     }));
     s.winner = null;
     s.sessionStartAt = waitForPlayers ? 0 : this.now + COUNTDOWN_MS;
-    this.rebuildTangibles('A');
-    this.rebuildTangibles('B');
+    this.rebuildTangibles();
     this.host.transition(waitForPlayers ? 'READY' : 'RACE', { startsAt: s.sessionStartAt });
     this.host.broadcastFull();
   }
@@ -302,12 +308,26 @@ export class GameRules {
     const s = this.state;
     if (s.phase === 'RACE') {
       this.pausedAt = this.now;
+      s.pausedAt = this.pausedAt;
       this.releaseAllPads();
       this.host.transition('PAUSED');
       this.host.broadcastFull();
     } else if (s.phase === 'PAUSED') {
-      if (this.pausedAt) s.sessionStartAt += this.now - this.pausedAt;
+      const delta = this.now - this.pausedAt;
+      const shift = (value: number) => value > this.pausedAt ? value + delta : value;
+      s.sessionStartAt += delta;
+      for (const car of Object.values(s.cars)) {
+        for (const key of ['itemArmExpiry', 'invulnUntil', 'stunUntil', 'ghostUntil', 'slowUntil', 'boostUntil'] as const) car[key] = shift(car[key]);
+      }
+      for (const cd of Object.values(s.cooldowns)) { cd.ghost = shift(cd.ghost); cd.destroy = shift(cd.destroy); }
+      for (const wall of s.walls) { wall.disabledUntil = shift(wall.disabledUntil); if (wall.expiresAt) wall.expiresAt = shift(wall.expiresAt); }
+      for (const arc of s.arcs) arc.disabledUntil = shift(arc.disabledUntil);
+      for (const pickup of s.pickups) pickup.respawnAt = shift(pickup.respawnAt);
+      for (const gate of s.boostGates) gate.expiresAt = shift(gate.expiresAt);
+      for (const stone of s.stones) stone.impactAt = shift(stone.impactAt);
+      for (const d of s.deformations) { d.createdAt += delta; if (d.releaseAt !== null) d.releaseAt += delta; }
       this.pausedAt = 0;
+      s.pausedAt = 0;
       this.host.transition('RACE');
       this.host.broadcastFull();
     }
@@ -323,6 +343,7 @@ export class GameRules {
     s.track = null;
     s.trackVersion++;
     s.walls = []; s.arcs = []; s.boostGates = []; s.stones = []; s.pickups = [];
+    s.tangibles = {};
     s.mapTargets = null;
     s.mapDivider = null;
     s.mapStrokes = { A: false, B: false };
@@ -331,6 +352,7 @@ export class GameRules {
     this.generating = false;
     this.strokes = { A: null, B: null };
     this.pausedAt = 0;
+    s.pausedAt = 0;
     this.releaseAllPads();
     this.inputs.A = { throttle: 1, steer: 0 };
     this.inputs.B = { throttle: 1, steer: 0 };
@@ -364,28 +386,33 @@ export class GameRules {
     }
   }
 
-  /** UseItem: arm the stocked item for `armWindowS` seconds (REQ-4.1.3). */
-  onUseItem(team: Team, _msg?: UseItemMsg): void {
+  /** POWER only arms the copilot team’s pickup; tangible activation belongs to Oz. */
+  onPower(team: Team, _msg?: PowerMsg): void {
+    if (this.state.phase !== 'RACE') return;
     const car = this.state.cars[team];
-    if (this.state.phase !== 'RACE' || car.heldItem === null || car.itemArmed) return;
-    car.itemArmed = true;
-    car.itemArmExpiry = this.now + config.armWindowS * 1000;
-    this.host.feedback('itemArmed', car.pos.x, car.pos.y, team);
+    if (car.heldItem !== null && !car.itemArmed) {
+      car.itemArmed = true;
+      car.itemArmExpiry = this.now + config.armWindowS * 1000;
+      this.host.feedback('itemArmed', car.pos.x, car.pos.y, team);
+    }
   }
 
   // ─── Slingshot (C-01) ──────────────────────────────────────────────────────
 
-  /** R-03: the team whose Pilot armed `kind`; both armed → closest station. */
-  private resolveArmedTeam(kind: ItemKind, at: Vec2, explicit?: Team): Team | null {
+  /** The stock owner authorizes the gesture, independently of who performs it. */
+  private resolveArmedTeam(kind: ItemKind, at: Vec2): Team | null {
     const now = this.now;
     const ok = TEAMS.filter(t => {
       const c = this.state.cars[t];
       return c.itemArmed && c.heldItem === kind && now < c.itemArmExpiry;
     });
     if (ok.length === 0) return null;
-    if (explicit && ok.includes(explicit)) return explicit;
     if (ok.length === 1) return ok[0];
     return nearestStationTeam(at);
+  }
+
+  private gestureTeam(at: Vec2, reported?: Team): Team {
+    return reported === 'A' || reported === 'B' ? reported : nearestStationTeam(at);
   }
 
   private consumeItem(team: Team): void {
@@ -398,9 +425,10 @@ export class GameRules {
   onSlingshot(msg: SlingshotMsg): void {
     if (this.state.phase !== 'RACE' || !Number.isFinite(msg.x) || !Number.isFinite(msg.y)) return;
     const target = { x: msg.x, y: msg.y };
-    const team = this.resolveArmedTeam('slingshot', target, msg.team);
-    if (!team) return;
-    this.consumeItem(team);
+    const owner = this.resolveArmedTeam('slingshot', target);
+    if (!owner) return;
+    const team = this.gestureTeam(target, msg.team);
+    this.consumeItem(owner);
     this.state.stones.push({
       id: this.nextId('stone'),
       target,
@@ -437,9 +465,10 @@ export class GameRules {
     const len = dist(a, b);
     if (len < config.boostLenMinPx - 1e-6 || len > config.boostLenMaxPx + 1e-6) return;
     const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const team = this.resolveArmedTeam('boost', mid, msg.team);
-    if (!team) return;
-    this.consumeItem(team);
+    const owner = this.resolveArmedTeam('boost', mid);
+    if (!owner) return;
+    const team = this.gestureTeam(mid, msg.team);
+    this.consumeItem(owner);
     this.addBoostGate(team, a, b);
   }
 
@@ -562,62 +591,100 @@ export class GameRules {
 
   // ─── Tangible pylons (C-05) ────────────────────────────────────────────────
 
-  /** Same entry point for the Oz operator and a future TUIO source (T-10). */
+  /** Same semantic lifecycle for Oz now and a sensor bridge later. */
+  onTangibleControl(msg: TangibleControlMsg): void {
+    const id = Number(msg.id);
+    if (![1, 2, 3, 4].includes(id) || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
+    const s = this.state;
+    if (msg.action === 'dock' || msg.action === 'configure') {
+      if (msg.team !== 'A' && msg.team !== 'B') return;
+      if (msg.kind !== undefined && msg.kind !== 'wall' && msg.kind !== 'pylon') return;
+      const old = s.tangibles[id];
+      const zone = CHARGE_ZONE_LOCAL;
+      const pos = localToWorld(panelOf(msg.team, 'copilot'), zone.x, zone.y);
+      const kind = msg.kind ?? old?.kind ?? 'wall';
+      if (msg.action === 'configure' && old) {
+        const changed = old.kind !== kind || old.team !== msg.team;
+        old.kind = kind; old.team = msg.team;
+        if (changed) old.active = false;
+        if (old.status === 'docked') { old.dockTeam = msg.team; old.x = pos.x / config.logicalWidth; old.y = pos.y / config.logicalHeight; }
+      } else {
+        s.tangibles[id] = {
+          x: pos.x / config.logicalWidth, y: pos.y / config.logicalHeight, angle: 0,
+          kind, team: msg.team, dockTeam: msg.team, status: 'docked', active: false,
+        };
+      }
+    } else if (msg.action === 'activate' || msg.action === 'deactivate') {
+      const t = s.tangibles[id];
+      if (!t || (msg.team !== undefined && msg.team !== t.team)) return;
+      t.active = msg.action === 'activate';
+    } else return;
+    this.tangibleLog.push({ t: this.now, type: 'TangibleControl', id, action: msg.action, team: msg.team, kind: msg.kind });
+    this.rebuildTangibles();
+  }
+
   onTangibleMoved(msg: TangibleMovedMsg): void {
     const id = Number(msg.id);
-    if (![1, 2, 3, 4].includes(id) || ![msg.x, msg.y, msg.angle].every(Number.isFinite)) return;
+    if (![1, 2, 3, 4].includes(id) || ![msg.x, msg.y, msg.angle].every(Number.isFinite)
+      || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
     const x = clamp(msg.x, 0, 1), y = clamp(msg.y, 0, 1);
+    const at = { x: x * config.logicalWidth, y: y * config.logicalHeight };
+    const dockTeam = chargeZoneTeam(at);
+    const t = this.state.tangibles[id];
+    if (dockTeam) {
+      // A nudge within the same docking station does not change activation.
+      if (t?.dockTeam === dockTeam && t.status === 'docked') return;
+      this.onTangibleControl({ type: 'TangibleControl', t: msg.t, id: msg.id, action: 'dock', team: dockTeam });
+      return;
+    }
+    if (!t || insidePanel(at)) return;
+    if (t.kind === 'wall') {
+      const ends = GameRules.wallEnds({ pos: at, angle: msg.angle, lengthPx: config.wallLengthPx });
+      if (ends.some(p => p.x < 0 || p.y < 0 || p.x > config.logicalWidth || p.y > config.logicalHeight || insidePanel(p))) return;
+    }
     this.tangibleLog.push({ t: this.now, type: 'TangibleMoved', id, x, y, angle: msg.angle });
-    this.state.tangibles[id] = { x, y, angle: msg.angle };
-    this.rebuildTangibles(teamOfTangible(id));
+    Object.assign(t, { x, y, angle: msg.angle, dockTeam: null, status: 'placed' });
+    this.rebuildTangibles();
   }
 
   onTangibleRemoved(msg: TangibleRemovedMsg): void {
     const id = Number(msg.id);
-    if (![1, 2, 3, 4].includes(id)) return;
+    if (![1, 2, 3, 4].includes(id) || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
     this.tangibleLog.push({ t: this.now, type: 'TangibleRemoved', id });
     delete this.state.tangibles[id];
-    this.rebuildTangibles(teamOfTangible(id));
+    this.rebuildTangibles();
   }
 
-  /**
-   * Derive walls/arcs of one team from its pylons: two pylons within
-   * `arcMaxDistPx` form an arc that replaces their two individual walls.
-   */
-  private rebuildTangibles(team: Team): void {
+  /** Walls and electrical pillars have explicit types; distance never turns a wall into an arc. */
+  private rebuildTangibles(): void {
     const s = this.state;
-    const ids = team === 'A' ? [1, 2] : [3, 4];
-    const px = (id: number): Vec2 => ({
-      x: s.tangibles[id].x * config.logicalWidth,
-      y: s.tangibles[id].y * config.logicalHeight,
-    });
-
-    const oldDisabled = new Map<string, number>();
-    for (const w of s.walls) if (w.team === team && !w.expiresAt) oldDisabled.set(w.id, w.disabledUntil);
-    for (const a of s.arcs) if (a.team === team) oldDisabled.set(a.id, a.disabledUntil);
-    s.walls = s.walls.filter(w => w.team !== team || w.expiresAt);
-    s.arcs = s.arcs.filter(a => a.team !== team);
-
-    const present = ids.filter(id => s.tangibles[id]);
-    if (present.length === 2 && dist(px(ids[0]), px(ids[1])) <= config.arcMaxDistPx) {
-      const arcId = `arc-${team}`;
-      s.arcs.push({
-        id: arcId, team, pylon1: px(ids[0]), pylon2: px(ids[1]),
-        disabledUntil: oldDisabled.get(arcId) ?? 0,
-      });
-      return;
-    }
-    for (const id of present) {
+    const oldDisabled = new Map([...s.walls, ...s.arcs].map(w => [w.id, w.disabledUntil]));
+    s.walls = s.walls.filter(w => w.expiresAt);
+    s.arcs = [];
+    const px = (t: { x: number; y: number }): Vec2 => ({ x: t.x * config.logicalWidth, y: t.y * config.logicalHeight });
+    for (const [id, t] of Object.entries(s.tangibles)) {
+      if (t.status !== 'placed' || !t.active || t.kind !== 'wall') continue;
       const wid = `wall-${id}`;
-      s.walls.push({
-        id: wid, team, pos: px(id), angle: s.tangibles[id].angle,
-        lengthPx: config.wallLengthPx, disabledUntil: oldDisabled.get(wid) ?? 0,
-      });
+      s.walls.push({ id: wid, team: t.team, pos: px(t), angle: t.angle,
+        lengthPx: config.wallLengthPx, disabledUntil: oldDisabled.get(wid) ?? 0 });
+    }
+    for (const team of TEAMS) {
+      const pylons = Object.entries(s.tangibles).filter(([, t]) => t.status === 'placed' && t.active && t.team === team && t.kind === 'pylon');
+      const pending = [...pylons];
+      while (pending.length > 1) {
+        const [id1, p1] = pending.shift()!;
+        let nearest = -1, distance = config.arcMaxDistPx + 1e-6;
+        pending.forEach(([, p], i) => { const d = dist(px(p1), px(p)); if (d < distance) { nearest = i; distance = d; } });
+        if (nearest < 0) continue;
+        const [id2, p2] = pending.splice(nearest, 1)[0];
+        const id = `arc-${id1}-${id2}`;
+        s.arcs.push({ id, team, pylon1: px(p1), pylon2: px(p2), disabledUntil: oldDisabled.get(id) ?? 0 });
+      }
     }
   }
 
   /** Wall as a segment: centre ± direction·length/2 (angle in degrees). */
-  static wallEnds(w: Wall): [Vec2, Vec2] {
+  static wallEnds(w: Pick<Wall, 'pos' | 'angle' | 'lengthPx'>): [Vec2, Vec2] {
     const a = (w.angle * Math.PI) / 180;
     const hx = (Math.cos(a) * w.lengthPx) / 2;
     const hy = (Math.sin(a) * w.lengthPx) / 2;
@@ -739,85 +806,6 @@ export class GameRules {
   /** A small grace band prevents an easing edge from unfairly dropping a car. */
   isTrackReforming(): boolean {
     return this.state.deformations.some(d => d.releaseAt !== null);
-  }
-
-  // ─── Oz fallback actions (REQ-7.2) ─────────────────────────────────────────
-
-  onOzTrigger(msg: OzTriggerMsg): void {
-    const s = this.state;
-    const params = (msg.params ?? {}) as Record<string, unknown>;
-    const team: Team = params.team === 'B' ? 'B' : 'A';
-    const now = this.now;
-    switch (msg.kind) {
-      case 'fallbackTrack':
-        if (s.phase === 'MAP' || s.phase === 'RACE') this.startRace(generatePreset());
-        return;
-      case 'newGame':
-        this.resetToLobby();
-        return;
-    }
-    const track = s.track;
-    if (s.phase !== 'RACE' || !track) return;
-    const n = track.centerline.length;
-    const aheadOf = (car: Car, steps: number) => {
-      const i = (nearestOnTrack(car.pos, track).index + steps) % n;
-      const p = track.centerline[i];
-      const q = track.centerline[(i + 1) % n];
-      const tan = { x: q.x - p.x, y: q.y - p.y };
-      const len = Math.hypot(tan.x, tan.y) || 1;
-      return { p, normal: { x: -tan.y / len, y: tan.x / len }, half: track.widths[i] / 2, angleDeg: (Math.atan2(tan.y, tan.x) * 180) / Math.PI };
-    };
-    switch (msg.kind) {
-      case 'obstacle': { // temporary wall of `team` ahead of the opponent
-        const spot = aheadOf(s.cars[other(team)], 20);
-        s.walls.push({
-          id: this.nextId('oz-wall'), team, pos: { ...spot.p }, angle: spot.angleDeg + 90,
-          lengthPx: Math.min(config.wallLengthPx, spot.half * 1.6), disabledUntil: 0, expiresAt: now + 8000,
-        });
-        break;
-      }
-      case 'boost': { // boost gate across the track ahead of `team`
-        const spot = aheadOf(s.cars[team], 15);
-        const a = { x: spot.p.x + spot.normal.x * spot.half * 0.9, y: spot.p.y + spot.normal.y * spot.half * 0.9 };
-        const b = { x: spot.p.x - spot.normal.x * spot.half * 0.9, y: spot.p.y - spot.normal.y * spot.half * 0.9 };
-        this.addBoostGate(team, a, b);
-        break;
-      }
-      case 'giveItem': { // test helper: put an item in the stock of `team`
-        const car = s.cars[team];
-        car.heldItem = params.item === 'boost' ? 'boost' : 'slingshot';
-        car.itemArmed = false;
-        break;
-      }
-      case 'breakdown': { // instant breakdown of the car of `team`
-        const car = s.cars[team];
-        this.damage(car, car.hp, now);
-        break;
-      }
-      case 'widen': {
-        const at = typeof params.x === 'number' && typeof params.y === 'number'
-          ? { x: params.x, y: params.y }
-          : aheadOf(s.cars[team], 10).p;
-        const hit = nearestOnTrack(at, track);
-        const n = track.centerline.length;
-        const a = track.centerline[(hit.index - 1 + n) % n];
-        const b = track.centerline[(hit.index + 1) % n];
-        const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-        const fallback = { x: -(b.y - a.y) / len, y: (b.x - a.x) / len };
-        const dx = typeof params.dx === 'number' ? params.dx : fallback.x * config.trackDeformMaxShiftPx * 0.8;
-        const dy = typeof params.dy === 'number' ? params.dy : fallback.y * config.trackDeformMaxShiftPx * 0.8;
-        // Oz chooses a side explicitly, as a tangible would be put on an edge;
-        // the operator's point itself may be anywhere over the road.
-        const dragLen = Math.hypot(dx, dy) || 1;
-        const side = { x: dx / dragLen, y: dy / dragLen };
-        const edge = {
-          x: hit.closest.x + side.x * hit.halfWidth * 0.95,
-          y: hit.closest.y + side.y * hit.halfWidth * 0.95,
-        };
-        this.deformTrack(edge, { x: dx, y: dy }, team);
-        break;
-      }
-    }
   }
 
   // ─── Periodic housekeeping (driven by PhysicsLoop) ─────────────────────────

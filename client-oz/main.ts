@@ -1,233 +1,103 @@
-import type { ServerMessage, GameState, Team } from '../server/types.js';
+import type { GameState, Tangible, Team } from '../server/types.js';
 import { StateSync, connectWs } from '../client-shared/net.js';
-import { OzMap, PYLON_COLOR } from './OzMap.js';
-import { OzLog } from './OzLog.js';
+import { wallEndpoints } from '../client-shared/tangibleGeometry.js';
+import { chargeZoneTeam, insidePanel } from '../server/layout.js';
+import { OzMap } from './OzMap.js';
 
-const statusEl = document.getElementById('status') as HTMLSpanElement;
-const controlsEl = document.getElementById('controls-panel') as HTMLDivElement;
-const mapCanvas = document.getElementById('oz-map') as HTMLCanvasElement;
-
+const status = document.getElementById('status')!;
+const controls = document.getElementById('controls') as HTMLFieldSetElement;
+const kind = document.getElementById('kind') as HTMLSelectElement;
+const team = document.getElementById('team') as HTMLSelectElement;
+const activation = document.getElementById('activation') as HTMLButtonElement;
+const remove = document.getElementById('remove') as HTMLButtonElement;
+const notice = document.getElementById('notice')!;
+const list = document.getElementById('tangible-list')!;
 const sync = new StateSync();
-const log = new OzLog();
 let state: GameState | null = null;
 let selectedId = 1;
-let selectedTeam: Team = 'A';
+let previousSelectionKey = '';
+const names = { A: 'Cyan', B: 'Rose' };
+const buttons = new Map<number, HTMLButtonElement>();
 
-// ── Network ───────────────────────────────────────────────────────────────────
 const conn = connectWs('/ws/oz', {
-  onOpen: () => { statusEl.textContent = 'Connecté'; statusEl.style.color = '#34d399'; },
-  onClose: () => { statusEl.textContent = 'Déconnecté'; statusEl.style.color = '#6b7280'; },
-  onMessage: (msg: ServerMessage) => {
+  onOpen: () => { status.textContent = 'Connecté'; },
+  onClose: () => { controls.disabled = true; status.textContent = 'Déconnecté · reconnexion…'; map.cancel(); },
+  onMessage: msg => {
     if (msg.type !== 'State') return;
     state = sync.apply(msg.state, msg.t);
-    statusEl.textContent = `Phase: ${state.phase}`;
-    ozMap.setState(state);
-    refreshActive();
+    const enabled = ['READY', 'RACE', 'PAUSED'].includes(state.phase);
+    controls.disabled = !enabled;
+    status.textContent = enabled ? 'Connecté' : 'En attente du circuit';
+    map.setState(state);
+    refresh();
   },
 });
-
-/** Send an operator event and journal it (REQ-7.3). */
-function emit(type: string, params: Record<string, unknown>, journal = true): void {
-  if (journal) log.record(type, params);
-  conn.send({ type, ...params });
+function emit(type: string, params: Record<string, unknown>): boolean {
+  if (!conn.isOpen() || controls.disabled) { notice.textContent = 'Action indisponible : attendre la connexion et le circuit.'; return false; }
+  conn.send({ type, ...params }); notice.textContent = ''; return true;
 }
-
-// ── Map ───────────────────────────────────────────────────────────────────────
-const angleInput = document.createElement('input');
-const ozMap = new OzMap(mapCanvas, {
+function configure(): void {
+  emit('TangibleControl', { id: selectedId, action: 'configure', team: team.value, kind: kind.value });
+}
+function ensureConfigured(): void {
+  if (!state?.tangibles[selectedId]) configure();
+}
+const map = new OzMap(document.getElementById('oz-map') as HTMLCanvasElement, {
+  enabled: () => conn.isOpen() && !controls.disabled,
   selectedId: () => selectedId,
-  onSelect: (id) => {
-    selectedId = id;
-    const t = state?.tangibles[id];
-    if (t) { angleInput.value = String(Math.round(((t.angle % 360) + 360) % 360)); angleLabel.textContent = `${angleInput.value}°`; }
-    refreshSelector();
+  selectedKind: () => kind.value as Tangible['kind'],
+  selectedTeam: () => team.value as Team,
+  onSelect: id => { selectedId = id; previousSelectionKey = ''; refresh(); },
+  onMove: (id, x, y, angle) => {
+    if (!state) return false;
+    const point = { x: x * state.params.logicalWidth, y: y * state.params.logicalHeight };
+    const dockTeam = chargeZoneTeam(point);
+    if (dockTeam) {
+      if (state.tangibles[id]?.dockTeam !== dockTeam) emit('TangibleControl', { id, action: 'dock', team: dockTeam, kind: kind.value });
+      return false;
+    }
+    const ends = kind.value === 'wall' ? wallEndpoints(point, angle, state.params.wallLengthPx) : [point];
+    if ([point, ...ends].some(p => insidePanel(p) || p.x < 0 || p.y < 0 || p.x > state!.params.logicalWidth || p.y > state!.params.logicalHeight)) {
+      notice.textContent = 'Gardez le tangible dans la surface de jeu.'; return false;
+    }
+    ensureConfigured();
+    return emit('TangibleMoved', { id, x, y, angle });
   },
-  onMove: (id, x, y) => emit('TangibleMoved', { id, x, y, angle: Number(angleInput.value) }),
 });
-
-// ── Controls ──────────────────────────────────────────────────────────────────
-controlsEl.innerHTML = `
-  <style>
-    .row { margin-bottom: 12px; }
-    .row h3 { font-size: 11px; letter-spacing: 2px; color: #6b7280; margin-bottom: 6px; font-weight: normal; }
-    button { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 10px 14px; font: inherit; font-size: 13px; cursor: pointer; touch-action: manipulation; }
-    button:active { background: #334155; }
-    button.sel { outline: 2px solid #fff; }
-    #ids button { min-width: 56px; font-weight: bold; }
-    #angle { width: 220px; vertical-align: middle; }
-    #active .item { display: inline-flex; gap: 6px; align-items: center; margin-right: 10px; }
-    #journal { background: #070b16; border: 1px solid #1e2a40; border-radius: 4px; height: 170px; overflow-y: auto; padding: 6px; font-size: 11px; white-space: pre; }
-    .danger { border-color: #7f1d1d; }
-  </style>
-  <div class="row"><h3>POTEAU (id 1–2 équipe cyan · 3–4 équipe rose)</h3>
-    <span id="ids"></span>
-  </div>
-  <div class="row"><h3>ANGLE</h3>
-    <input id="angle-slot" type="hidden"><span id="angle-wrap"></span> <span id="angle-label">0°</span>
-  </div>
-  <div class="row"><h3>POTEAUX ACTIFS</h3>
-    <span id="active"></span>
-    <button id="remove-sel" class="danger">Retirer poteau sélectionné</button>
-  </div>
-  <div class="row"><h3>SECOURS — équipe visée :
-      <button id="team-A" class="sel">Cyan</button> <button id="team-B">Rose</button></h3>
-    <button data-oz="obstacle">Obstacle</button>
-    <button data-oz="boost">Boost</button>
-    <button data-oz="breakdown" class="danger">Panne</button>
-    <button data-oz="widen">Élargir</button>
-    <button data-oz="fallbackTrack">Circuit ↺</button>
-    <button data-oz="giveItem" data-item="slingshot">+ Lance-pierre</button>
-    <button data-oz="giveItem" data-item="boost">+ Boost</button>
-  </div>
-  <div class="row"><h3>JOURNAL</h3>
-    <div id="journal"></div>
-    <div style="margin-top:6px">
-      <button id="export">Export JSON</button>
-      <button id="replay">Rejouer</button>
-      <button id="stop-replay">Stop</button>
-      <label style="font-size:12px;margin-left:8px">Charger <input id="load" type="file" accept="application/json"></label>
-      <button id="server-log">Journal serveur</button>
-    </div>
-  </div>
-  <div class="row"><h3>LATENCE OPÉRATEUR (R-16)</h3>
-    <button id="reaction">Test de réaction</button> <span id="reaction-out" style="font-size:12px"></span>
-  </div>
-`;
-
-const q = <T extends HTMLElement>(sel: string): T => controlsEl.querySelector(sel) as T;
-
-// angle slider (0–360°)
-angleInput.type = 'range';
-angleInput.min = '0'; angleInput.max = '360'; angleInput.value = '0'; angleInput.id = 'angle';
-q('#angle-wrap').appendChild(angleInput);
-const angleLabel = q<HTMLSpanElement>('#angle-label');
-angleInput.addEventListener('input', () => {
-  angleLabel.textContent = `${angleInput.value}°`;
-  // Rotate the selected pylon in place if it is on the table
-  const t = state?.tangibles[selectedId];
-  if (t) emit('TangibleMoved', { id: selectedId, x: t.x, y: t.y, angle: Number(angleInput.value) });
-});
-
-// id selector
-const idsEl = q<HTMLSpanElement>('#ids');
-function refreshSelector(): void {
-  idsEl.innerHTML = '';
-  for (const id of [1, 2, 3, 4]) {
-    const b = document.createElement('button');
-    b.textContent = ['①', '②', '③', '④'][id - 1];
-    b.style.color = PYLON_COLOR[id];
-    if (id === selectedId) b.classList.add('sel');
-    b.addEventListener('click', () => {
-      selectedId = id;
-      const t = state?.tangibles[id];
-      if (t) { angleInput.value = String(Math.round(((t.angle % 360) + 360) % 360)); angleLabel.textContent = `${angleInput.value}°`; }
-      refreshSelector();
-      ozMap.draw();
-    });
-    idsEl.appendChild(b);
-  }
+for (const id of [1, 2, 3, 4]) {
+  const b = document.createElement('button');
+  b.addEventListener('click', () => { selectedId = id; previousSelectionKey = ''; refresh(); map.draw(); });
+  buttons.set(id, b); list.append(b);
 }
-refreshSelector();
-
-// active pylons, one "retirer" button each
-const activeEl = q<HTMLSpanElement>('#active');
-let activeKey = '';
-function refreshActive(): void {
-  const ids = Object.keys(state?.tangibles ?? {}).map(Number).sort();
-  const key = ids.join(',');
-  if (key === activeKey) return;
-  activeKey = key;
-  activeEl.innerHTML = '';
-  if (ids.length === 0) activeEl.textContent = 'aucun ';
-  for (const id of ids) {
-    const item = document.createElement('span');
-    item.className = 'item';
-    item.innerHTML = `<b style="color:${PYLON_COLOR[id]}">poteau ${id}</b>`;
-    const b = document.createElement('button');
-    b.textContent = 'Retirer';
-    b.addEventListener('click', () => emit('TangibleRemoved', { id }));
-    item.appendChild(b);
-    activeEl.appendChild(item);
+function refresh(): void {
+  const chosen = state?.tangibles[selectedId];
+  const key = `${selectedId}:${chosen?.kind ?? 'wall'}:${chosen?.team ?? 'A'}`;
+  if (key !== previousSelectionKey) {
+    kind.value = chosen?.kind ?? 'wall'; team.value = chosen?.team ?? 'A'; previousSelectionKey = key;
   }
+  for (const [id, button] of buttons) {
+    const t = state?.tangibles[id];
+    button.classList.toggle('selected', id === selectedId);
+    button.setAttribute('aria-pressed', String(id === selectedId));
+    const label = t ? `#${id} · ${t.kind === 'wall' ? 'Mur' : 'Pilier'} · ${names[t.team]}` : `#${id} · Non placé`;
+    if (button.dataset.label !== label || button.dataset.active !== String(!!t?.active)) {
+      button.replaceChildren();
+      const dot = document.createElement('span'); dot.className = `dot${t?.active ? ' on' : ''}`; dot.setAttribute('aria-hidden', 'true');
+      const text = document.createElement('span'); text.textContent = label;
+      button.append(dot, text); button.dataset.label = label; button.dataset.active = String(!!t?.active);
+      button.setAttribute('aria-label', `${label} · ${t?.active ? 'activé' : 'désactivé'}`);
+    }
+  }
+  activation.textContent = chosen?.active ? 'Désactiver' : 'Activer';
+  activation.setAttribute('aria-pressed', String(!!chosen?.active));
+  remove.disabled = !chosen;
 }
-
-q('#remove-sel').addEventListener('click', () => emit('TangibleRemoved', { id: selectedId }));
-
-// fallback buttons
-for (const t of ['A', 'B'] as Team[]) {
-  q(`#team-${t}`).addEventListener('click', () => {
-    selectedTeam = t;
-    q('#team-A').classList.toggle('sel', t === 'A');
-    q('#team-B').classList.toggle('sel', t === 'B');
-  });
-}
-controlsEl.querySelectorAll<HTMLButtonElement>('button[data-oz]').forEach((b) => {
-  b.addEventListener('click', () => emit('OzTrigger', { kind: b.dataset.oz!, params: { team: selectedTeam, ...(b.dataset.item ? { item: b.dataset.item } : {}) } }));
+kind.addEventListener('change', configure);
+team.addEventListener('change', configure);
+activation.addEventListener('click', () => {
+  const active = state?.tangibles[selectedId]?.active;
+  ensureConfigured(); emit('TangibleControl', { id: selectedId, action: active ? 'deactivate' : 'activate' });
 });
-
-// ── Journal, export, replay (task 15) ─────────────────────────────────────────
-const journalEl = q<HTMLDivElement>('#journal');
-log.subscribe(() => {
-  journalEl.textContent = log.tail(50).join('\n');
-  journalEl.scrollTop = journalEl.scrollHeight;
-});
-q('#export').addEventListener('click', () => log.download());
-
-let loaded: ReturnType<typeof OzLog.parse> | null = null;
-q<HTMLInputElement>('#load').addEventListener('change', async (ev) => {
-  const file = (ev.target as HTMLInputElement).files?.[0];
-  if (!file) return;
-  try {
-    loaded = OzLog.parse(await file.text());
-    log.record('JournalLoaded', { entries: loaded.length });
-  } catch (e) {
-    alert(`Journal invalide : ${(e as Error).message}`);
-  }
-});
-q('#replay').addEventListener('click', () => {
-  const entries = loaded ?? [...log.entries];
-  log.record('ReplayStart', { entries: entries.length });
-  // Replayed events go straight to the server with their original delays
-  const REPLAYABLE = new Set(['TangibleMoved', 'TangibleRemoved', 'OzTrigger']);
-  log.replay(
-    entries,
-    (type, params) => { if (REPLAYABLE.has(type)) conn.send({ type, ...params }); },
-    () => log.record('ReplayEnd', {}),
-  );
-});
-q('#stop-replay').addEventListener('click', () => log.stopReplay());
-q('#server-log').addEventListener('click', async () => {
-  const res = await fetch('/api/oz-log');
-  const blob = new Blob([JSON.stringify(await res.json(), null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'server-tangible-log.json';
-  a.click();
-});
-
-// ── Operator reaction time (R-16): a stimulus appears, the operator taps ──────
-const reactionBtn = q<HTMLButtonElement>('#reaction');
-const reactionOut = q<HTMLSpanElement>('#reaction-out');
-let stimulusAt = 0;
-let waiting = false;
-reactionBtn.addEventListener('click', () => {
-  if (waiting) return;
-  if (stimulusAt) {
-    const ms = Math.round(performance.now() - stimulusAt);
-    stimulusAt = 0;
-    reactionBtn.style.background = '';
-    reactionBtn.textContent = 'Test de réaction';
-    reactionOut.textContent = `${ms} ms`;
-    log.record('ReactionTime', { ms });
-    return;
-  }
-  reactionBtn.textContent = 'Attendez…';
-  reactionOut.textContent = '';
-  waiting = true;
-  setTimeout(() => {
-    waiting = false;
-    stimulusAt = performance.now();
-    reactionBtn.style.background = '#15803d';
-    reactionBtn.textContent = 'MAINTENANT !';
-  }, 1000 + Math.random() * 2000);
-});
+document.getElementById('dock')!.addEventListener('click', () => emit('TangibleControl', { id: selectedId, action: 'dock', team: team.value, kind: kind.value }));
+remove.addEventListener('click', () => emit('TangibleRemoved', { id: selectedId }));
+refresh();
