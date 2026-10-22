@@ -62,7 +62,7 @@ Le prototype existant (`prototypes/piste-vivante`) contient des scènes de démo
 
 #### 3.3 Points de vie (HP)
 - **REQ-3.3.1** Chaque véhicule a 100 HP maximum. Il ne perd des HP qu'à cause des éléments posés ou lancés par l'équipe adverse.
-- **REQ-3.3.2** Les dégâts par source : mur (poteau) −10 HP + 1 s d'invulnérabilité + rebond ; arc électrique −10 HP + vitesse ×0,5 pendant 1,5 s ; pierre −25 HP + étourdissement 1 s.
+- **REQ-3.3.2** Les dégâts par source : mur (poteau) −10 HP + 1 s d'invulnérabilité + rebond ; arc électrique −10 HP + vitesse ×0,5 pendant 1,5 s ; pierre −100 HP (met une voiture à pleine santé hors d'usage) + étourdissement 1 s.
 - **REQ-3.3.3** Les éléments d'une équipe ne doivent jamais affecter sa propre voiture (pas de tir ami) et doivent être affichés semi-transparents pour elle.
 - **REQ-3.3.4** À HP = 0, le véhicule doit s'arrêter et ne plus répondre au Pilote jusqu'à la réparation synchrone.
 
@@ -76,9 +76,9 @@ Le prototype existant (`prototypes/piste-vivante`) contient des scènes de démo
 - **REQ-4.1.3** Pour utiliser l'objet, le Pilote appuie sur `UseItem` → l'objet est armé pendant 5 s (halo visible sur le panneau Copilote). Le Copilote doit exécuter le geste correspondant dans ce délai, sinon l'objet est perdu.
 
 #### 4.2 Lance-pierre (C-01) — objet armé requis
-- **REQ-4.2.1** Le geste doit être 3 doigts posés en cluster (≤ 150 px) sur la table.
+- **REQ-4.2.1** Le geste doit être 3 doigts posés en cluster (≤ 150 px) : deux appuis forment la fourche, le troisième doigt est tiré vers l'arrière puis relâché. La pierre part dans la direction opposée à la traction et sa portée croît avec la longueur de traction (220 à 900 px).
 - **REQ-4.2.2** Un cercle rouge d'avertissement doit s'afficher pendant 0,8 s, orienté vers le joueur adverse le plus proche, avant l'impact.
-- **REQ-4.2.3** L'impact doit avoir un rayon de 60 px et infliger −25 HP + étourdissement 1 s uniquement à la voiture adverse.
+- **REQ-4.2.3** L'impact doit avoir un rayon de 60 px et infliger −100 HP + étourdissement 1 s uniquement à la voiture adverse.
 
 #### 4.3 Boost / portail de vitesse (C-02) — objet armé requis
 - **REQ-4.3.1** Le geste doit être 2 doigts posés sur la piste, écartés de 100 à 400 px, formant un segment jaune visible.

@@ -1,6 +1,6 @@
 import type { GameState, Tangible, Team, Vec2 } from '../server/types.js';
 import { wallEndpoints, rotateWall, type TangiblePose } from '../client-shared/tangibleGeometry.js';
-import { distToSegment } from '../server/geometry.js';
+import { distToSegment, nearestOnTrack } from '../server/geometry.js';
 import { CHARGE_ZONE_LOCAL, localToWorld, panelOf } from '../server/layout.js';
 
 export interface OzMapHandlers {
@@ -25,6 +25,8 @@ export class OzMap {
   private ctx: CanvasRenderingContext2D;
   private state: GameState | null = null;
   private drag: Drag | null = null;
+  private trackVersion = -1;
+  private hiddenEdges: boolean[][] = [];
   private pending: { id: number; pose: TangiblePose; at: number } | null = null;
 
   constructor(private canvas: HTMLCanvasElement, private h: OzMapHandlers) {
@@ -52,6 +54,7 @@ export class OzMap {
       this.drag = null; this.pending = null;
     }
     this.state = state;
+    if (!state.track) this.trackVersion = -1;
     if (!this.h.enabled()) { this.drag = null; this.pending = null; }
     if (this.pending) {
       const t = state.tangibles[this.pending.id], p = this.pending.pose;
@@ -135,15 +138,38 @@ export class OzMap {
     const unit = W / Math.max(1, this.canvas.getBoundingClientRect().width);
     ctx.save(); ctx.scale(this.canvas.width / W, this.canvas.height / H);
     if (s.track) {
-      const path = (pts: Vec2[]) => { ctx.moveTo(pts[0].x, pts[0].y); for (const p of pts) ctx.lineTo(p.x, p.y); ctx.closePath(); };
-      ctx.beginPath(); path(s.track.outerEdge); path(s.track.innerEdge);
-      ctx.fillStyle = '#182238'; ctx.fill('evenodd'); ctx.lineWidth = 2 * unit;
-      ctx.beginPath(); path(s.track.outerEdge); ctx.strokeStyle = '#ff4081'; ctx.stroke();
-      ctx.beginPath(); path(s.track.innerEdge); ctx.strokeStyle = '#00e5ff'; ctx.stroke();
-      const sl = s.track.startLine;
+      const track = s.track, c = track.centerline, n = c.length;
+      // Same union of lane-width segments as the table and physics: crossings are open road.
+      ctx.strokeStyle = '#182238'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        ctx.lineWidth = (track.widths[i] + track.widths[j]) / 2;
+        ctx.beginPath(); ctx.moveTo(c[i].x, c[i].y); ctx.lineTo(c[j].x, c[j].y); ctx.stroke();
+      }
+      ctx.lineCap = 'butt';
+      if (this.trackVersion !== s.trackVersion) {
+        const cum = [0];
+        for (let i = 1; i <= n; i++) cum.push(cum[i - 1] + Math.hypot(c[i % n].x - c[i - 1].x, c[i % n].y - c[i - 1].y));
+        this.hiddenEdges = [track.outerEdge, track.innerEdge].map(pts => pts.map((p, k) => c.some((at, m) => {
+          const gap = Math.abs(cum[m] - cum[k]);
+          return Math.min(gap, cum[n] - gap) >= 200 && Math.hypot(p.x - at.x, p.y - at.y) < track.widths[m] / 2 - 1;
+        })));
+        this.trackVersion = s.trackVersion;
+      }
+      ctx.lineWidth = 2 * unit;
+      for (const [edge, pts] of [track.outerEdge, track.innerEdge].entries()) {
+        ctx.strokeStyle = edge === 0 ? '#ff4081' : '#00e5ff'; ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const j = (i + 1) % n;
+          if (this.hiddenEdges[edge][i] || this.hiddenEdges[edge][j]) continue;
+          ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[j].x, pts[j].y);
+        }
+        ctx.stroke();
+      }
+      const sl = track.startLine, half = nearestOnTrack(sl.pos, track).halfWidth;
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 3 * unit;
-      ctx.beginPath(); ctx.moveTo(sl.pos.x + sl.normal.x * 60, sl.pos.y + sl.normal.y * 60);
-      ctx.lineTo(sl.pos.x - sl.normal.x * 60, sl.pos.y - sl.normal.y * 60); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sl.pos.x + sl.normal.x * half, sl.pos.y + sl.normal.y * half);
+      ctx.lineTo(sl.pos.x - sl.normal.x * half, sl.pos.y - sl.normal.y * half); ctx.stroke();
     }
     for (const team of ['A', 'B'] as const) {
       const c = s.cars[team];

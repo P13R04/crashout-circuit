@@ -5,7 +5,7 @@
  */
 import type { GameState, Team, Car } from '../server/types.js';
 import {
-  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, POWER_BTN_LOCAL, CHARGE_ZONE_LOCAL,
+  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, CHARGE_ZONE_LOCAL,
   type PanelLayout,
 } from '../server/layout.js';
 import { TEAM_COLOR, TEAM_NAME, type View } from './view.js';
@@ -33,12 +33,20 @@ export function drawItemIcon(ctx: Ctx, kind: 'slingshot' | 'boost', x: number, y
   ctx.strokeStyle = color;
   ctx.lineWidth = 3;
   ctx.beginPath();
-  if (kind === 'slingshot') { // crosshair
-    ctx.arc(0, 0, r * 0.65, 0, Math.PI * 2);
-    ctx.moveTo(-r, 0); ctx.lineTo(-r * 0.3, 0);
-    ctx.moveTo(r, 0);  ctx.lineTo(r * 0.3, 0);
-    ctx.moveTo(0, -r); ctx.lineTo(0, -r * 0.3);
-    ctx.moveTo(0, r);  ctx.lineTo(0, r * 0.3);
+  if (kind === 'slingshot') { // Y-shaped fork, elastic band and stone
+    ctx.moveTo(0, r); ctx.lineTo(0, r * 0.1);
+    ctx.moveTo(0, r * 0.1); ctx.lineTo(-r * 0.75, -r * 0.9);
+    ctx.moveTo(0, r * 0.1); ctx.lineTo(r * 0.75, -r * 0.9);
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.75, -r * 0.9);
+    ctx.quadraticCurveTo(0, r * 0.1, r * 0.75, -r * 0.9);
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(0, -r * 0.3, r * 0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    return;
   } else { // compass
     ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2);
     ctx.moveTo(0, -r * 0.6); ctx.lineTo(r * 0.25, 0); ctx.lineTo(0, r * 0.6); ctx.lineTo(-r * 0.25, 0); ctx.closePath();
@@ -85,7 +93,7 @@ export class HUD {
 
     // HP bar (animated towards the real value by the main loop)
     const frac = Math.max(0, Math.min(1, view.hpShown[team] / state.params.hpMax));
-    const bx = -70, by = -62, bw = 220, bh = 22;
+    const bx = -80, by = -62, bw = 110, bh = 22;
     ctx.fillStyle = 'rgba(255,255,255,0.1)';
     ctx.fillRect(bx, by, bw, bh);
     ctx.fillStyle = frac > 0.5 ? '#3ddc84' : frac > 0.25 ? '#ffb020' : '#ff4040';
@@ -118,8 +126,21 @@ export class HUD {
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.font = '12px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('CONDUITE', -20, 34);
-    ctx.fillText('POWER AU COPILOTE', -20, 54);
+    if (state.driveMode === 'auto') {
+      ctx.fillText('CONDUITE', -20, 34);
+      ctx.fillText('POWER AU COPILOTE', -20, 54);
+    }
+    if (state.driveMode === 'pedal') {
+      const p = PEDAL_LOCAL;
+      const active = view.localPedals[team];
+      ctx.fillStyle = active ? `${color}66` : 'rgba(255,255,255,0.08)';
+      ctx.strokeStyle = active ? '#ffffff' : color; ctx.lineWidth = active ? 4 : 2;
+      ctx.beginPath(); ctx.roundRect(p.x - p.w / 2, p.y - p.h / 2, p.w, p.h, 14); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+      ctx.fillText('ACCÉLÉRER', p.x, p.y - 4);
+      ctx.font = '20px monospace'; ctx.fillText('▲', p.x, p.y + 25);
+    }
+
     ctx.textAlign = 'left';
     void now;
   }
@@ -159,7 +180,7 @@ export class HUD {
     if (car.heldItem) {
       drawItemIcon(ctx, car.heldItem, -180, 79, 9, armed ? '#ffe14a' : color);
       ctx.fillStyle = armed ? '#ffe14a' : '#ffffffaa'; ctx.textAlign = 'left'; ctx.font = '11px monospace';
-      const gesture = car.heldItem === 'slingshot' ? '3 doigts' : '2 doigts';
+      const gesture = state.testMode.allItems ? '3 ou 2 doigts' : car.heldItem === 'slingshot' ? '3 doigts' : '2 doigts';
       ctx.fillText(armed ? `${gesture} · ${Math.max(0, (car.itemArmExpiry - now) / 1000).toFixed(1)}s · VOLABLE` : 'Objet en stock', -162, 83);
     }
     if (armed) {

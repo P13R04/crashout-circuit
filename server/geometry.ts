@@ -66,3 +66,46 @@ export function wrapAngle(a: number): number {
   while (a < -Math.PI) a += Math.PI * 2;
   return a;
 }
+
+// ─── Slingshot ──────────────────────────────────────────────────────────────
+
+export interface SlingshotParams {
+  slingMinPullPx: number;
+  slingMaxPullPx: number;
+  slingMinRangePx: number;
+  slingMaxRangePx: number;
+  logicalWidth: number;
+  logicalHeight: number;
+}
+
+export interface SlingshotShot {
+  /** Pull long enough to shoot. */
+  valid: boolean;
+  /** Distance between the pouch and the fork, px. */
+  pull: number;
+  /** Unit vector of the flight: from the pouch through the fork. */
+  dir: Vec2;
+  /** Flight range beyond the fork, px — continuous in the pull length. */
+  range: number;
+  /** Landing point, kept inside the table. */
+  target: Vec2;
+}
+
+/**
+ * Shared by the server (authoritative) and the table (live preview): the stone flies
+ * in the direction opposite to the pull, and the range grows linearly with the pull
+ * length between `slingMinPullPx` and `slingMaxPullPx`.
+ */
+export function slingshotShot(anchor: Vec2, pouch: Vec2, p: SlingshotParams): SlingshotShot {
+  const dx = anchor.x - pouch.x;
+  const dy = anchor.y - pouch.y;
+  const pull = Math.hypot(dx, dy);
+  const dir = pull > 1e-6 ? { x: dx / pull, y: dy / pull } : { x: 0, y: -1 };
+  const t = Math.max(0, Math.min(1, (pull - p.slingMinPullPx) / Math.max(1, p.slingMaxPullPx - p.slingMinPullPx)));
+  const range = p.slingMinRangePx + t * (p.slingMaxRangePx - p.slingMinRangePx);
+  const target = {
+    x: Math.max(0, Math.min(p.logicalWidth, anchor.x + dir.x * range)),
+    y: Math.max(0, Math.min(p.logicalHeight, anchor.y + dir.y * range)),
+  };
+  return { valid: pull >= p.slingMinPullPx, pull, dir, range, target };
+}

@@ -1,7 +1,7 @@
 import type { ServerMessage } from '../server/types.js';
 import { createControls } from '../client-shared/controls.js';
 import { StateSync, connectWs } from '../client-shared/net.js';
-import { createView } from './view.js';
+import { createView, showDividerRefusal, showMapError, showMapNotice } from './view.js';
 import { Renderer } from './Renderer.js';
 import { GestureRecognizer } from './GestureRecognizer.js';
 import { playFeedback, unlock } from './Sound.js';
@@ -45,7 +45,7 @@ const simBar = document.getElementById('sim') as HTMLDivElement;
 const sim3 = document.getElementById('sim3') as HTMLButtonElement;
 const sim2 = document.getElementById('sim2') as HTMLButtonElement;
 const simHint = document.getElementById('sim-hint') as HTMLSpanElement;
-if (urlParams.get('sim') === '1' || window.matchMedia('(pointer: fine)').matches) simBar.classList.add('on');
+const showSimulation = urlParams.get('sim') === '1' || window.matchMedia('(pointer: fine)').matches;
 let simKind: 'slingshot' | 'boost' | null = null;
 const setSim = (k: 'slingshot' | 'boost' | null): void => {
   simKind = simKind === k ? null : k;
@@ -63,6 +63,23 @@ gestures.onSimChange = (hint) => {
   }
 };
 
+// PC test switches: only shown (and honoured by the server) in the PC mode
+const testBar = document.getElementById('testbar') as HTMLDivElement;
+const testInvincible = document.getElementById('test-invincible') as HTMLButtonElement;
+const testItems = document.getElementById('test-items') as HTMLButtonElement;
+testInvincible.addEventListener('click', () =>
+  conn.send({ type: 'TestToggle', flag: 'invincible', on: !view.state?.testMode.invincible }));
+testItems.addEventListener('click', () =>
+  conn.send({ type: 'TestToggle', flag: 'allItems', on: !view.state?.testMode.allItems }));
+function syncTestBar(): void {
+  const st = view.state;
+  const racing = st?.phase === 'RACE' || st?.phase === 'PAUSED';
+  testBar.classList.toggle('on', st?.mapMode === 'pc' && racing);
+  simBar.classList.toggle('on', showSimulation && racing);
+  testInvincible.classList.toggle('active', !!st?.testMode.invincible);
+  testItems.classList.toggle('active', !!st?.testMode.allItems);
+}
+
 window.addEventListener('pointerdown', unlock, { once: true });
 // Desktop local multiplayer adapter. It mirrors the table controls without
 // leaking keyboard rules into the game engine: Q/D and ←/→ are the two
@@ -74,14 +91,17 @@ function sendSteer(team: 'A' | 'B'): void {
   const steer = team === 'A'
     ? (down.has('q') ? -1 : down.has('d') ? 1 : 0)
     : (down.has('ArrowLeft') ? -1 : down.has('ArrowRight') ? 1 : 0);
-  controls.steer(team, steer);
+  const throttle = view.state?.driveMode === 'pedal'
+    ? (team === 'A' ? Number(down.has('z')) : Number(down.has('ArrowUp')))
+    : 1;
+  controls.steer(team, steer, throttle);
 }
 // Match the touch-control heartbeat while a steering key is held. Do not emit
 // neutral keyboard frames otherwise: table and desktop controls share the same
 // protocol and must not overwrite one another.
 window.setInterval(() => {
-  if (down.has('q') || down.has('d')) sendSteer('A');
-  if (down.has('ArrowLeft') || down.has('ArrowRight')) sendSteer('B');
+  if (down.has('q') || down.has('d') || down.has('z')) sendSteer('A');
+  if (down.has('ArrowLeft') || down.has('ArrowRight') || down.has('ArrowUp')) sendSteer('B');
 }, 100);
 function updateKeyboardRepair(team: 'A' | 'B'): void {
   const active = team === 'A' ? down.has('a') && down.has('p') : down.has('m') && down.has('c');
@@ -97,6 +117,8 @@ window.addEventListener('keydown', (e) => {
   down.add(key);
   if (key === 'q' || key === 'd') sendSteer('A');
   if (key === 'ArrowLeft' || key === 'ArrowRight') { e.preventDefault(); sendSteer('B'); }
+  if (key === 'z') sendSteer('A');
+  if (key === 'ArrowUp') { e.preventDefault(); sendSteer('B'); }
   if (key === 'Escape' || key === ' ') { e.preventDefault(); conn.send({ type: 'Pause' }); }
   if (key === 'a' || key === 'p') updateKeyboardRepair('A');
   if (key === 'm' || key === 'c') updateKeyboardRepair('B');
@@ -115,6 +137,8 @@ window.addEventListener('keyup', (e) => {
   down.delete(key);
   if (key === 'q' || key === 'd') sendSteer('A');
   if (key === 'ArrowLeft' || key === 'ArrowRight') { e.preventDefault(); sendSteer('B'); }
+  if (key === 'z') sendSteer('A');
+  if (key === 'ArrowUp') { e.preventDefault(); sendSteer('B'); }
   if (key === 'a' || key === 'p') updateKeyboardRepair('A');
   if (key === 'm' || key === 'c') updateKeyboardRepair('B');
 });
@@ -128,14 +152,32 @@ function handleMessage(msg: ServerMessage): void {
     case 'State': {
       const prev = view.state;
       view.state = sync.apply(msg.state, msg.t);
+      if (view.state.mapTargets) {
+        view.pendingDivider = [];
+        view.dividerSubmitting = false;
+      }
+      for (const stroke of view.strokes.values()) {
+        if (view.state.mapStrokes[stroke.team] && view.state.mapTargets) {
+          stroke.submitting = false;
+          stroke.done = true;
+          stroke.rejectedAt = undefined;
+          const [start, end] = view.state.mapTargets[stroke.team];
+          stroke.pts[0] = { ...start };
+          stroke.pts[stroke.pts.length - 1] = { ...end };
+        }
+      }
       if (!prev || (prev.phase !== 'LOBBY' && msg.state.phase === 'LOBBY')) {
         view.hpShown.A = view.state.cars.A.hp;
         view.hpShown.B = view.state.cars.B.hp;
         view.strokes.clear();
+        view.pendingDivider = [];
+        view.dividerSubmitting = false;
+        view.mapNotice = null;
         view.effects.length = 0;
         gestures.releaseAll();
       }
       statusEl.textContent = `Phase: ${msg.state.phase}`;
+      syncTestBar();
       statusEl.style.display = view.debug.on ? 'block' : 'none';
       break;
     }
@@ -143,6 +185,9 @@ function handleMessage(msg: ServerMessage): void {
       view.effects.length = 0;
       if (msg.phase === 'MAP' || msg.phase === 'LOBBY') {
         view.strokes.clear();
+        view.pendingDivider = [];
+        view.dividerSubmitting = false;
+        view.mapNotice = null;
         if (msg.phase === 'LOBBY') {
           gestures.releaseAll();
           view.hpShown.A = 100;
@@ -151,10 +196,28 @@ function handleMessage(msg: ServerMessage): void {
       }
       break;
     case 'Feedback':
-      view.effects.push({ kind: msg.kind, x: msg.x, y: msg.y, team: msg.team, start: performance.now(), dur: effectDuration(msg.kind) });
-      if (msg.kind === 'mapError') {
+      if (msg.kind === 'dividerTooShort' || msg.kind === 'dividerOutOfZone') {
+        view.dividerSubmitting = false;
+        showDividerRefusal(view, msg.kind === 'dividerTooShort' ? 'tooShort' : 'outOfZone');
+      }
+      view.effects.push({
+        kind: msg.kind, x: msg.x, y: msg.y, team: msg.team, start: performance.now(), dur: effectDuration(msg.kind),
+        ...(msg.kind === 'stoneHit' ? { text: HIT_WORDS[Math.floor(Math.random() * HIT_WORDS.length)], tilt: (Math.random() - 0.5) * 0.5 } : {}),
+      });
+      if (msg.kind.startsWith('map') && msg.kind !== 'mapAccepted') {
+        showMapError(view, msg.kind, msg.team);
         view.mapErrorAt[msg.team] = performance.now();
-        for (const s of view.strokes.values()) if (s.team === msg.team) s.rejectedAt = performance.now();
+        for (const s of view.strokes.values()) {
+          if (s.team === msg.team && !view.state?.mapStrokes[s.team]) {
+            s.rejectedAt = performance.now();
+            s.submitting = false;
+          }
+        }
+      }
+      if (msg.kind === 'mapAccepted') {
+        showMapNotice(view, msg.team === 'A'
+          ? '✓ Cyan validé — équipe rose, à vous !'
+          : '✓ Les deux tracés sont validés.', '#3ddc84');
       }
       playFeedback(msg.kind);
       break;
@@ -164,8 +227,11 @@ function handleMessage(msg: ServerMessage): void {
   }
 }
 
+const HIT_WORDS = ['TOUCHÉ !', 'POW !', 'BAM !', 'BOUM !', 'AÏE !', 'KO !'];
+
 function effectDuration(kind: string): number {
   switch (kind) {
+    case 'stoneHit': return 1200;
     case 'stoneImpact': return 700;
     case 'wallDestroyed': return 450;
     case 'repairDone': return 900;

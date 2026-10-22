@@ -11,26 +11,31 @@
  *   item       copilot POWER tap                     → Power(team, copilot)
  *   pad        finger on a repair pad                → PadHold(team, role, on)
  *   stroke     MAP phase drawing                     → StrokeDraw(creator, pts)
- *   free       3 fingers ≤150 px / 2 fingers 100–400 → Slingshot / BoostGate
- *              2 close fingers pulled from one edge  → BorderPull
+ *   free       3 fingers ≤150 px, one pulled back  → Slingshot (released)
+ *              2 fingers 100–400 px, no 3rd finger  → BoostGate
+ *              one finger pulled off a track edge    → BorderPull
  *
  * Team attribution (R-03): pad/button → station's team; free gesture → the team
- * of the nearest station. An armed stock is a neutral opportunity.
+ * of the closest copilot station; the armed stock can belong to either team.
  * No finger is ever tracked back to a person (REQ-5.1).
  */
 import { createControls } from '../client-shared/controls.js';
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import {
-  LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_AREA_LOCAL, POWER_BTN_LOCAL, worldToLocal, type PanelLayout,
-  insidePanel, nearestStationTeam, type Role,
+  LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, worldToLocal, type PanelLayout,
+  insidePanel, nearestStationTeam, checkDivider, inPlayArea, type Role,
 } from '../server/layout.js';
-import { nearestOnTrack } from '../server/geometry.js';
-import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON } from './Renderer.js';
-import type { View } from './view.js';
+import { nearestOnTrack, slingshotShot } from '../server/geometry.js';
+import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
+import { showDividerRefusal, showMapError, showMapNotice, type View } from './view.js';
+import { activeMapTeam, inMapAnchor, mapEndpointError } from '../server/mapCreation.js';
 
 export const MAX_CONTACTS = 10;
 const SETTLE_MS = 180;          // wait for all fingers to land before judging a gesture
-const SLING_CLUSTER_PX = 150;
+const SLING_CLUSTER_PX = 150;   // the three fingers must land together...
+const SLING_ROLE_MIN_PX = 14;   // ...then the one that moves this far is the pouch...
+const SLING_DOMINANCE = 1.5;    // ...provided it moved this many times more than each other finger
+const SIM_FORK_HALF_PX = 38;    // mouse stand-in: virtual anchors either side of the pull axis
 const BOOST_MIN_PX = 100;
 const BOOST_MAX_PX = 400;
 const EDGE_GRAB_PX = 20;
@@ -40,7 +45,7 @@ const PULL_PAIR_MAX_PX = 130;
 const PULL_EDGE_INDEX_GAP = 8;
 const PALM_MAX_PX = 140;        // contacts wider than this (logical px) are palms/arms
 
-type Zone = 'steer' | 'item' | 'pad' | 'stroke' | 'target' | 'result' | 'pause' | 'free' | 'rejected';
+type Zone = 'simsling' | 'steer' | 'pedal' | 'item' | 'pad' | 'stroke' | 'target' | 'result' | 'pause' | 'mode' | 'free' | 'rejected';
 
 interface Contact {
   id: number;
@@ -52,6 +57,7 @@ interface Contact {
   panel?: PanelLayout;
   steer?: number;
   strokeTeam?: Team;
+  strokeKey?: number; // unique per drawn stroke (a mouse reuses the same pointerId)
   outward?: Vec2; // border candidate: unit vector away from the centerline
   edgeIndex?: number;
 }
@@ -61,9 +67,12 @@ type Send = (msg: { type: string } & Record<string, unknown>) => void;
 export class GestureRecognizer {
   private controls = createControls(msg => this.send(msg));
   private contacts = new Map<number, Contact>();
+  private strokeSeq = 0;
   private padTouches = new Map<string, Set<number>>();
   /** team → pointerId of the finger holding that team's steering pad. */
   private sticks = new Map<Team, number>();
+  /** team → pointerId of the finger holding that team's acceleration pedal. */
+  private pedals = new Map<Team, number>();
   private lastInput: Record<Team, { throttle: number; steer: number }> = {
     A: { throttle: 0, steer: 0 }, B: { throttle: 0, steer: 0 },
   };
@@ -77,25 +86,23 @@ export class GestureRecognizer {
    * (the two fingers) for the boost gate. The normal armed-item rules still apply.
    */
   private sim: { kind: 'slingshot' | 'boost'; first?: Vec2 } | null = null;
-  /** Two clicks in desktop mode, or two simultaneous touches on the table. */
-  private mapDividerPoints: Vec2[] = [];
+  /** Active touch slingshot: its three contacts and, once decided, the pulling one. */
+  private slingIds: number[] | null = null;
+  private slingPuller: number | null = null;
+  /** Mouse stand-in: the press (fork) point and the dragging pointer. */
+  private simSling: { id: number; anchor: Vec2 } | null = null;
   onSimChange: (hint: string) => void = () => {};
 
   simulate(kind: 'slingshot' | 'boost' | null): void {
     this.sim = kind ? { kind } : null;
-    this.onSimChange(!kind ? '' : kind === 'slingshot' ? 'Cliquez sur la table : cible du lance-pierre (3 doigts)' : 'Cliquez 2 points (100–400 px) : portail de boost (2 doigts)');
+    this.onSimChange(!kind ? '' : kind === 'slingshot'
+      ? 'Maintenez le clic sur la fourche, tirez en arrière, relâchez pour tirer'
+      : 'Cliquez 2 points (100–400 px) : portail de boost (2 doigts)');
   }
 
   private simClick(p: Vec2): void {
     const sim = this.sim;
-    if (!sim) return;
-    if (sim.kind === 'slingshot') {
-      const team = this.armedTeam('slingshot', p);
-      if (team) { this.controls.gesture('slingshot', team, p); this.onSimChange(''); }
-      else this.onSimChange("Aucune équipe n'a armé de lance-pierre (POWER d'abord)");
-      this.sim = null;
-      return;
-    }
+    if (!sim || sim.kind !== 'boost') return;
     if (!sim.first) { sim.first = p; this.onSimChange('Cliquez le 2e point du portail'); return; }
     const d = Math.hypot(p.x - sim.first.x, p.y - sim.first.y);
     const mid = { x: (p.x + sim.first.x) / 2, y: (p.y + sim.first.y) / 2 };
@@ -174,29 +181,24 @@ export class GestureRecognizer {
       return;
     }
 
-    // 2 — MAP: two shared contacts establish the divider, then each half starts
-    // from its own endpoint. Desktop clicks use the same sequence (desync mode).
+    // 2 — MAP: cyan places P1, rose places P2, then cyan draws before rose.
     if (state.phase === 'MAP') {
-      if (insidePanel(p)) { c.zone = 'rejected'; return; }
       const generate = MAP_GENERATE_BUTTON;
       if (state.mapStrokes.A && state.mapStrokes.B && p.x >= generate.x && p.x <= generate.x + generate.w && p.y >= generate.y && p.y <= generate.y + generate.h) {
         c.zone = 'result'; this.send({ type: 'GenerateTrack' }); return;
       }
       if (!state.mapTargets) {
         c.zone = 'target';
-        this.mapDividerPoints.push(p);
-        if (this.mapDividerPoints.length === 2) {
-          this.send({ type: 'MapDivider', a: this.mapDividerPoints[0], b: this.mapDividerPoints[1] });
-          this.mapDividerPoints = [];
-        }
+        this.placeDividerPoint(p);
         return;
       }
       const team = this.mapStrokeStartTeam(state, p);
-      if (!team || state.mapStrokes[team]) { c.zone = 'rejected'; return; }
+      if (!team) { c.zone = 'rejected'; return; }
       c.zone = 'stroke';
       c.strokeTeam = team;
-      for (const [id, s] of this.view.strokes) if (s.team === team) this.view.strokes.delete(id);
-      this.view.strokes.set(c.id, { team, pts: [p], done: false });
+      for (const [key, s] of this.view.strokes) if (s.team === team) this.view.strokes.delete(key);
+      c.strokeKey = ++this.strokeSeq;
+      this.view.strokes.set(c.strokeKey, { team, pts: [p], done: false });
       return;
     }
     if (state.phase === 'READY') {
@@ -210,6 +212,10 @@ export class GestureRecognizer {
       const b = PAUSE_BUTTON;
       if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
         c.zone = 'pause'; this.send({ type: 'Pause' }); return;
+      }
+      const mode = DRIVE_MODE_BUTTON;
+      if (state.phase === 'RACE' && p.x >= mode.x && p.x <= mode.x + mode.w && p.y >= mode.y && p.y <= mode.y + mode.h) {
+        c.zone = 'mode'; this.send({ type: 'ToggleDriveMode' }); return;
       }
     }
     if (state.phase !== 'RACE') { c.zone = 'rejected'; return; }
@@ -227,6 +233,15 @@ export class GestureRecognizer {
           this.updateSteer(c);
           return;
         }
+        if (state.driveMode === 'pedal' && Math.abs(l.x - PEDAL_LOCAL.x) <= PEDAL_LOCAL.w / 2 && Math.abs(l.y - PEDAL_LOCAL.y) <= PEDAL_LOCAL.h / 2) {
+          if (this.pedals.has(panel.team)) { c.zone = 'rejected'; return; }
+          c.zone = 'pedal';
+          c.panel = panel;
+          this.pedals.set(panel.team, c.id);
+          this.view.localPedals[panel.team] = true;
+          this.sendCurrentInput(panel.team);
+          return;
+        }
       }
       const pad = padLocal(panel.role);
       if (Math.hypot(l.x - pad.x, l.y - pad.y) <= pad.r + 6) {
@@ -236,16 +251,31 @@ export class GestureRecognizer {
         return;
       }
       if (panel.role === 'copilot' && Math.hypot(l.x - POWER_BTN_LOCAL.x, l.y - POWER_BTN_LOCAL.y) <= POWER_BTN_LOCAL.r + 6) {
-        c.zone = 'item';
-        this.controls.power(panel.team);
-        return;
+        c.zone = 'item'; this.controls.power(panel.team); return;
       }
       // Rest of a panel: not a game surface
       if (Math.abs(l.x) <= panelWidth(panel.role) / 2 && Math.abs(l.y) <= PANEL_H / 2) { c.zone = 'rejected'; return; }
     }
 
     // 3b — PC testing: simulated multi-finger gesture (toolbar buttons)
-    if (this.sim) {
+    // PC mode needs no toolbar button for the slingshot: with a slingshot armed, a plain
+    // mouse press is the fork and the drag pulls the pouch.
+    const pcAutoSling = !this.sim && state.mapMode === 'pc' && e.pointerType === 'mouse'
+      && this.armedTeam('slingshot', p) !== null;
+    if (this.sim || pcAutoSling) {
+      if (pcAutoSling || this.sim?.kind === 'slingshot') {
+        const team = this.armedTeam('slingshot', p);
+        if (!team) {
+          c.zone = 'target';
+          this.sim = null;
+          this.onSimChange("Aucune équipe n'a armé de lance-pierre (POWER d'abord)");
+          return;
+        }
+        c.zone = 'simsling';
+        this.simSling = { id: c.id, anchor: p };
+        this.updateSimSling(c);
+        return;
+      }
       c.zone = 'target';
       this.simClick(p);
       return;
@@ -264,6 +294,7 @@ export class GestureRecognizer {
         c.edgeIndex = hit.index;
       }
     }
+    this.updateSling();
     this.scheduleEvaluation();
   }
 
@@ -277,11 +308,15 @@ export class GestureRecognizer {
     if (c.zone === 'steer') {
       this.updateSteer(c);
     } else if (c.zone === 'stroke') {
-      const s = this.view.strokes.get(c.id);
+      const s = this.view.strokes.get(c.strokeKey ?? -1);
       const last = s?.pts[s.pts.length - 1];
       if (s && last && Math.hypot(p.x - last.x, p.y - last.y) >= 2) s.pts.push(p);
-    } else if (c.zone === 'free' && c.outward && !c.consumed) {
-      this.tryBorderPullPair();
+    } else if (c.zone === 'simsling') {
+      this.updateSimSling(c);
+    } else if (c.zone === 'free' && !c.consumed) {
+      this.updateSling();
+      // the fingers of a slingshot are never a border pull
+      if (!this.slingIds && c.outward && !c.consumed) this.tryBorderPull(c);
     }
   }
 
@@ -293,14 +328,49 @@ export class GestureRecognizer {
 
     if (c.zone === 'pad' && c.padKey) this.padUp(c.padKey, c.id);
     if (c.zone === 'steer' && c.panel) this.releaseStick(c.panel.team);
+    if (c.zone === 'pedal' && c.panel) this.releasePedal(c.panel.team);
     if (c.zone === 'stroke') {
-      const s = this.view.strokes.get(c.id);
+      const s = this.view.strokes.get(c.strokeKey ?? -1);
       if (s) {
         s.done = true;
-        if (s.pts.length >= 2) this.send({ type: 'StrokeDraw', creator: s.team, pts: s.pts });
+        const targets = this.state?.mapTargets?.[s.team];
+        // pointerup can contain the final movement; never validate using an older move.
+        const end = this.toLogical(e);
+        s.pts.push(end);
+        const error = e.type === 'pointercancel' || e.type === 'lostpointercapture'
+          ? 'mapCancelled' : targets ? mapEndpointError(s.pts, ...targets) : 'mapCancelled';
+        if (error) {
+          s.rejectedAt = performance.now();
+          showMapError(this.view, error, s.team);
+        } else {
+          s.submitting = true;
+          this.send({ type: 'StrokeDraw', creator: s.team, pts: s.pts });
+        }
       }
     }
+    if (c.zone === 'simsling') this.releaseSimSling(c);
+    if (this.slingIds?.includes(c.id)) this.releaseSling(e.type === 'pointercancel');
     if (c.zone === 'free') this.scheduleEvaluation();
+  }
+
+  // ─── Divider (the two shared contacts) ───────────────────────────────────
+
+  /** P1 persists until P2 is accepted or the session is reset, on table and PC alike. */
+  private placeDividerPoint(p: Vec2): void {
+    const view = this.view;
+    if (view.dividerSubmitting) return;
+    if (!inPlayArea(p)) { showDividerRefusal(view, 'outOfZone'); return; }
+    const first = view.pendingDivider[0];
+    if (!first) {
+      view.pendingDivider = [{ ...p }];
+      view.mapNotice = null;
+      return;
+    }
+    const verdict = checkDivider(first, p);
+    if (verdict !== 'ok') { showDividerRefusal(view, verdict); return; }
+    view.dividerSubmitting = true;
+    view.mapNotice = null;
+    this.send({ type: 'MapDivider', a: first, b: { ...p } });
   }
 
   // ─── Remote-control steering ─────────────────────────────────────────────
@@ -317,14 +387,28 @@ export class GestureRecognizer {
   private releaseStick(team: Team): void {
     this.sticks.delete(team);
     this.view.sticks[team] = { x: 0, y: 0, active: false };
-    this.sendInput(team, 1, 0);
+    this.sendCurrentInput(team);
+  }
+
+  private releasePedal(team: Team): void {
+    this.pedals.delete(team);
+    this.view.localPedals[team] = false;
+    this.sendCurrentInput(team);
+  }
+
+  private currentThrottle(team: Team): number {
+    return this.state?.driveMode === 'pedal' ? (this.pedals.has(team) ? 1 : 0) : 1;
+  }
+
+  private sendCurrentInput(team: Team, force = false): void {
+    const stick = this.view.sticks[team];
+    this.sendInput(team, this.currentThrottle(team), stick.active ? stick.x : 0, force);
   }
 
   private streamInputs(): void {
     for (const team of ['A', 'B'] as Team[]) {
-      const st = this.view.sticks[team];
-      if (!st.active) continue;
-      this.sendInput(team, 1, st.x, true);
+      if (!this.view.sticks[team].active && !this.pedals.has(team)) continue;
+      this.sendCurrentInput(team, true);
     }
   }
 
@@ -332,7 +416,7 @@ export class GestureRecognizer {
     const last = this.lastInput[team];
     if (!force && last.throttle === throttle && last.steer === steer) return;
     this.lastInput[team] = { throttle, steer };
-    this.controls.steer(team, steer);
+    this.controls.steer(team, steer, throttle);
   }
 
   // ─── Repair pads ──────────────────────────────────────────────────────────
@@ -361,6 +445,10 @@ export class GestureRecognizer {
 
   /** Release everything (WebSocket lost, tab hidden) so no pad stays "held" on the server. */
   releaseAll(): void {
+    this.view.dividerSubmitting = false;
+    for (const [key, stroke] of this.view.strokes) {
+      if (!this.state?.mapStrokes[stroke.team]) this.view.strokes.delete(key);
+    }
     for (const key of [...this.padTouches.keys()]) {
       const [team, role] = key.split('-') as [Team, Role];
       this.view.localPads[key] = false;
@@ -368,9 +456,13 @@ export class GestureRecognizer {
     }
     this.padTouches.clear();
     for (const team of ['A', 'B'] as Team[]) {
+      this.pedals.delete(team);
+      this.view.localPedals[team] = false;
+    }
+    for (const team of ['A', 'B'] as Team[]) {
       this.releaseStick(team);
       this.lastInput[team] = { throttle: 1e9, steer: 1e9 }; // force the neutral frame out
-      this.sendInput(team, 1, 0);
+      this.sendCurrentInput(team);
     }
     this.contacts.clear();
     this.view.debug.contacts = 0;
@@ -389,48 +481,153 @@ export class GestureRecognizer {
     const now = this.view.now();
     const armed = (['A', 'B'] as Team[]).filter(t => {
       const car = state.cars[t];
-      return car.itemArmed && car.heldItem === kind && now < car.itemArmExpiry;
+      return car.itemArmed && (state.testMode.allItems || car.heldItem === kind) && now < car.itemArmExpiry;
     });
     if (armed.length === 0) return null;
     return nearestStationTeam(at);
   }
 
   /**
-   * Judged once the fingers have settled. 3 contacts and 2 contacts are exclusive:
-   * a 3-finger touch can never also fire the 2-finger gesture.
+   * Judged once the fingers have settled: the 2-finger boost gate. The 3-finger
+   * slingshot is handled live by `updateSling`; its fingers are never free for this,
+   * and nothing is fired while a sling is being formed.
    */
   private evaluate(): void {
     const state = this.state;
-    if (!state || state.phase !== 'RACE') return;
+    if (!state || state.phase !== 'RACE' || this.slingIds) return;
     const free = [...this.contacts.values()].filter(c => c.zone === 'free' && !c.consumed);
 
-    if (free.length === 3) {
-      const cx = (free[0].x + free[1].x + free[2].x) / 3;
-      const cy = (free[0].y + free[1].y + free[2].y) / 3;
-      if (free.every(c => Math.hypot(c.x - cx, c.y - cy) <= SLING_CLUSTER_PX)) {
-        const team = this.armedTeam('slingshot', { x: cx, y: cy });
-        if (team) {
-          this.controls.gesture('slingshot', team, { x: cx, y: cy });
-          free.forEach(c => { c.consumed = true; });
-        }
-      }
-    } else if (free.length === 2 && !free.some(c => c.outward)) {
+    if (free.length === 2 && !free.some(c => c.outward)) {
       const d = Math.hypot(free[0].x - free[1].x, free[0].y - free[1].y);
       if (d >= BOOST_MIN_PX && d <= BOOST_MAX_PX) {
         const mid = { x: (free[0].x + free[1].x) / 2, y: (free[0].y + free[1].y) / 2 };
         const team = this.armedTeam('boost', mid);
         if (team) {
-          this.controls.gesture('boost', team, { x: free[0].x, y: free[0].y }, { x: free[1].x, y: free[1].y });
+          this.send({
+            type: 'BoostGate',
+            a: { x: free[0].x, y: free[0].y },
+            b: { x: free[1].x, y: free[1].y },
+            team,
+          });
           free.forEach(c => { c.consumed = true; });
         }
       }
     }
   }
 
-  /** Two nearby fingers must start on the same edge and move out together. */
-  private tryBorderPullPair(): void {
+  // ─── Slingshot ────────────────────────────────────────────────────────────
+
+  /**
+   * Three free fingers landing together while a slingshot is armed form the sling.
+   * The landing order says nothing about the roles (fingers land within a few ms of
+   * each other): the pouch is the finger that has clearly travelled the most, the
+   * other two are the fork. The choice is not final — a finger that merely slid while
+   * settling loses it as soon as another one is pulled much farther. Until one finger
+   * dominates, no role is shown. The shot is fired on release.
+   */
+  private updateSling(): void {
     const state = this.state;
-    if (!state || state.phase !== 'RACE') return;
+    if (!state || state.phase !== 'RACE') { this.cancelSling(); return; }
+
+    if (!this.slingIds) {
+      const free = [...this.contacts.values()].filter(c => c.zone === 'free' && !c.consumed);
+      if (free.length !== 3) return;
+      const cx = (free[0].sx + free[1].sx + free[2].sx) / 3;
+      const cy = (free[0].sy + free[1].sy + free[2].sy) / 3;
+      if (!free.every(c => Math.hypot(c.sx - cx, c.sy - cy) <= SLING_CLUSTER_PX)) return;
+      if (!this.armedTeam('slingshot', { x: cx, y: cy })) return;
+      this.slingIds = free.map(c => c.id);
+      this.slingPuller = null;
+    }
+
+    const cs = this.slingIds.map(id => this.contacts.get(id)).filter((c): c is Contact => !!c);
+    if (cs.length !== 3) { this.cancelSling(); return; }
+    const disp = (c: Contact) => Math.hypot(c.x - c.sx, c.y - c.sy);
+
+    const far = [...cs].sort((a, b) => disp(b) - disp(a));
+    // A finger takes (or takes back) the pouch role only when it left its spot while
+    // both others stayed comparatively still; otherwise the previous choice is kept.
+    if (disp(far[0]) >= SLING_ROLE_MIN_PX && disp(far[0]) >= disp(far[1]) * SLING_DOMINANCE) this.slingPuller = far[0].id;
+
+    const puller = cs.find(c => c.id === this.slingPuller) ?? null;
+    const anchors = puller ? cs.filter(c => c !== puller) : cs.slice(0, 2);
+    const a: Vec2 = { x: (anchors[0].x + anchors[1].x) / 2, y: (anchors[0].y + anchors[1].y) / 2 };
+    const pouch: Vec2 = puller ? { x: puller.x, y: puller.y } : { x: cs[2].x, y: cs[2].y };
+    this.view.sling = {
+      team: this.armedTeam('slingshot', a),
+      anchors: [{ x: anchors[0].x, y: anchors[0].y }, { x: anchors[1].x, y: anchors[1].y }],
+      pouch,
+      idle: !puller,
+      shot: slingshotShot(a, pouch, state.params),
+    };
+  }
+
+  /**
+   * The first finger to lift releases the sling: fingers rarely leave the glass in a
+   * clean order, so any lift fires the shot as long as the pull is long enough. To
+   * cancel, bring the pouch back near the fork before lifting.
+   */
+  private releaseSling(cancelled: boolean): void {
+    const state = this.state;
+    const sling = this.view.sling;
+    for (const id of this.slingIds ?? []) {
+      const o = this.contacts.get(id);
+      if (o) o.consumed = true; // the remaining fingers must not trigger other gestures
+    }
+    this.cancelSling();
+    if (cancelled || !state || !sling || sling.idle || !sling.shot.valid) return;
+    const anchor = { x: (sling.anchors[0].x + sling.anchors[1].x) / 2, y: (sling.anchors[0].y + sling.anchors[1].y) / 2 };
+    const team = this.armedTeam('slingshot', anchor);
+    if (team) this.controls.gesture('slingshot', team, anchor, { ...sling.pouch });
+  }
+
+  private cancelSling(): void {
+    this.slingIds = null;
+    this.slingPuller = null;
+    if (!this.simSling) this.view.sling = null;
+  }
+
+  /** Mouse stand-in: the press point is the fork, dragging pulls the pouch. */
+  private updateSimSling(c: Contact): void {
+    const state = this.state;
+    if (!state || !this.simSling) return;
+    const anchor = this.simSling.anchor;
+    const pouch: Vec2 = { x: c.x, y: c.y };
+    const shot = slingshotShot(anchor, pouch, state.params);
+    // Virtual anchors either side of the pull axis, so the elastic looks like a Y
+    const nx = -shot.dir.y, ny = shot.dir.x;
+    this.view.sling = {
+      team: this.armedTeam('slingshot', anchor),
+      anchors: [
+        { x: anchor.x + nx * SIM_FORK_HALF_PX, y: anchor.y + ny * SIM_FORK_HALF_PX },
+        { x: anchor.x - nx * SIM_FORK_HALF_PX, y: anchor.y - ny * SIM_FORK_HALF_PX },
+      ],
+      pouch,
+      idle: shot.pull < 4,
+      shot,
+    };
+  }
+
+  private releaseSimSling(c: Contact): void {
+    const state = this.state;
+    const sim = this.simSling;
+    this.simSling = null;
+    this.view.sling = null;
+    if (!state || !sim) return;
+    const shot = slingshotShot(sim.anchor, { x: c.x, y: c.y }, state.params);
+    if (!shot.valid) {
+      this.onSimChange(`Tirez plus en arrière (au moins ${state.params.slingMinPullPx} px)`);
+      return; // the simulation stays armed: try again
+    }
+    const team = this.armedTeam('slingshot', sim.anchor);
+    if (team) this.controls.gesture('slingshot', team, sim.anchor, { x: c.x, y: c.y });
+    this.sim = null;
+    this.onSimChange('');
+  }
+
+  private tryBorderPull(c: Contact): void {
+    const state = this.state;
+    if (!state || state.phase !== 'RACE' || this.slingIds) return;
     const candidates = [...this.contacts.values()]
       .filter(c => c.zone === 'free' && !c.consumed && c.outward && c.edgeIndex !== undefined);
     if (candidates.length !== 2) return;
@@ -456,10 +653,22 @@ export class GestureRecognizer {
   }
 
   private mapStrokeStartTeam(state: GameState, p: Vec2): Team | null {
-    for (const team of ['A', 'B'] as Team[]) {
-      const start = state.mapTargets![team][0];
-      if (Math.hypot(p.x - start.x, p.y - start.y) <= 100) return team;
+    if (!state.mapTargets) return null;
+    const team = activeMapTeam(state);
+    if (!team) return null;
+    // A second finger must not erase the current stroke or submit a second copy.
+    if ([...this.view.strokes.values()].some(s => s.team === team && (!s.done || s.submitting))) {
+      showMapNotice(this.view, 'Un seul tracé à la fois : terminez le geste en cours.', '#ffd400');
+      return null;
     }
-    return null;
+    const [start, end] = state.mapTargets[team];
+    if (!inMapAnchor(p, start)) {
+      showMapError(this.view, inMapAnchor(p, end)
+        ? team === 'A' ? 'mapWaitCyan' : 'mapLocked'
+        : 'mapWrongStart', inMapAnchor(p, end) ? team === 'A' ? 'B' : 'A' : team);
+      return null;
+    }
+    this.view.mapNotice = null;
+    return team;
   }
 }

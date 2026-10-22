@@ -9,6 +9,7 @@ export interface Vec2 {
 export type Team = 'A' | 'B';
 export type Phase = 'LOBBY' | 'MAP' | 'READY' | 'RACE' | 'PAUSED' | 'RESULT';
 export type ItemKind = 'slingshot' | 'boost';
+export type DriveMode = 'auto' | 'pedal';
 
 export interface Tangible {
   x: number; y: number; angle: number; // normalized position, angle in degrees
@@ -68,7 +69,9 @@ export interface BoostGate {
 
 export interface Stone {
   id: string;
-  target: Vec2;
+  from: Vec2;        // launch point (the pulled pouch)
+  target: Vec2;      // landing point, where the warning circle is shown
+  launchedAt: number; // timestamp ms
   impactAt: number;  // timestamp ms
   team: Team;
 }
@@ -107,6 +110,8 @@ export interface TrackGeometry {
   pickupPositions: Vec2[];
   /** Indices of feature anchors in the centerline, kept aligned when it moves. */
   featureIndices: { checkpoints: number[]; start: number; starts: number[]; pickups: number[] };
+  /** True for the predefined circuit: the players' drawing could not be used. */
+  preset?: boolean;
 }
 
 /** A local sideways displacement of the road, never a permanent width change. */
@@ -142,6 +147,10 @@ export interface GameParams {
   trackDeformRelaxS: number;
   stoneTelegraphS: number;
   stoneRadiusPx: number;
+  slingMinPullPx: number;
+  slingMaxPullPx: number;
+  slingMinRangePx: number;
+  slingMaxRangePx: number;
   boostLenMinPx: number;
   boostLenMaxPx: number;
   repairHoldS: number;
@@ -152,6 +161,8 @@ export interface GameParams {
 
 export interface GameState {
   phase: Phase;
+  /** Shared driving scheme selected from the central race control. */
+  driveMode: DriveMode;
   tick: number;
   cars: Record<Team, Car>;
   walls: Wall[];
@@ -167,14 +178,14 @@ export interface GameState {
   winner: Team | 'draw' | null;
   sessionStartAt: number;
   pausedAt: number;
-  /** Imposed target points of each copilot, set on entering the MAP phase. */
+  /** Ordered start/end targets for each team, set after the two anchor placements. */
   mapTargets: MapTargets | null;
   /** The two shared contacts that split the table before either half is drawn. */
   mapDivider: [Vec2, Vec2] | null;
-  /** Which copilot strokes have been accepted so far. */
+  /** Accepted and locked halves: cyan A first, then rose B. Also determines the active turn. */
   mapStrokes: Record<Team, boolean>;
   mapDeadline: number;          // ms timestamp, 0 when not in MAP
-  /** Table uses two concurrent contacts; PC uses the same actions sequentially. */
+  /** Both modes place and draw sequentially; PC also enables racing test controls. */
   mapMode: 'table' | 'pc' | null;
   /** Repair gauge per team, 0..1 (C-06). */
   repairProgress: Record<Team, number>;
@@ -183,6 +194,8 @@ export interface GameState {
   /** Operator-reported pylons currently on the table, keyed by tangible id. */
   tangibles: Record<number, Tangible>;
   params: GameParams;
+  /** PC test switches (only honoured in the PC mode, see `TestToggleMsg`). */
+  testMode: { invincible: boolean; allItems: boolean };
 }
 
 // ─── WebSocket message types ──────────────────────────────────────────────────
@@ -223,10 +236,15 @@ export interface PadHoldMsg extends BaseMsg {
   on: boolean;
 }
 
+/**
+ * Slingshot released: the elastic's fork (`anchor`, midpoint of the two anchoring
+ * fingers) and the pulled pouch (`pouch`, where the third finger let go). The stone
+ * flies from the pouch through the fork; the server derives direction and range.
+ */
 export interface SlingshotMsg extends BaseMsg {
   type: 'Slingshot';
-  x: number;
-  y: number;
+  anchor: Vec2;
+  pouch: Vec2;
   team?: Team; // resolved by the table's gesture recognizer (R-03); server falls back to proximity
 }
 
@@ -253,11 +271,11 @@ export interface BorderPullMsg extends BaseMsg {
   team?: Team;
 }
 
-// Semantic control actions; independent of the input device.
+// Pilot joystick / item button on the table → Server
 export interface PilotInputMsg extends BaseMsg {
   type: 'PilotInput';
   team: Team;
-  /** Reserved for a future control scheme; the current table mode advances continuously. */
+  /** 0..1 in pedal mode; ignored in auto mode. */
   throttle: number;
   steer: number;    // [-1, 1]
 }
@@ -275,6 +293,10 @@ export interface StartGameMsg extends BaseMsg {
 
 export interface PauseMsg extends BaseMsg {
   type: 'Pause';
+}
+
+export interface ToggleDriveModeMsg extends BaseMsg {
+  type: 'ToggleDriveMode';
 }
 
 // Console Oz → Server
@@ -306,6 +328,16 @@ export interface NewGameMsg extends BaseMsg {
 
 export interface ResetMsg extends BaseMsg {
   type: 'Reset';
+}
+/**
+ * PC-mode test switches. `invincible`: both cars are untouchable (no damage, stun,
+ * slow-down or fall). `allItems`: every item is always armed and usable, without
+ * pickup, and ability cooldowns are ignored. Ignored outside the PC mode.
+ */
+export interface TestToggleMsg extends BaseMsg {
+  type: 'TestToggle';
+  flag: 'invincible' | 'allItems';
+  on: boolean;
 }
 
 export interface PingMsg extends BaseMsg {
@@ -351,11 +383,13 @@ export type ClientMessage =
   | PowerMsg
   | StartGameMsg
   | PauseMsg
+  | ToggleDriveModeMsg
   | TangibleMovedMsg
   | TangibleRemovedMsg
   | TangibleControlMsg
   | PingMsg
   | NewGameMsg
-  | ResetMsg;
+  | ResetMsg
+  | TestToggleMsg;
 
 export type ServerMessage = StateMsg | FeedbackMsg | PhaseChangeMsg | PongMsg;

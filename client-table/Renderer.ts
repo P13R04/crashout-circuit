@@ -7,9 +7,10 @@
  * applied per colour group (one path, one blur) instead of per segment.
  */
 import type { GameState, Car, Team, Vec2, TrackGeometry } from '../server/types.js';
-import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PANELS } from '../server/layout.js';
+import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PANELS, PLAY_AREA } from '../server/layout.js';
 import { HUD, drawItemIcon } from './HUD.js';
-import { TEAM_COLOR, TEAM_NAME, type View } from './view.js';
+import { TEAM_COLOR, TEAM_NAME, type View, type SlingPreview } from './view.js';
+import { activeMapTeam, inMapAnchor, MAP_ANCHOR_RADIUS } from '../server/mapCreation.js';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -22,6 +23,7 @@ export const START_TABLE_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 8
 export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 20, w: 520, h: 72 };
 export const RESULT_BUTTON = { x: LOGICAL_W / 2 - 200, y: LOGICAL_H / 2 - 45, w: 400, h: 90 };
 export const PAUSE_BUTTON = { x: LOGICAL_W / 2 - 58, y: 14, w: 116, h: 38 };
+export const DRIVE_MODE_BUTTON = { x: LOGICAL_W / 2 - 120, y: 58, w: 240, h: 38 };
 export const MAP_GENERATE_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 export const RACE_START_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 /** Reset button located in the vertical middle on the far right edge of the screen. */
@@ -49,7 +51,7 @@ export class Renderer {
     if (state.phase === 'LOBBY') { this.drawLobby(ctx); this.drawResetButton(ctx); return; }
     if (state.phase === 'MAP') { this.drawMap(ctx, state, view); this.drawResetButton(ctx); return; }
     if (state.phase !== 'READY' && state.phase !== 'RACE' && state.phase !== 'PAUSED' && state.phase !== 'RESULT') return;
-    const now = view.now();
+    const now = state.phase === 'PAUSED' ? state.pausedAt : view.now();
 
     if (state.track) this.drawTrack(ctx, state.track, state.trackVersion, state.deformations.length > 0);
     this.drawPickups(ctx, state, now);
@@ -60,10 +62,11 @@ export class Renderer {
     this.drawStones(ctx, state, now);
     for (const t of ['A', 'B'] as Team[]) this.drawCar(ctx, state.cars[t], now);
     this.drawEffects(ctx, view);
+    this.drawSling(ctx, state, view.sling);
     this.hud.draw(ctx, state, view);
     this.drawDisabledAlerts(ctx, state);
-    if (state.phase === 'READY') this.drawRaceReady(ctx);
-    if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); }
+    if (state.phase === 'READY') this.drawRaceReady(ctx, state);
+    if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); this.drawDriveModeButton(ctx, state); }
     if (state.phase === 'PAUSED') { this.drawPauseButton(ctx, 'REPRENDRE'); this.drawPaused(ctx); }
     if (state.phase === 'RESULT') this.drawResult(ctx, state);
     this.drawResetButton(ctx);
@@ -118,7 +121,7 @@ export class Renderer {
     }
     const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 400);
     for (const [button, label, detail, color] of [
-      [START_TABLE_BUTTON, 'JOUER SUR TABLE', '2 contacts simultanés pour partager le circuit', '#00e5ff'],
+      [START_TABLE_BUTTON, 'JOUER SUR TABLE', 'Points et tracés : cyan d’abord, puis rose', '#00e5ff'],
       [START_PC_BUTTON, 'MODE PC · SÉQUENTIEL', 'clics et demi-tracés l’un après l’autre', '#ff4081'],
     ] as const) {
       ctx.fillStyle = `${color}22`; ctx.strokeStyle = color === '#00e5ff' ? `rgba(0,229,255,${0.6 + 0.4 * pulse})` : color;
@@ -162,23 +165,52 @@ export class Renderer {
       for (let i = 1; i < list.length; i++) ctx.lineTo(list[i].x, list[i].y);
       ctx.closePath();
     };
+    const c = track.centerline;
+    const n = c.length;
 
-    // Dark surface between the two edges
-    ctx.beginPath();
-    path(track.outerEdge);
-    path(track.innerEdge, true);
-    ctx.fillStyle = '#0c1233';
-    ctx.fill('evenodd');
-
-    // Neon walls: one blurred path per colour
-    ctx.lineWidth = 5;
+    // Dark surface: the band of local half-width around the centerline (exactly what the
+    // physics counts as "on the track"), so that a track crossing itself is one surface
+    ctx.strokeStyle = '#0c1233';
+    ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      ctx.lineWidth = (track.widths[i] + track.widths[j]) / 2;
+      ctx.beginPath();
+      ctx.moveTo(c[i].x, c[i].y);
+      ctx.lineTo(c[j].x, c[j].y);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+
+    // Neon walls: one blurred path per colour. Where another part of the track runs
+    // over a wall (a crossing), the wall is left out so the junction stays open.
+    const cum: number[] = [0];
+    for (let i = 1; i <= n; i++) cum.push(cum[i - 1] + Math.hypot(c[i % n].x - c[i - 1].x, c[i % n].y - c[i - 1].y));
+    const covered = (pt: Vec2, k: number): boolean => {
+      for (let m = 0; m < n; m++) {
+        const g = Math.abs(cum[m] - cum[k]);
+        if (Math.min(g, cum[n] - g) < 200) continue;
+        if (Math.hypot(pt.x - c[m].x, pt.y - c[m].y) < track.widths[m] / 2 - 1) return true;
+      }
+      return false;
+    };
+    ctx.lineWidth = 5;
     for (const [pts, color] of [[track.outerEdge, OUTER_COLOR], [track.innerEdge, INNER_COLOR]] as const) {
+      const hidden = pts.map((pt, k) => covered(pt, k));
       ctx.shadowColor = color;
       ctx.shadowBlur = 22;
       ctx.strokeStyle = color;
       ctx.beginPath();
-      path(pts);
+      if (!hidden.some(Boolean)) path(pts);
+      else {
+        for (let k = 0; k < n; k++) {
+          const k2 = (k + 1) % n;
+          if (hidden[k] || hidden[k2]) continue;
+          ctx.moveTo(pts[k].x, pts[k].y);
+          ctx.lineTo(pts[k2].x, pts[k2].y);
+        }
+      }
       ctx.stroke();
     }
     ctx.shadowBlur = 0;
@@ -349,6 +381,7 @@ export class Renderer {
       const left = Math.max(0, s.impactAt - now);
       const t = 1 - left / total; // 0 → 1
       const R = state.params.stoneRadiusPx;
+      this.drawProjectile(ctx, s.from, s.target, s.launchedAt, s.impactAt, now);
       ctx.save();
       ctx.translate(s.target.x, s.target.y);
       ctx.strokeStyle = '#ff2a2a';
@@ -369,6 +402,106 @@ export class Renderer {
       ctx.fillText('⚠ PIERRE', 0, -R - 14);
       ctx.restore();
     }
+  }
+
+  /** The stone in flight: a lit disc that rises and falls above its ground shadow. */
+  private drawProjectile(ctx: Ctx, from: Vec2, to: Vec2, launchedAt: number, impactAt: number, now: number): void {
+    const span = Math.max(1, impactAt - launchedAt);
+    const f = Math.max(0, Math.min(1, (now - launchedAt) / span));
+    const at = (k: number) => ({ x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k });
+    const lift = (k: number) => 22 * Math.sin(Math.PI * k);
+    const p = at(f), h = lift(f);
+    ctx.save();
+    // comet trail
+    const t0 = Math.max(0, f - 0.22);
+    const q = at(t0);
+    const grad = ctx.createLinearGradient(q.x, q.y - lift(t0), p.x, p.y - h);
+    grad.addColorStop(0, 'rgba(255,200,120,0)');
+    grad.addColorStop(1, 'rgba(255,200,120,0.85)');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(q.x, q.y - lift(t0)); ctx.lineTo(p.x, p.y - h); ctx.stroke();
+    // ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, 8, 4, 0, 0, Math.PI * 2); ctx.fill();
+    // the stone
+    ctx.fillStyle = '#ffebc5';
+    ctx.shadowColor = '#ffad62';
+    ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.arc(p.x, p.y - h, 7 + 3 * Math.sin(Math.PI * f), 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  /**
+   * Slingshot while it is being drawn: the elastic from the two fork fingers to the
+   * pulled pouch, the dotted flight line, the landing zone and the strength.
+   */
+  private drawSling(ctx: Ctx, state: GameState, sling: SlingPreview | null): void {
+    if (!sling) return;
+    const { anchors, pouch, shot, idle } = sling;
+    const prm = state.params;
+    const ready = !idle && shot.valid;
+    const power = Math.max(0, Math.min(1, (shot.pull - prm.slingMinPullPx) / Math.max(1, prm.slingMaxPullPx - prm.slingMinPullPx)));
+    const band = ready ? `hsl(${Math.round(55 - 55 * power)}, 100%, 62%)` : 'rgba(255,255,255,0.55)';
+    const fork = { x: (anchors[0].x + anchors[1].x) / 2, y: (anchors[0].y + anchors[1].y) / 2 };
+    const teamColor = sling.team ? TEAM_COLOR[sling.team] : '#ffffff';
+
+    ctx.save();
+    if (ready) {
+      // flight line through the fork and the landing zone
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([4, 12]);
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(fork.x, fork.y); ctx.lineTo(shot.target.x, shot.target.y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = '#ff2a2a';
+      ctx.fillStyle = 'rgba(255,42,42,0.12)';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(shot.target.x, shot.target.y, prm.stoneRadiusPx, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+    if (idle) {
+      // Nobody has been pulled yet: the three contacts look alike, no role is suggested
+      // (the landing order does not tell which finger will be the pouch).
+      ctx.fillStyle = teamColor;
+      ctx.globalAlpha = 0.7;
+      for (const c of [anchors[0], anchors[1], pouch]) { ctx.beginPath(); ctx.arc(c.x, c.y, 15, 0, Math.PI * 2); ctx.fill(); }
+      ctx.globalAlpha = 1;
+    } else {
+      // elastic band: anchor 1 → pouch → anchor 2
+      ctx.strokeStyle = band;
+      ctx.shadowColor = band;
+      ctx.shadowBlur = ready ? 16 : 0;
+      ctx.lineWidth = 4 + 6 * power;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(anchors[0].x, anchors[0].y);
+      ctx.lineTo(pouch.x, pouch.y);
+      ctx.lineTo(anchors[1].x, anchors[1].y);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      // fork fingers and pouch
+      ctx.fillStyle = teamColor;
+      for (const a of anchors) { ctx.beginPath(); ctx.arc(a.x, a.y, 15, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = ready ? '#ffebc5' : 'rgba(255,255,255,0.7)';
+      ctx.beginPath(); ctx.arc(pouch.x, pouch.y, 12, 0, Math.PI * 2); ctx.fill();
+    }
+    // strength read-out, upright for the team that holds the item
+    ctx.save();
+    const labelAt = idle
+      ? { x: (anchors[0].x + anchors[1].x + pouch.x) / 3, y: (anchors[0].y + anchors[1].y + pouch.y) / 3 }
+      : pouch;
+    ctx.translate(labelAt.x, labelAt.y);
+    ctx.rotate(sling.team ? rotationTowardsTeam(sling.team, fork) : 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    const label = idle ? 'tirez en arrière' : ready ? `${Math.round(power * 100)} %` : 'tirez plus';
+    ctx.fillText(label, 0, 36);
+    ctx.restore();
+    ctx.restore();
   }
 
   private drawCar(ctx: Ctx, car: Car, now: number): void {
@@ -472,6 +605,41 @@ export class Renderer {
           ctx.beginPath(); ctx.arc(0, 0, 14 + 60 * k, 0, Math.PI * 2); ctx.stroke();
           break;
         }
+        case 'stoneHit': {
+          // Comic burst above the car: pops with an overshoot, shakes, then fades
+          const pop = k < 0.12 ? (k / 0.12) * 1.3 : k < 0.25 ? 1.3 - ((k - 0.12) / 0.13) * 0.3 : 1;
+          ctx.globalAlpha = k < 0.75 ? 1 : (1 - k) / 0.25;
+          ctx.translate(Math.sin(t / 35) * (k < 0.4 ? 3 : 0), -52);
+          ctx.rotate(rotationTowardsTeam(e.team, { x: e.x, y: e.y }) + (e.tilt ?? 0));
+          ctx.scale(pop, pop);
+          const text = e.text ?? 'POW !';
+          ctx.font = 'bold 34px Impact, monospace';
+          const R = Math.max(62, ctx.measureText(text).width * 0.62);
+          ctx.beginPath();
+          for (let i = 0; i < 20; i++) {
+            const a = (i / 20) * Math.PI * 2;
+            const r = i % 2 === 0 ? R : R * 0.68;
+            const px = Math.cos(a) * r, py = Math.sin(a) * r * 0.72;
+            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          ctx.fillStyle = '#ffd400';
+          ctx.strokeStyle = '#ff2a2a';
+          ctx.lineWidth = 6;
+          ctx.shadowColor = '#ff8a00';
+          ctx.shadowBlur = 20;
+          ctx.fill();
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.lineWidth = 5;
+          ctx.strokeStyle = '#ffffff';
+          ctx.strokeText(text, 0, 2);
+          ctx.fillStyle = '#d4001a';
+          ctx.fillText(text, 0, 2);
+          break;
+        }
         case 'hit': {
           ctx.fillStyle = '#ff4040';
           ctx.beginPath(); ctx.arc(0, 0, 10 + 24 * k, 0, Math.PI * 2); ctx.fill();
@@ -535,14 +703,40 @@ export class Renderer {
     ctx.fillText(label, b.x + b.w / 2, b.y + 24); ctx.restore();
   }
 
-  private drawRaceReady(ctx: Ctx): void {
+  private drawDriveModeButton(ctx: Ctx, state: GameState): void {
+    const b = DRIVE_MODE_BUTTON;
+    const pedal = state.driveMode === 'pedal';
+    ctx.save(); ctx.fillStyle = pedal ? 'rgba(255,190,55,0.35)' : 'rgba(4,8,31,0.82)';
+    ctx.strokeStyle = pedal ? '#ffbe37' : '#ffffff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 9); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(`PILOTAGE · ${pedal ? 'PÉDALE' : 'AUTO'}`, b.x + b.w / 2, b.y + 24); ctx.restore();
+  }
+
+  private drawRaceReady(ctx: Ctx, state: GameState): void {
     const b = RACE_START_BUTTON;
     ctx.save();
     ctx.fillStyle = 'rgba(4,8,31,0.56)'; ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
     ctx.fillStyle = 'rgba(255,64,129,0.18)'; ctx.strokeStyle = '#ff4081'; ctx.lineWidth = 4;
     ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 16); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.font = 'bold 31px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('LANCER LA COURSE', b.x + b.w / 2, b.y + 55); ctx.restore();
+    ctx.fillText('LANCER LA COURSE', b.x + b.w / 2, b.y + 55);
+    // The drawing could not be used: say so before the race, once for each side of the table
+    if (state.track?.preset) {
+      for (const rot of [0, Math.PI]) {
+        ctx.save();
+        ctx.translate(LOGICAL_W / 2, LOGICAL_H / 2);
+        ctx.rotate(rot);
+        ctx.fillStyle = '#ffb300'; ctx.shadowColor = '#ffb300'; ctx.shadowBlur = 12;
+        ctx.font = 'bold 26px monospace';
+        ctx.fillText('CIRCUIT PRÉDÉFINI UTILISÉ', 0, -b.h / 2 - 62);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.font = '19px monospace';
+        ctx.fillText('Vos deux tracés n’ont pas pu former un circuit valide.', 0, -b.h / 2 - 32);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
   }
 
   private drawPaused(ctx: Ctx): void {
@@ -593,99 +787,190 @@ export class Renderer {
   // ─── MAP phase (task 2: collaborative drawing) ────────────────────────────
 
   private drawMap(ctx: Ctx, state: GameState, view: View): void {
-    const targets = state.mapTargets;
-    const now = view.now();
     const t = performance.now();
-
-    if (!targets) {
-      ctx.save();
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#ffffff'; ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 20;
-      ctx.font = 'bold 38px monospace';
-      ctx.fillText('POSEZ DEUX POINTS POUR PARTAGER LE CIRCUIT', LOGICAL_W / 2, LOGICAL_H / 2 - 10);
-      ctx.shadowBlur = 0;
-      ctx.font = '20px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.fillText(state.mapMode === 'pc' ? 'Mode PC : cliquez ces deux points l’un après l’autre.' : 'Puis chaque copilote trace sa moitié vers le point opposé.', LOGICAL_W / 2, LOGICAL_H / 2 + 34);
-      ctx.restore();
-      return;
-    }
-
-    // The initial line is the lasting boundary between the two simultaneous traces.
-    const divider = state.mapDivider;
-    if (divider) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 3; ctx.setLineDash([12, 10]);
-      ctx.beginPath(); ctx.moveTo(divider[0].x, divider[0].y); ctx.lineTo(divider[1].x, divider[1].y); ctx.stroke();
-      ctx.setLineDash([]); ctx.restore();
-    }
-
-    // Shared endpoints with a generous 95 px completion tolerance.
-    for (const team of ['A', 'B'] as Team[]) {
-      const color = TEAM_COLOR[team];
-      targets[team].forEach((p, i) => {
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.strokeStyle = color; ctx.fillStyle = color;
-        ctx.shadowColor = color; ctx.shadowBlur = 18;
-        ctx.lineWidth = 3;
-        ctx.setLineDash([6, 8]);
-        ctx.beginPath(); ctx.arc(0, 0, 95, 0, Math.PI * 2); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.beginPath(); ctx.arc(0, 0, 14 + 3 * Math.sin(t / 250), 0, Math.PI * 2); ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#04081f';
-        ctx.font = 'bold 16px monospace'; ctx.textAlign = 'center';
-        ctx.fillText(i === 0 ? 'D' : 'A', 0, 6);
-        ctx.restore();
-      });
-    }
-
-    // Strokes as drawn
-    for (const s of view.strokes.values()) {
-      if (s.pts.length < 2) continue;
-      const rejected = s.rejectedAt !== undefined && t - s.rejectedAt < 1500;
-      ctx.save();
-      ctx.strokeStyle = rejected ? '#ff4040' : TEAM_COLOR[s.team];
-      ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 14;
-      ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.beginPath();
-      ctx.moveTo(s.pts[0].x, s.pts[0].y);
-      for (const p of s.pts) ctx.lineTo(p.x, p.y);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // Instructions per copilot panel + shared countdown
+    const team = activeMapTeam(state);
     ctx.save();
-    for (const panel of PANELS) {
-      if (panel.role !== 'copilot') continue;
-      ctx.save();
-      ctx.translate(panel.cx, panel.cy);
-      ctx.rotate(panel.rot);
-      const team = panel.team;
+
+    if (!state.mapTargets || !state.mapDivider) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 2; ctx.setLineDash([12, 10]);
+      ctx.strokeRect(PLAY_AREA.x0, PLAY_AREA.y0, PLAY_AREA.x1 - PLAY_AREA.x0, PLAY_AREA.y1 - PLAY_AREA.y0);
+      ctx.setLineDash([]);
+      const first = view.pendingDivider[0];
+      if (first) this.drawMapAnchor(ctx, first, 'P1', 'POINT CYAN', TEAM_COLOR.A, 'A', false, t);
+      // This instruction belongs inside the placement area, away from the saved point.
       ctx.textAlign = 'center';
-      ctx.fillStyle = TEAM_COLOR[team];
-      ctx.font = 'bold 26px monospace';
-      ctx.fillText(`COPILOTE ${TEAM_NAME[team]}`, 0, -40);
-      ctx.font = '20px monospace';
-      ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillText(state.mapMode === 'pc' ? 'trace D → A, puis laisse l’autre moitié' : 'trace D → A dans ta moitié', 0, -8);
-      if (state.mapStrokes[team]) { ctx.fillStyle = '#3ddc84'; ctx.fillText('✓ tracé accepté', 0, 30); }
-      else if (t - view.mapErrorAt[team] < 2500) { ctx.fillStyle = '#ff4040'; ctx.fillText('tracé invalide — recommence', 0, 30); }
+      ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '20px sans-serif';
+      ctx.fillText('Placez les points dans ce cadre', LOGICAL_W / 2, PLAY_AREA.y0 + 28);
+    } else {
+      const [a, b] = state.mapDivider;
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const ux = (b.x - a.x) / len, uy = (b.y - a.y) / len;
+      const nx = -uy, ny = ux;
+      const far = 4000;
+      for (const [sideTeam, side] of [['A', 1], ['B', -1]] as const) {
+        ctx.beginPath();
+        ctx.moveTo(a.x - ux * far, a.y - uy * far);
+        ctx.lineTo(a.x - ux * far + nx * side * far, a.y - uy * far + ny * side * far);
+        ctx.lineTo(b.x + ux * far + nx * side * far, b.y + uy * far + ny * side * far);
+        ctx.lineTo(b.x + ux * far, b.y + uy * far);
+        ctx.closePath();
+        ctx.fillStyle = TEAM_COLOR[sideTeam] + (sideTeam === team ? '14' : '04');
+        ctx.fill();
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2; ctx.setLineDash([12, 12]);
+      ctx.beginPath();
+      ctx.moveTo(a.x - ux * far, a.y - uy * far);
+      ctx.lineTo(b.x + ux * far, b.y + uy * far); ctx.stroke(); ctx.setLineDash([]);
+
+      // Only the active team's direction is shown. Curved chevrons leave the divider
+      // towards its half-plane, without suggesting that the straight divider is a road.
+      if (team) {
+        const [from, to] = state.mapTargets[team];
+        this.drawMapArrow(ctx, from, to, TEAM_COLOR[team], t);
+      }
+
+      for (const [sideTeam, side] of [['A', 1], ['B', -1]] as const) {
+        const x = Math.max(270, Math.min(1650, (a.x + b.x) / 2 + nx * side * 235));
+        const y = Math.max(300, Math.min(780, (a.y + b.y) / 2 + ny * side * 235));
+        ctx.save(); ctx.translate(x, y); ctx.rotate(sideTeam === 'B' ? Math.PI : 0);
+        ctx.textAlign = 'center'; ctx.font = 'bold 23px sans-serif';
+        ctx.fillStyle = state.mapStrokes[sideTeam] ? '#3ddc84'
+          : sideTeam === team ? TEAM_COLOR[sideTeam] : 'rgba(255,255,255,0.35)';
+        ctx.fillText(state.mapStrokes[sideTeam] ? '✓ ' + TEAM_NAME[sideTeam] + ' VALIDÉ'
+          : sideTeam === team ? 'VOTRE ZONE · ' + TEAM_NAME[sideTeam] : 'ROSE · PATIENTEZ', 0, 0);
+        ctx.restore();
+      }
+
+      for (const [key, stroke] of view.strokes) {
+        if (stroke.rejectedAt !== undefined && t - stroke.rejectedAt >= 1500) {
+          view.strokes.delete(key);
+          continue;
+        }
+        if (stroke.pts.length < 2) continue;
+        const accepted = state.mapStrokes[stroke.team];
+        ctx.save();
+        ctx.globalAlpha = accepted && team ? 0.6 : 1;
+        ctx.strokeStyle = stroke.rejectedAt !== undefined ? '#ff4040' : TEAM_COLOR[stroke.team];
+        ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = accepted ? 6 : 14;
+        ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(stroke.pts[0].x, stroke.pts[0].y);
+        for (const p of stroke.pts.slice(1)) ctx.lineTo(p.x, p.y);
+        ctx.stroke(); ctx.restore();
+      }
+
+      if (team) {
+        const [from, to] = state.mapTargets[team];
+        const activeStroke = [...view.strokes.values()].find(s => s.team === team && !s.done);
+        const nearTarget = activeStroke && inMapAnchor(activeStroke.pts[activeStroke.pts.length - 1], to);
+        this.drawMapAnchor(ctx, from, team === 'A' ? 'P1' : 'P2', 'DÉPART', TEAM_COLOR[team], team, !activeStroke, t);
+        this.drawMapAnchor(ctx, to, team === 'A' ? 'P2' : 'P1', nearTarget ? 'RELÂCHEZ ICI' : 'ARRIVÉE', TEAM_COLOR[team], team, true, t);
+      } else {
+        this.drawMapAnchor(ctx, a, 'P1', '✓ RELIÉ', TEAM_COLOR.A, 'A', false, t);
+        this.drawMapAnchor(ctx, b, 'P2', '✓ RELIÉ', TEAM_COLOR.B, 'B', false, t);
+        const button = MAP_GENERATE_BUTTON;
+        // Same hit area from both sides; two labels face the two teams.
+        ctx.fillStyle = '#073544'; ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.roundRect(button.x, button.y, button.w, button.h, 18); ctx.fill(); ctx.stroke();
+        ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = 'bold 22px sans-serif';
+        ctx.fillText('GÉNÉRER LE CIRCUIT ▶', LOGICAL_W / 2, LOGICAL_H / 2 + 28);
+        ctx.save(); ctx.translate(LOGICAL_W / 2, LOGICAL_H / 2 - 28); ctx.rotate(Math.PI);
+        ctx.fillText('GÉNÉRER LE CIRCUIT ▶', 0, 0); ctx.restore();
+      }
+    }
+
+    // Stable instruction bands outside the drawing area, facing both long edges.
+    this.drawMapInstructions(ctx, state, view, t);
+    ctx.restore();
+  }
+
+  private drawMapInstructions(ctx: Ctx, state: GameState, view: View, t: number): void {
+    const placed = !!state.mapTargets;
+    const team = placed ? activeMapTeam(state) : view.pendingDivider.length ? 'B' : 'A';
+    const color = team ? TEAM_COLOR[team] : '#3ddc84';
+    const step = placed ? team === 'A' ? 2 : team === 'B' ? 3 : 4 : view.pendingDivider.length ? 1 : 0;
+    const labels = ['P1 CYAN', 'P2 ROSE', 'TRACÉ CYAN', 'TRACÉ ROSE', 'CIRCUIT'];
+    const title = !placed ? 'PLACEMENT DES POINTS' : team ? 'TRACÉ ' + (team === 'A' ? '1' : '2') + '/2' : 'CIRCUIT PRÊT À GÉNÉRER';
+    const action = !placed
+      ? team === 'A' ? 'ÉQUIPE CYAN · Touchez pour placer P1' : 'ÉQUIPE ROSE · Touchez pour placer P2'
+      : team ? 'ÉQUIPE ' + TEAM_NAME[team] + ' · Tracez de ' + (team === 'A' ? 'P1 vers P2' : 'P2 vers P1') : 'Les deux équipes ont terminé';
+    const waiting = [...view.strokes.values()].some(s => s.submitting);
+    const hint = view.dividerSubmitting || waiting ? 'Validation en cours…'
+      : !placed ? team === 'A' ? 'Un joueur par équipe · Cyan d’abord, puis rose' : 'P1 reste en place · Écartez suffisamment les deux points'
+      : team ? 'Maintenez le doigt · Dessinez dans votre zone · Relâchez dans la cible'
+      : 'Touchez « Générer le circuit » pour voir votre piste';
+    const notice = view.mapNotice && view.mapNotice.until > t ? view.mapNotice : null;
+
+    for (const [y, rotation] of [[120, Math.PI], [960, 0]]) {
+      ctx.save(); ctx.translate(LOGICAL_W / 2, y); ctx.rotate(rotation);
+      ctx.fillStyle = 'rgba(4,8,31,0.96)'; ctx.strokeStyle = color + '77'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(-640, -92, 1280, 184, 20); ctx.fill(); ctx.stroke();
+      ctx.textAlign = 'center';
+      labels.forEach((label, i) => {
+        const x = (i - 2) * 226;
+        ctx.fillStyle = i === step ? color : i < step ? '#88b9a2' : '#727990';
+        ctx.font = (i === step ? 'bold ' : '') + '15px sans-serif';
+        ctx.fillText((i < step ? '✓ ' : (i + 1) + ' · ') + label, x, -61);
+        if (i === step) { ctx.fillStyle = color; ctx.fillRect(x - 80, -51, 160, 3); }
+      });
+      ctx.fillStyle = color; ctx.font = 'bold 18px sans-serif'; ctx.fillText(title, 0, -20);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 30px sans-serif'; ctx.fillText(action, 0, 17);
+      ctx.fillStyle = '#b7c2da'; ctx.font = '19px sans-serif'; ctx.fillText(hint, 0, 47);
+      if (notice) {
+        ctx.fillStyle = notice.color ?? '#ff4040'; ctx.font = 'bold 19px sans-serif';
+        ctx.fillText(notice.text, 0, 76);
+      }
       ctx.restore();
     }
-    ctx.textAlign = 'center';
-    const ready = state.mapStrokes.A && state.mapStrokes.B;
-    if (ready) {
-      const b = MAP_GENERATE_BUTTON;
-      ctx.fillStyle = 'rgba(0,229,255,0.16)'; ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 16); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 28px monospace';
-      ctx.fillText('GÉNÉRER LE CIRCUIT', b.x + b.w / 2, b.y + 54);
-    } else {
-      ctx.font = '22px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.fillText('DEUX MOITIÉS · UN SEUL CIRCUIT', LOGICAL_W / 2, LOGICAL_H / 2 - 50);
-      ctx.fillText('Les deux tracés doivent être validés avant de continuer.', LOGICAL_W / 2, LOGICAL_H / 2 - 18);
+  }
+
+  private drawMapAnchor(ctx: Ctx, point: Vec2, label: string, role: string, color: string, team: Team, pulse: boolean, t: number): void {
+    ctx.save(); ctx.translate(point.x, point.y); ctx.rotate(team === 'B' ? Math.PI : 0);
+    // Keep the radius exact: the decorative pulse is an outer halo, not a changing hit area.
+    ctx.fillStyle = '#080f26'; ctx.strokeStyle = color; ctx.lineWidth = 4;
+    ctx.shadowColor = color; ctx.shadowBlur = pulse ? 16 + 8 * Math.sin(t / 220) : 6;
+    ctx.beginPath(); ctx.arc(0, 0, MAP_ANCHOR_RADIUS, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    if (pulse) {
+      ctx.globalAlpha = 0.3 + 0.2 * Math.sin(t / 220); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, MAP_ANCHOR_RADIUS + 8, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    ctx.textAlign = 'center'; ctx.fillStyle = color; ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(role, 0, -26);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 38px sans-serif'; ctx.fillText(label, 0, 18);
+    ctx.fillStyle = '#b7c2da'; ctx.font = '15px sans-serif';
+    ctx.fillText(role === 'DÉPART' ? 'PARTEZ ICI' : role === 'ARRIVÉE' ? 'REJOIGNEZ ICI' : '', 0, 48);
+    ctx.restore();
+  }
+
+  private drawMapArrow(ctx: Ctx, from: Vec2, to: Vec2, color: string, t: number): void {
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const len = Math.hypot(dx, dy) || 1;
+    // Reversing from/to for rose naturally bends towards the opposite half.
+    const normal = { x: -dy / len, y: dx / len };
+    const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+    let bow = Math.min(240, len * 0.35);
+    // Keep the guide visible even with steeply rotated or edge-adjacent anchors.
+    if (normal.x > 0) bow = Math.min(bow, (LOGICAL_W - 70 - mid.x) / normal.x);
+    if (normal.x < 0) bow = Math.min(bow, (70 - mid.x) / normal.x);
+    if (normal.y > 0) bow = Math.min(bow, (820 - mid.y) / normal.y);
+    if (normal.y < 0) bow = Math.min(bow, (260 - mid.y) / normal.y);
+    const control = { x: mid.x + normal.x * bow, y: mid.y + normal.y * bow };
+    const at = (u: number): Vec2 => ({
+      x: (1-u)*(1-u)*from.x + 2*(1-u)*u*control.x + u*u*to.x,
+      y: (1-u)*(1-u)*from.y + 2*(1-u)*u*control.y + u*u*to.y,
+    });
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (let i = 0; i < 3; i++) {
+      const u = 0.22 + ((i / 3 + t / 4000) % 1) * 0.56;
+      const p = at(u);
+      if (inMapAnchor(p, from) || inMapAnchor(p, to)) continue;
+      const ahead = at(u + 0.01);
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(ahead.y - p.y, ahead.x - p.x));
+      ctx.globalAlpha = 0.85; ctx.shadowColor = color; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.moveTo(-12, -10); ctx.lineTo(0, 0); ctx.lineTo(-12, 10); ctx.stroke();
+      ctx.restore();
     }
     ctx.restore();
   }

@@ -110,8 +110,14 @@ export class GameServer {
       case 'StartGame':
         if (fromTable && this.state.phase === 'LOBBY') this.rules.enterMap(msg.mode);
         break;
+      case 'TestToggle':
+        if (fromTable) this.rules.onTestToggle(msg);
+        break;
       case 'Pause':
         if (fromTable) this.rules.togglePause();
+        break;
+      case 'ToggleDriveMode':
+        if (fromTable) this.rules.toggleDriveMode();
         break;
       case 'StrokeDraw':
         if (fromTable) this.rules.onStrokeDraw(msg);

@@ -30,9 +30,9 @@ Ouvrir `http://localhost:5173/client-table/` et `http://localhost:5173/client-oz
 ## Déroulement
 
 1. Choisir **Jouer sur table** ou **Mode PC · séquentiel**.
-2. Deux contacts définissent la séparation ; chaque copilote dessine sa moitié vers le point opposé. Sur PC, les contacts et tracés sont successifs.
+2. Cyan place P1, Rose place P2 ; Cyan dessine P1 → P2, puis Rose dessine P2 → P1. Les deux modes utilisent cette création guidée et séquentielle. Le circuit suit les tracés, y compris les boucles et croisements ; les refus sont expliqués à l’écran.
 3. Toucher **GÉNÉRER LE CIRCUIT**, puis **LANCER LA COURSE** sur la table. Le lancement, la pause et la remise à zéro appartiennent aux joueurs.
-4. Le pilote conduit avec la bande gauche / droite. La voiture avance automatiquement. Il n’a plus de bouton pour utiliser les objets.
+4. Le pilote conduit avec la bande gauche / droite. Le bouton central **PÉDALE** bascule entre l’avance automatique et une pédale maintenue pour accélérer, à vitesse maximale réduite. Le pilote n’a plus de bouton pour utiliser les objets.
 5. Le copilote utilise **POWER** pour son objet ramassé, réalise les gestes et répare avec le pilote. Oz gère seul l’activation des tangibles.
 6. Une sortie de piste immobilise la voiture. Maintenir les deux pads de réparation pour la remettre en jeu. La pause fige la course et les durées des effets.
 
@@ -42,7 +42,7 @@ Les boutons nommés **FANTÔME** et **DÉTRUIRE** ont été retirés de la zone 
 
 1. La voiture ramasse un objet lorsque son stock est vide. Son icône apparaît comme information dans le poste copilote.
 2. **Seul POWER du copilote de l’équipe propriétaire peut armer ce stock.** POWER adverse ne l’arme pas. Appuyer plusieurs fois ne prolonge pas la fenêtre.
-3. Pendant les **5 secondes** configurées, le geste correspondant est disponible sur la surface partagée : **3 doigts rapprochés** pour le lance-pierre, **2 doigts espacés de 100 à 400 px** pour le portail de boost.
+3. Pendant les **5 secondes** configurées, le geste correspondant est disponible sur la surface partagée : **3 doigts rapprochés, tirer l’un d’eux puis relâcher** pour le lance-pierre à élastique, **2 doigts espacés de 100 à 400 px** pour le portail de boost.
 4. L’armement est **neutre et volable** : le premier geste valide consomme l’objet armé du propriétaire, et l’effet appartient à l’équipe qui a exécuté le geste. Un lance-pierre volé peut donc toucher son ancien propriétaire ; un portail volé aide l’équipe qui l’a créé.
 5. Sans geste dans la fenêtre, l’objet est perdu, comme dans la règle précédente du prototype. Si deux stocks du même type sont armés, celui du poste le plus proche du geste est consommé. Un stock ne peut être consommé qu’une fois.
 
@@ -52,10 +52,12 @@ La table tactile ne reconnaît pas l’identité d’une personne : l’équipe 
 
 La barre de simulation apparaît avec une souris, ou avec `?sim=1`. Ramasser d’abord un objet avec la voiture, puis toucher **POWER** au poste copilote :
 
-- **Simuler 3 doigts** puis un clic vise le lance-pierre.
+- **Simuler lance-pierre** : maintenir le clic pour poser la fourche, tirer en arrière, puis relâcher. La trajectoire est prévisualisée et la pierre vole depuis la poche. En mode PC, ce geste est disponible directement dès qu’un lance-pierre est armé.
 - **Simuler 2 doigts** puis deux clics définissent le portail.
 
-Les simulations passent par les mêmes règles d’armement, de vol et de consommation que les gestes tactiles.
+Les simulations passent par les mêmes règles d’armement, de vol et de consommation que les gestes tactiles. Le lance-pierre conserve les paramètres de `main` : traction minimale de 40 px, portée croissante et dégâts de 100 HP.
+
+En course **PC uniquement**, la barre de test de la table conserve **Véhicules invincibles** et **Tous les objets utilisables**. Ces outils de développement restent ignorés en mode table et ne sont pas accessibles à Oz.
 
 ## Console Oz : uniquement les tangibles
 
@@ -78,10 +80,10 @@ Le jeu reçoit des **actions de jeu**, indépendantes des périphériques. `clie
 
 Un futur adaptateur mobile pourra convertir un gyroscope en direction normalisée `[-1, 1]` et utiliser la même interface, sans modifier la physique. Aucun contrôle mobile, appairage ni accès aux capteurs n’est implémenté à ce stade. Un futur lecteur de tangibles pourra envoyer les mêmes actions de configuration, dépôt, activation, déplacement et retrait qu’Oz, après ajout de son rôle de connexion.
 
-| Équipe | Direction clavier | POWER du copilote | Réparation des deux postes |
-|---|---|---|---|
-| Cyan | `Q` / `D` | `A` | maintenir `A` + `P` |
-| Rose | `←` / `→` | `M` | maintenir `M` + `C` |
+| Équipe | Direction clavier | Accélération en mode pédale | POWER du copilote | Réparation des deux postes |
+|---|---|---|---|---|
+| Cyan | `Q` / `D` | maintenir `Z` | `A` | maintenir `A` + `P` |
+| Rose | `←` / `→` | maintenir `↑` | `M` | maintenir `M` + `C` |
 
 Deux doigts proches saisissant le même bord de piste et glissant vers l’extérieur créent toujours une déformation locale temporaire. Les paramètres sont dans `config.json` ; relancer le serveur après modification.
 
@@ -90,6 +92,7 @@ Deux doigts proches saisissant le même bord de piste et glissant vers l’exté
 ```bash
 npm run typecheck
 npm run test:acceptance
+npm run test:gestures
 npm run test:network
 npm run build
 ```

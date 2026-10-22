@@ -16,6 +16,7 @@
     "start": "node dist/server/index.js",
     "typecheck": "tsc --noEmit",
     "test:acceptance": "tsx scripts/acceptance.ts",
+    "test:gestures": "tsx scripts/gestures.ts",
     "test:network": "tsx scripts/network-acceptance.ts"
   },
   "dependencies": {

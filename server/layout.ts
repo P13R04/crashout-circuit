@@ -43,6 +43,8 @@ export const padLocal = (role: Role) => (role === 'pilot' ? PAD_LOCAL_PILOT : PA
  * lifting their finger, while each half keeps the keyboard's full-turn feel.
  */
 export const STEER_AREA_LOCAL = { x: -215, y: 10, w: 240, h: 130 };
+/** Pedal shown only in manual-drive mode, held to accelerate. */
+export const PEDAL_LOCAL = { x: 95, y: 10, w: 100, h: 130 };
 export const POWER_BTN_LOCAL = { x: -162, y: 15, r: 44 };
 export const CHARGE_ZONE_LOCAL = { x: -43, y: 12, w: 118, h: 104 };
 
@@ -101,4 +103,27 @@ export function rotationTowardsTeam(team: Team, p: Vec2): number {
     if (d < bestD) { bestD = d; best = panel; }
   }
   return best.rot;
+}
+
+/**
+ * Free area of the table for the circuit centerline: between the two rows of corner
+ * panels, half a lane plus its wall away from the edges (R-22). The edges of the
+ * generated circuit therefore stay within y ∈ [215, 865].
+ */
+export const PLAY_AREA = { x0: 170, y0: 300, x1: 1750, y1: 780 };
+
+/** The two shared contacts of the divider are at least this far apart (context.md §5.2 step 1). */
+export const MIN_DIVIDER_PX = 360;
+
+export function inPlayArea(p: Vec2): boolean {
+  return p.x >= PLAY_AREA.x0 && p.x <= PLAY_AREA.x1 && p.y >= PLAY_AREA.y0 && p.y <= PLAY_AREA.y1;
+}
+
+export type DividerCheck = 'ok' | 'tooShort' | 'outOfZone';
+
+/** Single rule for the divider, used by the table (immediate message) and the server. */
+export function checkDivider(a: Vec2, b: Vec2): DividerCheck {
+  if (!inPlayArea(a) || !inPlayArea(b)) return 'outOfZone';
+  if (Math.hypot(b.x - a.x, b.y - a.y) < MIN_DIVIDER_PX) return 'tooShort';
+  return 'ok';
 }

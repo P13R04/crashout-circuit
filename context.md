@@ -9,6 +9,10 @@ Cette fiche est la **seule source de vérité**. Chaque règle porte un identifi
 
 ---
 
+## Évolution intégrée — console Oz (22 octobre 2026)
+
+La console Oz gère uniquement le placement, la rotation et l’activation des tangibles. POWER appartient au copilote et arme les objets ramassés, dont le geste est neutre et volable. Le lancement, la pause et les outils de test PC restent sur la table. Le mode pédale, le lance-pierre à élastique et la création guidée du circuit intégrés dans `main` sont conservés. Le [README](README.md) décrit ces commandes actuelles ; les passages historiques ci-dessous sur UTILISER côté pilote ou les secours Oz sont dépassés.
+
 ## 1. Résumé en 10 lignes
 
 - Jeu de course **2 équipes × 2 joueurs** sur une **table tactile 65"** posée à plat. Les deux équipes courent sur **le même circuit**.
@@ -25,7 +29,7 @@ Cette fiche est la **seule source de vérité**. Chaque règle porte un identifi
 |---|---|---|
 | D1 | Moteur | WebApp. Navigateur plein écran sur la table. Canvas 2D (PixiJS si besoin de perf) |
 | D2 | Serveur | Node.js + WebSocket, **autoritaire** sur la physique et les règles |
-| D3 | Pilotage | **Table, station fixe** : avance continue, bande de direction à deux zones franchissable + bouton d'action. Un tangible orienté pourra remplacer cette bande sans changer la logique [DÉCISION] |
+| D3 | Pilotage | **Table, station fixe** : un bouton central partagé bascule entre avance continue et pédale maintenue; bande de direction à deux zones franchissable + bouton d'action. Un tangible orienté pourra remplacer ces entrées sans changer la logique [DÉCISION] |
 | D4 | Tangibles | Magicien d'Oz via une console web séparée. Format d'événements TUIO (`id`, `x`, `y`, `angle`) |
 | D5 | Attribution des joueurs | On ne suit **jamais un doigt vers une personne**. L'équipe se déduit du contexte (zone, bouton d'équipe, objet armé par le Pilote) |
 | D6 | Réparation | Action synchrone: **Pilote et Copilote posent chacun un doigt sur leur pad de station** (table). Remplace la « réparation localisée » [DÉCISION] |
@@ -95,7 +99,7 @@ Chaque coin porte un **panneau HUD** orienté vers son joueur (voir §11).
 ## 5. Création de la carte
 
 ### 5.1 Principe
-Deux joueurs (un par équipe) posent d'abord deux contacts communs : leur ligne partage la table en deux moitiés. Chacun part de son extrémité, reste dans sa moitié, et rejoint l'autre extrémité. Le système complète et mélange les deux demi-tracés en un circuit unique.
+Un joueur de l'équipe cyan place P1, puis un joueur de l'équipe rose place P2 : leur ligne partage la table en deux moitiés. Le premier point persiste après le retrait du doigt et n'expire pas. Le cyan trace P1→P2, puis le rose trace P2→P1 après validation du cyan. L'ordre et le sens sont imposés côté client et serveur ; un trait accepté est verrouillé. N'importe quel joueur de chaque équipe peut participer. La table ne reconnaît pas les personnes : elle attribue les contacts selon l'étape affichée. Les deux demi-tracés forment un circuit unique, généré uniquement sur confirmation manuelle.
 
 Interprétation retenue de « ils se remplissent l'un l'autre »: chaque joueur remplit ses deux points, et le circuit final contient les deux contributions [?, à confirmer avec l'équipe].
 
@@ -103,18 +107,19 @@ Interprétation retenue de « ils se remplissent l'un l'autre »: chaque joueur 
 
 | Étape | Règle |
 |---|---|
-| 1. Ligne de partage | Deux contacts espacés d'au moins 360 px définissent les extrémités communes A et B. |
-| 2. Tracé | Un joueur trace A→B dans le demi-plan gauche de la ligne ; l'autre B→A dans le demi-plan droit. Tracé valide s'il touche les deux points (rayon 60 px), reste dans sa moitié avec une tolérance de 55 px et fait ≥ 300 px. |
-| 3. Nettoyage | Rééchantillonnage à pas constant, filtre 1€ contre le jitter |
-| 4. Autofill (fermeture) | Soit S le tracé et d(s) son décalage latéral par rapport à la droite P1P2. On force S du même côté de la droite (`d' = |d|`), avec amplitude max ≥ 150 px. Le **retour** R est le miroir de S par rapport à la droite, à l'échelle κ ∈ [0,6 ; 1,0] (tiré au hasard) → boucle fermée en forme de **haricot** |
-| 5. Mélange | Chaque boucle est orientée dans le sens anti-horaire et rééchantillonnée en N = 256 points. Le décalage d'indice de B qui minimise la distance totale à A est cherché (256 essais). Circuit final `C(i) = 0,5·A(i) + 0,5·B(i)` |
-| 6. Lissage | Spline Catmull-Rom **centripète** sur C |
+| 1. Ligne de partage | Deux contacts successifs : P1 cyan puis P2 rose, espacés d'au moins 360 px, tous deux dans la zone de jeu (x 170–1750, y 300–780). P1 persiste sans expiration. Un P2 trop proche ou hors zone est refusé **avec un message**, sans effacer P1. Même règle sur table et PC (`checkDivider`). |
+| 2. Tracé | Cyan P1→P2 dans le demi-plan gauche de la ligne, puis rose P2→P1 dans le demi-plan droit. Départ et dernier point dans les cercles visibles (rayon 95 px partagé entre rendu, gestes et serveur), longueur ≥ 150 px. Les tracés inversés sont refusés. La tolérance de côté existante reste de 40 % des points dans le demi-plan de l'équipe : le trait **peut** boucler sur lui-même ou franchir la ligne (circuit en 8). Un seul geste à la fois ; les tracés validés sont verrouillés. |
+| 3. Fermeture | Les deux demi-tracés, accrochés exactement aux deux points communs, forment **directement la boucle fermée** : le circuit est le dessin. |
+| 4. Amplitude | Le dessin est pris **tel quel**. Seulement si la boucle n'est pas roulable, les demi-tracés sont étirés latéralement **au minimum nécessaire** (90 → 150 px d'amplitude max, puis ×1,2 … ×2,2). Un petit écart de l'autre côté de la ligne (≤ 70 px) est replié (d' = \|d\|) ; un franchissement plus profond est conservé tel quel. |
+| 5. Nettoyage | Rééchantillonnage (4 px), lissage gaussien **sans retard** (σ = 7 px) contre le tremblement de la main seulement, puis 256 points. Pas de filtre 1€ ni de relaxation : ils décalent et rétrécissent le tracé. Résultat mesuré : à plus de 140 px des deux ancres, le circuit passe à ≈ 1 px du dessin. |
+| 6. Arrondi local | Seuls les virages trop serrés pour rouler (rayon < 50 px : les deux points d'ancrage, les épingles) sont arrondis par un raccord de Bézier tangent aux deux bras, choisi parmi plusieurs fenêtres/poignées pour **déplacer le dessin le moins possible** ; le reste du tracé n'est pas déplacé. Si le raccord ne suffit pas, lissage gaussien croissant par petits pas (σ 9 → 40 px). |
+| 6 bis. Cas limites | **Auto-croisements** : un croisement net (≥ 40°, boucle ≥ 350 px de long) est valide : le circuit est alors une piste en 8 / à boucle, avec un carrefour ouvert (la piste est « une seule surface », les murs sont omis au croisement, départ et checkpoints sont écartés du carrefour). Une boucle trop petite pour être roulée est agrandie autour de son point de croisement jusqu'à l'être. Si la boucle n'est pas valide telle quelle, l'amplitude est augmentée (×1,2 … ×2,2), puis le dessin est **lissé de plus en plus fort, par petits pas** (σ 48 → 380 px, taille d'origine restituée) jusqu'à donner une boucle simple et roulable ; au pire l'ellipse la mieux ajustée. Le mélange miroir A/B (R-06), la boucle A seule puis le circuit prédéfini ne servent que si tout cela échoue (pratiquement jamais). Un circuit prédéfini est **annoncé** avant « Lancer la course » (`track.preset`). |
 | 7. Largeur | Largeur de base 140 px, variable en fonction de la courbure (±30 px). Minimum 90 px (> 3× la largeur du véhicule) |
 | 8. Géométrie | Bords par la normale (mur extérieur magenta, mur intérieur cyan), colliders |
-| 9. Marquage | 8 checkpoints répartis, ligne de départ tirée parmi les portions rectilignes sûres, voitures côte à côte (±20 px de décalage latéral), 4 emplacements de pickups |
+| 9. Marquage | 8 checkpoints répartis, ligne de départ au premier point posé (P1), voitures côte à côte (±20 px de décalage latéral), 4 emplacements de pickups |
 
 ### 5.3 Validations
-Rayon de courbure minimal · largeur > gabarit véhicule · pas d'auto-intersection · pas de passage impossible · zone rectiligne pour le départ.
+Rayon de courbure minimal · largeur > gabarit véhicule · pas de nœud ni de croisement rasant (une auto-intersection nette est permise) · pas de passage impossible hors carrefour · départ et checkpoints hors carrefour.
 **R-06** Si une validation échoue: relancer le mélange avec poids 0,4 puis 0,6; si encore en échec, utiliser la boucle A seule. L'opérateur Oz peut aussi forcer un circuit de secours.
 
 Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'est que **deux personnes dessinent en même temps sur le même espace**.
@@ -129,6 +134,8 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 |---|---|---|
 | Direction gauche | Moitié gauche de la bande fixe pilote, maintenue et franchissable | `steer = -1` |
 | Direction droite | Moitié droite de la bande fixe pilote, maintenue et franchissable | `steer = 1` |
+| Pédale | Maintien sur la pédale du panneau pilote, seulement en mode PÉDALE | `throttle = 1`; relâchement = `throttle = 0` |
+| Mode de conduite | Bouton central, partagé par la partie, disponible pendant la course | alterne `auto` / `pedal` |
 | Bouton d'objet | Appui | `UseItem` (arme l'objet en stock) |
 
 ### 6.2 Véhicule (modèle simple)
@@ -136,7 +143,9 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 | Paramètre | Valeur par défaut |
 |---|---|
 | Vitesse max avant | 260 px/s [EST] |
-| Frein / marche arrière | Aucun : avance continue [DÉCISION] |
+| Vitesse max en mode PÉDALE | 190 px/s [EST] |
+| Frein / marche arrière | Aucun [DÉCISION] |
+| Ralentissement sans pédale | 260 px/s² [EST] jusqu'à l'arrêt |
 | Accélération | 320 px/s² [EST] |
 | Vitesse de rotation max | 2,8 rad/s [EST] |
 | Gabarit | 24 × 14 px |
@@ -151,7 +160,7 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 |---|---|---|
 | Mur (poteau seul) | −10, puis 1 s d'invulnérabilité | Rebond |
 | Arc électrique | −10 par franchissement | Vitesse ×0,5 pendant 1,5 s |
-| Pierre du lance-pierre | −25 | Étourdissement 1 s |
+| Pierre du lance-pierre | −100 (une voiture à pleine santé est mise hors d'usage) | Étourdissement 1 s |
 
 **R-09** Les éléments d'une équipe n'affectent jamais sa propre voiture (pas de tir ami). Ils sont affichés semi-transparents pour elle.
 **R-10** À **HP = 0**, le véhicule est **hors d'usage**: il s'arrête et ne répond plus au Pilote, jusqu'à la réparation synchrone (§7.4).
@@ -164,7 +173,7 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 
 | ID | Action | Déclencheur | Entrée | Prio |
 |---|---|---|---|---|
-| C-01 | Lance-pierre | Objet **ramassé + armé** par le Pilote | 3 doigts sur la table | P1 |
+| C-01 | Lance-pierre | Objet **ramassé + armé** par le Pilote | 3 doigts : 2 appuis + 1 doigt tiré en arrière | P1 |
 | C-02 | Boost (portail de vitesse) | Objet **ramassé + armé** par le Pilote | 2 doigts sur la piste | P1 |
 | C-03 | Fantôme | **Indépendant** (recharge) | Bouton du panneau Copilote | P1 |
 | C-04 | Destruction de mur | **Indépendant** (recharge) | Bouton + toucher un mur adverse | P1 |
@@ -182,8 +191,10 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 ### 7.3 Détail des actions
 
 **C-01 Lance-pierre**
-- Geste: **3 doigts** posés ensemble (cluster ≤ 150 px) sur un point de la table, centre = point visé.
-- Effet: après un **délai de signalement 0,8 s**, une pierre frappe ce point. Un cercle rouge d'avertissement est affiché pendant ce délai, orienté vers le joueur adverse le plus proche (l'adversaire peut esquiver).
+- Geste: **3 doigts** posés ensemble (cluster ≤ 150 px). **Deux appuis** forment la fourche ; le doigt qui s'en éloigne est la **poche** de l'élastique. Il est tiré vers l'arrière puis relâché (le premier doigt levé déclenche le tir). L'ordre de pose ne désigne aucun rôle : tant qu'aucun doigt ne s'est nettement éloigné (≥ 14 px et ≥ 1,5× chacun des deux autres), aucun rôle n'est affiché ; un doigt qui a simplement glissé à la pose perd le rôle de poche dès qu'un autre est tiré bien plus loin. Un contact annulé (`pointercancel`) ne tire pas. Un élastique est tracé entre les trois contacts, avec la ligne de vol et la zone d'atterrissage en aperçu.
+- Direction: la pierre part de la poche, **à l'opposé de la traction**, et passe par le milieu de la fourche.
+- Portée (fonction continue de la traction): de 220 px (traction 40 px, minimum) à 900 px (traction 260 px, maximum) au-delà de la fourche. Une traction plus courte que 40 px ne tire pas et laisse l'objet armé. Le point d'atterrissage reste dans la table.
+- Effet: la pierre est **visible en vol** pendant **0,8 s**, puis frappe le point d'atterrissage. Un cercle rouge d'avertissement y est affiché pendant le vol, orienté vers le joueur adverse le plus proche (l'adversaire peut esquiver).
 - Rayon d'impact 60 px [EST]. Touche uniquement la voiture adverse. Dégâts: voir R-08.
 
 **C-02 Boost (portail de vitesse)**
@@ -370,12 +381,12 @@ Affectation exacte des icônes de la maquette aux boutons: à régler au moment 
 
 | ID | Critère |
 |---|---|
-| T-01 | Deux joueurs tracent simultanément; un circuit valide est produit en < 3 s |
+| T-01 | Deux joueurs placent P1 cyan puis P2 rose et tracent successivement cyan P1→P2 puis rose P2→P1 ; l'ordre et le sens sont bloquants ; après confirmation, un circuit valide est produit en < 3 s |
 | T-02 | Un Pilote conduit via QR code sans installation; latence < 80 ms |
 | T-03 | Un mur adverse retire 10 HP, avec 1 s d'invulnérabilité |
 | T-04 | Deux poteaux alliés génèrent un arc électrique; la voiture adverse perd 10 HP et ralentit |
 | T-05 | Un objet armé sans geste du Copilote dans les 5 s est perdu |
-| T-06 | Le lance-pierre à 3 doigts affiche un avertissement 0,8 s avant l'impact |
+| T-06 | Le lance-pierre (2 appuis + 1 doigt tiré) lance une pierre visible ; l'avertissement est affiché 0,8 s avant l'impact et la portée croît avec la traction |
 | T-07 | Le portail de boost est plus fort quand ses extrémités sont plus écartées |
 | T-08 | Le Fantôme permet de traverser murs et arcs adverses 3 s, puis recharge de 20 s |
 | T-09 | La réparation ne s'enclenche que si **les deux** doigts sont sur leur pad |
@@ -391,7 +402,7 @@ Affectation exacte des icônes de la maquette aux boutons: à régler au moment 
 | `lapsToWin` | 3 |
 | `sessionMaxSeconds` | 300 |
 | `hpMax` | 100 |
-| `dmgWall` / `dmgArc` / `dmgStone` | 10 / 10 / 25 |
+| `dmgWall` / `dmgArc` / `dmgStone` | 10 / 10 / 100 |
 | `invulnAfterHitS` | 1 |
 | `stunStoneS` | 1 |
 | `arcSlowFactor` / `arcSlowS` | 0,5 / 1,5 |
@@ -404,7 +415,7 @@ Affectation exacte des icônes de la maquette aux boutons: à régler au moment 
 | `destroyDisableS` / `destroyCooldownS` | 10 / 15 |
 | `wallLengthPx` / `arcMaxDistPx` | 120 / 500 |
 | `trackWidthBasePx` / `trackWidthMinPx` | 140 / 90 |
-| `vMaxFwd` / `accel` / `turnRate` / gain direction / expiration d'entrée | 260 / 320 / 2,8 / 1,12 / 250 ms |
+| `vMaxFwd` / `vMaxPedal` / `accel` / `turnRate` / gain direction / expiration d'entrée | 260 / 190 / 320 / 2,8 / 1,12 / 250 ms |
 
 Tout est **[EST]**, à régler pendant les tests utilisateurs.
 
@@ -440,7 +451,7 @@ Tout est **[EST]**, à régler pendant les tests utilisateurs.
 
 ## 17. Hypothèses à valider par l'équipe
 
-1. Les deux créateurs de carte sont **les Copilotes** (§5.1).
+1. **Confirmé le 19 octobre 2026** : n'importe quel joueur de chaque équipe peut créer la carte ; placement et tracés suivent l'ordre cyan puis rose (§5.1).
 2. Interprétation du « remplissage mutuel » et du « mélange » des deux circuits (§5.1, §5.2 étape 5).
 3. Les équipes sont installées sur les deux **grands côtés** de la table (§3).
 4. Le Pilote a **un doigt sur la table** (pad) en plus de son smartphone pour la réparation (C-06).
