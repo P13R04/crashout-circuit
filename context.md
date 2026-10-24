@@ -323,6 +323,8 @@ Un opérateur humain hors du champ de vision des joueurs simule la reconnaissanc
 | Table → serveur | `BoostGate` | `a{x,y}`, `b{x,y}` |
 | Table → serveur | `Ability` | `team`, `kind` (`ghost`/`destroy`), `targetId?` |
 | Table → serveur | `BorderPull` (P2) | `x`, `y`, `dx`, `dy` |
+| Table → serveur | `StartTutorial` | `mode?` (`table`/`pc`, déduit du pointeur) |
+| Table → serveur | `TutorialSkip` | `team` |
 | Oz → serveur | `TangibleMoved` | `id`, `x`, `y`, `angle` |
 | Oz → serveur | `TangibleRemoved` | `id` |
 | Oz → serveur | `OzTrigger` | `kind`, `params` (secours) |
