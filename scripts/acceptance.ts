@@ -16,6 +16,8 @@ import { nearestOnTrack, slingshotShot } from '../server/geometry.js';
 import { mock } from 'node:test';
 import { GestureRecognizer } from '../client-table/GestureRecognizer.js';
 import { createView } from '../client-table/view.js';
+import { START_TUTORIAL_BUTTON } from '../client-table/Renderer.js';
+import { TUTORIAL_END_BUTTON, tutorialSkipCenter } from '../client-table/TutorialOverlay.js';
 
 const queue: Array<{ name: string; fn?: () => void | Promise<void> }> = [];
 function test(name: string, fn: () => void | Promise<void>): void { queue.push({ name, fn }); }
@@ -912,6 +914,38 @@ test('the tutorial is only started from the lobby and a reset leaves a normal ga
   r.state.phase = 'RACE';
   r.advance(3100);
   assert.equal(r.state.phase, 'RESULT', 'a normal race ends again');
+});
+
+test('tutorial buttons on the table: lobby entry picks the mode from the pointer, SKIP is per team, the end screen goes home', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  try {
+    const centre = (b: { x: number; y: number; w: number; h: number }) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+    const c = tableClient('table');
+    const state = c.view.state!;
+    state.phase = 'LOBBY';
+    c.down(1, centre(START_TUTORIAL_BUTTON), 'touch'); c.up(1, centre(START_TUTORIAL_BUTTON));
+    c.down(2, centre(START_TUTORIAL_BUTTON), 'mouse'); c.up(2, centre(START_TUTORIAL_BUTTON));
+    assert.deepEqual(c.sent.map(m => [m.type, m.mode]), [['StartTutorial', 'table'], ['StartTutorial', 'pc']]);
+
+    state.phase = 'RACE';
+    const at = tutorialSkipCenter('A');
+    c.down(3, at); c.up(3, at);
+    assert.equal(c.sent.filter(m => m.type === 'TutorialSkip').length, 0, 'no tutorial, no button: the touch is an ordinary one');
+    state.tutorial = { steps: ['steer', 'pedal'], teams: { A: { step: 0, sub: 0 }, B: { step: 1, sub: 0 } }, finished: false };
+    for (const team of ['A', 'B'] as Team[]) {
+      const p = tutorialSkipCenter(team);
+      c.down(4, p); c.up(4, p);
+    }
+    assert.deepEqual(c.sent.filter(m => m.type === 'TutorialSkip').map(m => m.team), ['A', 'B']);
+    assert.ok(tutorialSkipCenter('A').y > 540 && tutorialSkipCenter('B').y < 540, 'each banner is on its own side of the table');
+    state.tutorial.teams.B.step = 2; // team B has nothing left to skip
+    const before = c.sent.length;
+    c.down(5, tutorialSkipCenter('B')); c.up(5, tutorialSkipCenter('B'));
+    assert.equal(c.sent.slice(before).filter(m => m.type === 'TutorialSkip').length, 0);
+    state.tutorial.finished = true;
+    c.down(6, centre(TUTORIAL_END_BUTTON)); c.up(6, centre(TUTORIAL_END_BUTTON));
+    assert.equal(c.sent.at(-1)!.type, 'NewGame');
+  } finally { mock.timers.reset(); }
 });
 
 // ─── Pylons: T-03, T-04, T-10 ────────────────────────────────────────────────

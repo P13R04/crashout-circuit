@@ -11,6 +11,7 @@ import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PANELS, PLAY_AREA } from '..
 import { HUD, drawItemIcon } from './HUD.js';
 import { TEAM_COLOR, TEAM_NAME, type View, type SlingPreview } from './view.js';
 import { activeMapTeam, inMapAnchor, MAP_ANCHOR_RADIUS } from '../server/mapCreation.js';
+import { drawTutorial } from './TutorialOverlay.js';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -19,8 +20,9 @@ const ARC_YELLOW = '#ffe14a';
 const OUTER_COLOR = '#ff2bd6'; // magenta outer wall
 const INNER_COLOR = '#00e5ff'; // cyan inner wall
 
-export const START_TABLE_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 82, w: 520, h: 72 };
-export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 20, w: 520, h: 72 };
+export const START_TABLE_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 112, w: 520, h: 72 };
+export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 24, w: 520, h: 72 };
+export const START_TUTORIAL_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 64, w: 520, h: 72 };
 export const RESULT_BUTTON = { x: LOGICAL_W / 2 - 200, y: LOGICAL_H / 2 - 45, w: 400, h: 90 };
 export const PAUSE_BUTTON = { x: LOGICAL_W / 2 - 58, y: 14, w: 116, h: 38 };
 export const DRIVE_MODE_BUTTON = { x: LOGICAL_W / 2 - 120, y: 58, w: 240, h: 38 };
@@ -65,6 +67,7 @@ export class Renderer {
     this.drawSling(ctx, state, view.sling);
     this.hud.draw(ctx, state, view);
     this.drawDisabledAlerts(ctx, state);
+    drawTutorial(ctx, state, now, DRIVE_MODE_BUTTON);
     if (state.phase === 'READY') this.drawRaceReady(ctx, state);
     if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); this.drawDriveModeButton(ctx, state); }
     if (state.phase === 'PAUSED') { this.drawPauseButton(ctx, 'REPRENDRE'); this.drawPaused(ctx); }
@@ -123,6 +126,7 @@ export class Renderer {
     for (const [button, label, detail, color] of [
       [START_TABLE_BUTTON, 'JOUER SUR TABLE', 'Points et tracés : cyan d’abord, puis rose', '#00e5ff'],
       [START_PC_BUTTON, 'MODE PC · SÉQUENTIEL', 'clics et demi-tracés l’un après l’autre', '#ff4081'],
+      [START_TUTORIAL_BUTTON, 'TUTORIEL', 'chaque geste, pas à pas, sur un circuit prêt', '#ffd400'],
     ] as const) {
       ctx.fillStyle = `${color}22`; ctx.strokeStyle = color === '#00e5ff' ? `rgba(0,229,255,${0.6 + 0.4 * pulse})` : color;
       ctx.lineWidth = 3; ctx.beginPath(); ctx.roundRect(button.x, button.y, button.w, button.h, 16); ctx.fill(); ctx.stroke();
@@ -585,7 +589,7 @@ export class Renderer {
           ctx.beginPath(); ctx.arc(0, 0, 30 + 60 * k, 0, Math.PI * 2); ctx.fill();
           break;
         }
-        case 'repairDone': {
+        case 'repairDone': case 'tutorialStep': {
           ctx.strokeStyle = '#3ddc84'; ctx.lineWidth = 6; ctx.shadowColor = '#3ddc84'; ctx.shadowBlur = 16;
           ctx.beginPath(); ctx.arc(0, 0, 20 + 70 * k, 0, Math.PI * 2); ctx.stroke();
           break;
@@ -672,6 +676,7 @@ export class Renderer {
       ctx.restore();
       return;
     }
+    if (state.tutorial) return; // no laps and no clock in the tutorial
     // Lap counters in the centre top/bottom, readable from both sides
     const total = state.params.lapsToWin;
     const remaining = Math.max(0, state.params.sessionMaxSeconds - (now - state.sessionStartAt) / 1000);

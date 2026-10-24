@@ -26,7 +26,8 @@ import {
   insidePanel, nearestStationTeam, checkDivider, inPlayArea, type Role,
 } from '../server/layout.js';
 import { nearestOnTrack, slingshotShot } from '../server/geometry.js';
-import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
+import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
+import { tutorialButtonAt } from './TutorialOverlay.js';
 import { showDividerRefusal, showMapError, showMapNotice, type View } from './view.js';
 import { activeMapTeam, inMapAnchor, mapEndpointError } from '../server/mapCreation.js';
 
@@ -167,6 +168,10 @@ export class GestureRecognizer {
       if (hit(START_TABLE_BUTTON) || hit(START_PC_BUTTON)) {
         c.zone = 'result';
         this.send({ type: 'StartGame', mode: hit(START_PC_BUTTON) ? 'pc' : 'table' });
+      } else if (hit(START_TUTORIAL_BUTTON)) {
+        // A mouse means a PC session (keyboard + click stand-ins), anything else the table
+        c.zone = 'result';
+        this.send({ type: 'StartTutorial', mode: e.pointerType === 'mouse' ? 'pc' : 'table' });
       } else c.zone = 'rejected';
       return;
     }
@@ -219,6 +224,14 @@ export class GestureRecognizer {
       }
     }
     if (state.phase !== 'RACE') { c.zone = 'rejected'; return; }
+
+    // 2b — tutorial: skip a lesson, or leave once everybody is done
+    const tutorialButton = tutorialButtonAt(state, p);
+    if (tutorialButton) {
+      c.zone = 'result';
+      this.send(tutorialButton.kind === 'skip' ? { type: 'TutorialSkip', team: tutorialButton.team } : { type: 'NewGame' });
+      return;
+    }
 
     // 3 — pads and buttons of the corner panels
     for (const panel of PANELS) {

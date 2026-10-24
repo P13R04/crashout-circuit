@@ -74,7 +74,8 @@ testItems.addEventListener('click', () =>
 function syncTestBar(): void {
   const st = view.state;
   const racing = st?.phase === 'RACE' || st?.phase === 'PAUSED';
-  testBar.classList.toggle('on', st?.mapMode === 'pc' && racing);
+  // The tutorial needs the real item rules: no free items, no invincibility switch
+  testBar.classList.toggle('on', st?.mapMode === 'pc' && racing && !st.tutorial);
   simBar.classList.toggle('on', showSimulation && racing);
   testInvincible.classList.toggle('active', !!st?.testMode.invincible);
   testItems.classList.toggle('active', !!st?.testMode.allItems);
