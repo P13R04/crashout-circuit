@@ -1,7 +1,8 @@
 /**
  * GameRules — everything that changes the game state in response to a message
  * or a timer: MAP strokes, pickups and arming, slingshot, boost gates, abilities,
- * tangible lifecycle, synchronous repair, border pull, PC test switches, victory.
+ * tangible lifecycle, synchronous repair, border pull, PC test switches, victory,
+ * and the guided tutorial (progression in Tutorial.ts, this class forwards the events).
  *
  * Vehicle motion and collisions live in PhysicsLoop; this class is driven by it
  * (`expire`, `afterMove`, `updateStones`, `updateRepair`, `checkEnd`, `tickMap`).
@@ -17,6 +18,7 @@ import { dist, distToSegment, nearestOnTrack, segmentsIntersect, slingshotShot, 
 import { generate, generatePreset, validateStroke, rebuildEdges } from './MapGenerator.js';
 import { nearestStationTeam, LOGICAL_W, checkDivider, chargeZoneTeam, insidePanel, panelOf, localToWorld, CHARGE_ZONE_LOCAL } from './layout.js';
 import { activeMapTeam, mapEndpointError } from './mapCreation.js';
+import { Tutorial, TUTORIAL_ARM_WINDOW_S, TUTORIAL_PICKUP_RESPAWN_S, TUTORIAL_OBSTACLE_PREFIX } from './Tutorial.js';
 
 export const CAR_RADIUS = 10;
 export const WALL_HALF_THICKNESS = 4;
@@ -106,6 +108,7 @@ export function createInitialState(): GameState {
     trackVersion: 0,
     tangibles: {},
     testMode: { invincible: false, allItems: false },
+    tutorial: null,
     params: {
       hpMax: config.hpMax,
       lapsToWin: config.lapsToWin,
@@ -152,6 +155,7 @@ export class GameRules {
   private pausedAt = 0;
   private deformCounter = 0;
   private rng: () => number;
+  private tutorial: Tutorial | null = null;
 
   constructor(
     private state: GameState,
@@ -160,10 +164,24 @@ export class GameRules {
     rng: () => number = Math.random,
   ) {
     this.rng = rng;
+    // A tutorial lesson is done by the very event the clients are told about.
+    const base = host;
+    this.host = {
+      ...base,
+      feedback: (kind, x, y, team) => {
+        base.feedback(kind, x, y, team);
+        this.tutorial?.onFeedback(kind, team);
+      },
+    };
   }
 
   private get now(): number {
     return this.clock();
+  }
+
+  /** How long a pickup stays armed: learners get longer than the real rule. */
+  private get armWindowMs(): number {
+    return (this.state.tutorial ? TUTORIAL_ARM_WINDOW_S : config.armWindowS) * 1000;
   }
 
   private nextId(prefix: string): string {
@@ -328,10 +346,48 @@ export class GameRules {
     this.host.broadcastFull();
   }
 
+  /**
+   * Guided session on the predefined circuit: the race phase, but each team follows
+   * its own lessons (Tutorial.ts), nobody wins and nothing costs HP. `mode` only tells
+   * the table whether a mouse (PC) or fingers (table) are used.
+   */
+  startTutorial(mode: 'table' | 'pc' = 'table'): void {
+    const s = this.state;
+    if (s.phase !== 'LOBBY') return;
+    s.mapMode = mode;
+    s.params.armWindowS = TUTORIAL_ARM_WINDOW_S;
+    this.tutorial = new Tutorial(s, {
+      now: () => this.now,
+      breakDown: (team) => {
+        const car = s.cars[team];
+        car.hp = 0;
+        car.disabled = true;
+        car.speed = 0;
+        car.velocity = { x: 0, y: 0 };
+        this.host.feedback('carDisabled', car.pos.x, car.pos.y, team);
+      },
+      restore: (team) => {
+        const car = s.cars[team];
+        car.disabled = false;
+        car.stunUntil = 0;
+        car.invulnUntil = this.now + config.invulnAfterHitS * 1000;
+        this.respawnAtCheckpoint(car);
+        s.repairProgress[team] = 0;
+      },
+      feedback: (kind, x, y, team) => this.host.feedback(kind, x, y, team),
+    }, mode);
+    this.startRace(generatePreset());
+  }
+
+  tutorialSkip(team: Team): void {
+    if (this.state.phase === 'RACE' && (team === 'A' || team === 'B')) this.tutorial?.skip(team);
+  }
+
   /** PC-only test switches: ignored unless the session was started in PC mode. */
   onTestToggle(msg: TestToggleMsg): void {
     const s = this.state;
-    if (s.mapMode !== 'pc') return;
+    // The lessons need the real item rules: no free items, no invincibility switch
+    if (s.mapMode !== 'pc' || s.tutorial) return;
     if (msg.flag !== 'invincible' && msg.flag !== 'allItems') return;
     s.testMode[msg.flag] = !!msg.on;
     if (msg.flag === 'allItems' && !msg.on) {
@@ -391,6 +447,9 @@ export class GameRules {
     s.mapStrokes = { A: false, B: false };
     s.mapMode = null;
     s.testMode = { invincible: false, allItems: false };
+    s.tutorial = null;
+    this.tutorial = null;
+    s.params.armWindowS = config.armWindowS;
     s.mapDeadline = 0;
     this.generating = false;
     this.strokes = { A: null, B: null };
@@ -420,6 +479,7 @@ export class GameRules {
       steer: steer * config.steerGain,
     };
     this.lastPilotInputAt[team] = this.now;
+    if (this.now >= this.state.sessionStartAt) this.tutorial?.onPilotInput(team, steer, this.inputs[team].throttle);
   }
 
   /** Shared central control: cars either drive continuously or require a held pedal. */
@@ -427,6 +487,7 @@ export class GameRules {
     if (this.state.phase !== 'RACE') return;
     this.state.driveMode = this.state.driveMode === 'auto' ? 'pedal' : 'auto';
     for (const team of TEAMS) this.inputs[team].throttle = 0;
+    this.tutorial?.onDriveMode();
     this.host.broadcastFull();
   }
 
@@ -443,7 +504,7 @@ export class GameRules {
     const car = this.state.cars[team];
     if (car.heldItem !== null && !car.itemArmed) {
       car.itemArmed = true;
-      car.itemArmExpiry = this.now + config.armWindowS * 1000;
+      car.itemArmExpiry = this.now + this.armWindowMs;
       this.host.feedback('itemArmed', car.pos.x, car.pos.y, team);
     }
   }
@@ -629,6 +690,7 @@ export class GameRules {
 
   damage(car: Car, amount: number, now: number): void {
     if (car.disabled || this.state.testMode.invincible) return;
+    if (this.state.tutorial) amount = 0; // lessons show the hit, never its cost
     car.hp = Math.max(0, car.hp - amount);
     this.host.feedback('hit', car.pos.x, car.pos.y, car.team);
     if (car.hp === 0) {
@@ -644,7 +706,7 @@ export class GameRules {
   fallOffTrack(team: Team, now: number): void {
     const car = this.state.cars[team];
     if (car.disabled) return;
-    if (this.state.testMode.invincible) {
+    if (this.state.testMode.invincible || this.state.tutorial) {
       // Invincible: the fall costs nothing, the car is simply put back on the track
       this.respawnAtCheckpoint(car);
       this.host.feedback('fall', car.pos.x, car.pos.y, team);
@@ -730,7 +792,7 @@ export class GameRules {
     const s = this.state;
     const oldDisabled = new Map([...s.walls, ...s.arcs].map(w => [w.id, w.disabledUntil]));
     s.walls = s.walls.filter(w => w.expiresAt);
-    s.arcs = [];
+    s.arcs = s.arcs.filter(a => a.id.startsWith(TUTORIAL_OBSTACLE_PREFIX));
     const px = (t: { x: number; y: number }): Vec2 => ({ x: t.x * config.logicalWidth, y: t.y * config.logicalHeight });
     for (const [id, t] of Object.entries(s.tangibles)) {
       if (t.status !== 'placed' || !t.active || t.kind !== 'wall') continue;
@@ -751,6 +813,7 @@ export class GameRules {
         s.arcs.push({ id, team, pylon1: px(p1), pylon2: px(p2), disabledUntil: oldDisabled.get(id) ?? 0 });
       }
     }
+    this.tutorial?.onTangibles();
   }
 
   /** Wall as a segment: centre ± direction·length/2 (angle in degrees). */
@@ -905,6 +968,7 @@ export class GameRules {
         this.host.feedback('itemLost', car.pos.x, car.pos.y, team);
       }
     }
+    this.tutorial?.tick();
   }
 
   /** Pickups, boost gates, hostile elements and checkpoints after a car moved. */
@@ -918,8 +982,8 @@ export class GameRules {
     if (car.heldItem === null) {
       for (const p of s.pickups) {
         if (p.respawnAt === 0 && dist(car.pos, p.pos) <= PICKUP_RADIUS) {
-          car.heldItem = p.kind;
-          p.respawnAt = now + config.pickupRespawnS * 1000;
+          car.heldItem = this.tutorial?.forcedItem(team) ?? p.kind;
+          p.respawnAt = now + (s.tutorial ? TUTORIAL_PICKUP_RESPAWN_S : config.pickupRespawnS) * 1000;
           this.host.feedback('pickup', p.pos.x, p.pos.y, team);
           break;
         }
@@ -950,6 +1014,7 @@ export class GameRules {
           this.damage(car, config.dmgWall, now);
           car.invulnUntil = now + config.invulnAfterHitS * 1000;
           this.bounceOffSegment(car, a, b);
+          this.tutorial?.onObstacleHit(team, 'wall');
           break;
         }
       }
@@ -961,6 +1026,7 @@ export class GameRules {
             car.invulnUntil = now + config.invulnAfterHitS * 1000;
             car.slowUntil = now + config.arcSlowS * 1000;
             car.speed *= config.arcSlowFactor;
+            this.tutorial?.onObstacleHit(team, 'arc');
             break;
           }
         }
@@ -1017,7 +1083,7 @@ export class GameRules {
 
   checkEnd(now: number): void {
     const s = this.state;
-    if (s.phase !== 'RACE' || now < s.sessionStartAt) return;
+    if (s.phase !== 'RACE' || s.tutorial || now < s.sessionStartAt) return;
     const progress = (c: Car) => c.lap * 8 + c.checkpointIndex;
     let winner: Team | 'draw' | null = null;
     for (const t of TEAMS) if (s.cars[t].lap >= config.lapsToWin) { winner = t; break; }

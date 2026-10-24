@@ -112,7 +112,23 @@ try {
   await table.until(s => s.cars.A.itemArmed);
   table.send({ type: 'NewGame' });
   await table.until(s => s.phase === 'LOBBY' && Object.keys(s.tangibles).length === 0);
-  console.log('✓ Network: role boundaries, copilot POWER, Oz restricted to tangibles, autonomous pickups, theft, reconnect and reset');
+
+  // Guided tutorial: only the table starts it and skips lessons; the state reaches every client
+  const ozAgain = await client('oz');
+  ozAgain.send({ type: 'StartTutorial', mode: 'table' });
+  await ozAgain.flush(); assert.equal(game.getState().phase, 'LOBBY', 'Oz cannot start the tutorial');
+  table.send({ type: 'StartTutorial', mode: 'pc' });
+  const started = await ozAgain.until(s => s.phase === 'RACE' && s.tutorial !== null);
+  assert.equal(started.mapMode, 'pc');
+  assert.ok(started.track?.preset);
+  ozAgain.send({ type: 'TutorialSkip', team: 'A' });
+  await ozAgain.flush(); assert.equal(game.getState().tutorial!.teams.A.step, 0, 'Oz cannot skip a lesson');
+  table.send({ type: 'TutorialSkip', team: 'A' });
+  await ozAgain.until(s => s.tutorial?.teams.A.step === 1);
+  assert.equal(game.getState().tutorial!.teams.B.step, 0, 'lessons are independent per team');
+  table.send({ type: 'NewGame' });
+  await ozAgain.until(s => s.phase === 'LOBBY' && s.tutorial === null);
+  console.log('✓ Network: role boundaries, copilot POWER, Oz restricted to tangibles, autonomous pickups, theft, reconnect, reset and tutorial');
 } finally {
   game.physics.stop();
   for (const ws of clients) ws.terminate();

@@ -367,10 +367,10 @@ function tableClient(mode: 'table' | 'pc') {
   view.state = state;
   const sent: Array<{ type: string } & Record<string, unknown>> = [];
   const gestures = new GestureRecognizer(canvas, view, m => sent.push(m));
-  const ev = (id: number, p: Vec2, type: string) => ({ type, pointerId: id, clientX: p.x, clientY: p.y, timeStamp: 0, preventDefault() {} });
+  const ev = (id: number, p: Vec2, type: string, pointerType = 'touch') => ({ type, pointerId: id, clientX: p.x, clientY: p.y, pointerType, timeStamp: 0, preventDefault() {} });
   return {
     view, sent, gestures,
-    down: (id: number, p: Vec2) => handlers.pointerdown(ev(id, p, 'pointerdown')),
+    down: (id: number, p: Vec2, pointerType?: string) => handlers.pointerdown(ev(id, p, 'pointerdown', pointerType)),
     move: (id: number, p: Vec2) => handlers.pointermove(ev(id, p, 'pointermove')),
     up: (id: number, p: Vec2) => handlers.pointerup(ev(id, p, 'pointerup')),
     cancel: (id: number, p: Vec2) => handlers.pointercancel(ev(id, p, 'pointercancel')),
@@ -633,6 +633,285 @@ test('timeout → RESULT, leader wins', () => {
   r.advance(50);
   assert.equal(r.state.phase, 'RESULT');
   assert.equal(r.state.winner, 'A');
+});
+
+// ─── Tutorial (issue #32) ────────────────────────────────────────────────────
+
+section('Tutorial · independent lessons validated by real events');
+function tutorialRig(mode: 'table' | 'pc' = 'table'): Rig {
+  const r = rig();
+  r.rules.startTutorial(mode);
+  r.advance(3100);
+  return r;
+}
+const lesson = (r: Rig, team: Team) => r.state.tutorial!.steps[r.state.tutorial!.teams[team].step];
+/** Skip the lessons of `team` until `id` is the current one. */
+function skipTo(r: Rig, team: Team, id: string): void {
+  for (let guard = 0; lesson(r, team) !== id; guard++) {
+    assert.ok(guard < 20, `lesson ${id} not reached`);
+    r.rules.tutorialSkip(team);
+  }
+}
+/** Move a car in one step, as if it had just driven there, and run the per-move rules. */
+function driveTo(r: Rig, team: Team, to: Vec2): void {
+  const car = r.state.cars[team];
+  const prev = { ...car.pos };
+  car.pos = { x: to.x, y: to.y };
+  r.rules.afterMove(team, prev, r.clock.now);
+}
+const pilot = (r: Rig, team: Team, steer: number, throttle = 1) =>
+  r.rules.onPilotInput(team, msg({ type: 'PilotInput' as const, team, throttle, steer }));
+
+test('the tutorial is a race on the preset circuit with nothing at stake', () => {
+  const r = tutorialRig();
+  assert.equal(r.phases.at(-1), 'RACE');
+  assert.equal(r.state.track?.preset, true);
+  assert.deepEqual(r.state.tutorial!.teams, { A: { step: 0, sub: 0 }, B: { step: 0, sub: 0 } });
+  assert.equal(r.state.tutorial!.finished, false);
+  assert.equal(r.state.params.armWindowS, 12, 'learners get a longer arming window');
+  // the end of a race never interrupts a lesson
+  r.state.cars.A.lap = config.lapsToWin;
+  r.state.sessionStartAt = r.clock.now - config.sessionMaxSeconds * 1000 - 1;
+  r.advance(100);
+  assert.equal(r.state.phase, 'RACE');
+  assert.equal(r.state.winner, null);
+  // hits are shown, they never cost HP; a fall puts the car back on the road
+  r.rules.damage(r.state.cars.A, 50, r.clock.now);
+  assert.equal(r.state.cars.A.hp, config.hpMax);
+  assert.ok(r.feedback.includes('hit'));
+  r.rules.fallOffTrack('A', r.clock.now);
+  assert.equal(r.state.cars.A.disabled, false);
+  assert.ok(r.feedback.includes('fall'));
+});
+
+test('the PC test switches stay off in the tutorial; a mouse gets no two-finger border pull lesson', () => {
+  const pc = tutorialRig('pc');
+  assert.equal(pc.state.mapMode, 'pc');
+  pc.rules.onTestToggle(msg({ type: 'TestToggle' as const, flag: 'allItems' as const, on: true }));
+  pc.rules.onTestToggle(msg({ type: 'TestToggle' as const, flag: 'invincible' as const, on: true }));
+  assert.deepEqual(pc.state.testMode, { invincible: false, allItems: false });
+  assert.ok(!pc.state.tutorial!.steps.includes('borderPull'));
+  assert.ok(tutorialRig('table').state.tutorial!.steps.includes('borderPull'));
+});
+
+test('steer lesson needs both directions, and only the team that steered advances', () => {
+  const r = tutorialRig();
+  pilot(r, 'A', -0.2);
+  assert.equal(lesson(r, 'A'), 'steer', 'a light touch is not a turn');
+  pilot(r, 'A', -1);
+  assert.equal(r.state.tutorial!.teams.A.sub, 1, 'left done');
+  assert.equal(lesson(r, 'A'), 'steer');
+  pilot(r, 'A', 1);
+  assert.equal(lesson(r, 'A'), 'pedal');
+  assert.deepEqual(r.state.tutorial!.teams.B, { step: 0, sub: 0 }, 'the other team is independent');
+  assert.ok(r.feedback.includes('tutorialStep'));
+});
+
+test('steering during the countdown does not count', () => {
+  const r = rig();
+  r.rules.startTutorial('table');
+  pilot(r, 'A', -1); pilot(r, 'A', 1);
+  assert.equal(lesson(r, 'A'), 'steer');
+});
+
+test('drive-mode lesson: pedal on, hold the pedal, back to auto; it follows the shared button', () => {
+  const r = tutorialRig();
+  skipTo(r, 'A', 'pedal');
+  pilot(r, 'A', 0, 1);
+  assert.equal(r.state.tutorial!.teams.A.sub, 0, 'the pedal does not exist in auto mode');
+  r.rules.toggleDriveMode();
+  assert.equal(r.state.tutorial!.teams.A.sub, 1);
+  pilot(r, 'A', 0, 0.2);
+  assert.equal(r.state.tutorial!.teams.A.sub, 1, 'a held pedal is needed');
+  r.rules.toggleDriveMode(); // back too early
+  assert.equal(r.state.tutorial!.teams.A.sub, 0);
+  r.rules.toggleDriveMode();
+  pilot(r, 'A', 0, 1);
+  assert.equal(r.state.tutorial!.teams.A.sub, 2);
+  assert.equal(lesson(r, 'A'), 'pedal');
+  r.rules.toggleDriveMode();
+  assert.equal(lesson(r, 'A'), 'pickup');
+  assert.equal(r.state.driveMode, 'auto');
+});
+
+test('every lesson is completed by its real event, team B keeps its own pace', () => {
+  const r = tutorialRig();
+  const A = r.state.cars.A;
+  pilot(r, 'A', -1); pilot(r, 'A', 1);
+  r.rules.toggleDriveMode(); pilot(r, 'A', 0, 1); r.rules.toggleDriveMode();
+
+  // pickup: the draw says boost, the lesson hands out the slingshot
+  assert.equal(lesson(r, 'A'), 'pickup');
+  assert.equal(A.heldItem, null);
+  assert.ok(r.state.pickups.every(p => p.respawnAt === 0 && p.kind === 'slingshot'));
+  r.state.pickups[0].kind = 'boost';
+  driveTo(r, 'A', r.state.pickups[0].pos);
+  assert.equal(A.heldItem, 'slingshot');
+  assert.equal(lesson(r, 'A'), 'power');
+  r.rules.onPower('B'); // the other team's POWER means nothing here
+  assert.equal(lesson(r, 'A'), 'power');
+  r.rules.onPower('A');
+  assert.equal(lesson(r, 'A'), 'sling');
+  assert.equal(A.itemArmExpiry - r.clock.now, 12_000);
+
+  // a short pull keeps the lesson, a real shot completes it and is harmless to the invincible target
+  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, team: 'A' as Team, ...aim(r.state.cars.B.pos, 10) }));
+  assert.equal(lesson(r, 'A'), 'sling');
+  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, team: 'A' as Team, ...aim(r.state.cars.B.pos, 120) }));
+  assert.equal(lesson(r, 'A'), 'boostPickup');
+  r.advance(config.stoneTelegraphS * 1000 + 100);
+  assert.equal(r.state.cars.B.hp, config.hpMax, 'the stone costs nothing in the tutorial');
+
+  // boost: pick up, arm, place a portal, drive through it
+  r.state.pickups[1].kind = 'slingshot';
+  driveTo(r, 'A', r.state.pickups[1].pos);
+  assert.equal(A.heldItem, 'boost');
+  r.rules.onPower('A');
+  assert.equal(lesson(r, 'A'), 'boost');
+  const at = { ...A.pos };
+  r.rules.onBoostGate(msg({ type: 'BoostGate' as const, team: 'A' as Team, a: { x: at.x + 60, y: at.y - 100 }, b: { x: at.x + 60, y: at.y + 100 } }));
+  assert.equal(lesson(r, 'A'), 'boostCross');
+  driveTo(r, 'A', { x: at.x + 120, y: at.y });
+  assert.ok(r.feedback.includes('boostHit'));
+  assert.equal(lesson(r, 'A'), 'borderPull');
+
+  // border pull
+  const track = r.state.track!, edge = track.outerEdge[40], center = track.centerline[40];
+  const out = { x: edge.x - center.x, y: edge.y - center.y }, len = Math.hypot(out.x, out.y);
+  r.rules.onBorderPull(msg({ type: 'BorderPull' as const, x: edge.x, y: edge.y, dx: out.x / len * 70, dy: out.y / len * 70, team: 'A' as Team }));
+  assert.equal(lesson(r, 'A'), 'repair');
+
+  // repair: the server breaks the car, both partners fix it
+  assert.equal(A.disabled, true);
+  r.rules.onPadHold(msg({ type: 'PadHold' as const, team: 'A' as Team, role: 'pilot' as const, on: true }));
+  r.advance(1000);
+  assert.equal(lesson(r, 'A'), 'repair', 'one pad is not enough');
+  r.rules.onPadHold(msg({ type: 'PadHold' as const, team: 'A' as Team, role: 'copilot' as const, on: true }));
+  r.advance(config.repairHoldS * 1000 + 300);
+  assert.equal(lesson(r, 'A'), 'wall');
+  assert.equal(A.disabled, false);
+  assert.equal(A.hp, config.hpMax);
+
+  // a hostile wall is placed on the road ahead; touching it completes the lesson, then it disappears
+  r.advance(config.invulnAfterHitS * 1000 + 100);
+  const wall = r.state.walls.find(w => w.id === 'tut-wall-A')!;
+  assert.equal(wall.team, 'B', 'hostile to team A');
+  driveTo(r, 'A', wall.pos);
+  assert.equal(lesson(r, 'A'), 'arc');
+  assert.equal(A.hp, config.hpMax);
+  assert.ok(!r.state.walls.some(w => w.id === 'tut-wall-A'));
+
+  // the same for an electric arc across the whole width
+  r.advance(config.invulnAfterHitS * 1000 + 100);
+  const arc = r.state.arcs.find(a => a.id === 'tut-arc-A')!;
+  assert.equal(arc.team, 'B');
+  driveTo(r, 'A', { x: (arc.pylon1.x + arc.pylon2.x) / 2, y: (arc.pylon1.y + arc.pylon2.y) / 2 });
+  assert.equal(lesson(r, 'A'), 'pylon');
+  assert.ok(!r.state.arcs.some(a => a.id === 'tut-arc-A'));
+
+  // the last lesson belongs to the Oz operator: two of the team's pillars make an arc
+  charge(r, 1, 'A', 'pylon'); charge(r, 2, 'A', 'pylon');
+  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved' as const, id: 1 as const, x: 0.4, y: 0.5, angle: 0 }));
+  assert.equal(lesson(r, 'A'), 'pylon', 'one pillar alone is a wall');
+  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved' as const, id: 2 as const, x: 0.5, y: 0.5, angle: 0 }));
+  assert.equal(r.state.tutorial!.teams.A.step, r.state.tutorial!.steps.length, 'team A is done');
+  assert.equal(r.state.tutorial!.finished, false, 'the end waits for team B');
+  assert.deepEqual(r.state.tutorial!.teams.B, { step: 0, sub: 0 });
+  assert.equal(r.state.phase, 'RACE');
+});
+
+test('an item that expires, or a portal nobody crosses, sends the team back to POWER with the item', () => {
+  const r = tutorialRig();
+  skipTo(r, 'A', 'sling');
+  assert.equal(r.state.cars.A.itemArmed, true);
+  r.advance(12_500);
+  assert.ok(r.feedback.includes('itemLost'));
+  assert.equal(lesson(r, 'A'), 'power');
+  assert.equal(r.state.cars.A.heldItem, 'slingshot');
+  assert.equal(r.state.cars.A.itemArmed, false);
+  r.rules.onPower('A');
+  assert.equal(lesson(r, 'A'), 'sling');
+
+  skipTo(r, 'A', 'boost');
+  const at = r.state.cars.A.pos;
+  r.rules.onBoostGate(msg({ type: 'BoostGate' as const, team: 'A' as Team, a: { x: at.x + 300, y: at.y }, b: { x: at.x + 300, y: at.y + 200 } }));
+  assert.equal(lesson(r, 'A'), 'boostCross');
+  r.advance(config.boostGateLifeS * 1000 + 300);
+  assert.equal(lesson(r, 'A'), 'boostPower');
+  assert.equal(r.state.cars.A.heldItem, 'boost');
+});
+
+test('an armed item stolen by the other team does not leave the lesson without an item', () => {
+  const r = tutorialRig();
+  skipTo(r, 'A', 'sling');
+  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, team: 'B' as Team, ...aim(r.state.cars.A.pos, 120) }));
+  assert.equal(r.state.cars.A.heldItem, null, 'team A stock was used by the other team');
+  assert.equal(lesson(r, 'B'), 'steer', 'team B has not reached the slingshot lesson');
+  r.advance(100);
+  assert.equal(lesson(r, 'A'), 'power', 'item consumed elsewhere: arm it again');
+  assert.equal(r.state.cars.A.heldItem, 'slingshot');
+});
+
+test('skipping: lessons are left clean, a skipped repair puts the car back, the end needs both teams', () => {
+  const r = tutorialRig();
+  const steps = r.state.tutorial!.steps;
+  skipTo(r, 'A', 'repair');
+  assert.equal(r.state.cars.A.disabled, true);
+  r.rules.tutorialSkip('A'); // repair → wall
+  assert.equal(r.state.cars.A.disabled, false);
+  assert.equal(r.state.cars.A.hp, config.hpMax);
+  assert.ok(r.state.walls.some(w => w.id === 'tut-wall-A'));
+  r.rules.tutorialSkip('A');
+  assert.ok(!r.state.walls.some(w => w.id === 'tut-wall-A'));
+  assert.ok(r.state.arcs.some(a => a.id === 'tut-arc-A'));
+  charge(r, 3, 'B', 'wall'); // Oz activity must not wipe the lesson's own arc
+  assert.ok(r.state.arcs.some(a => a.id === 'tut-arc-A'));
+  r.rules.tutorialSkip('A'); // arc → pylon
+  assert.ok(!r.state.arcs.some(a => a.id === 'tut-arc-A'));
+  r.rules.tutorialSkip('A'); // pylon → done
+  assert.equal(r.state.tutorial!.teams.A.step, steps.length);
+  assert.equal(r.state.tutorial!.finished, false);
+  r.rules.tutorialSkip('A'); // nothing left to skip
+  assert.equal(r.state.tutorial!.teams.A.step, steps.length);
+  for (let i = 0; i < steps.length; i++) r.rules.tutorialSkip('B');
+  assert.equal(r.state.tutorial!.finished, true);
+  assert.equal(r.state.phase, 'RACE', 'the end screen is the table’s choice, the race is not over');
+});
+
+test('a skipped item lesson still leaves the team able to continue', () => {
+  const r = tutorialRig();
+  skipTo(r, 'A', 'pickup');
+  r.rules.tutorialSkip('A'); // pickup skipped → POWER with an item in hand
+  assert.equal(lesson(r, 'A'), 'power');
+  assert.equal(r.state.cars.A.heldItem, 'slingshot');
+  r.rules.tutorialSkip('A'); // POWER skipped → armed slingshot
+  assert.equal(lesson(r, 'A'), 'sling');
+  assert.equal(r.state.cars.A.itemArmed, true);
+  skipTo(r, 'A', 'boost'); // portal skipped too → nothing to cross
+  r.rules.tutorialSkip('A');
+  assert.equal(lesson(r, 'A'), 'borderPull');
+});
+
+test('the tutorial is only started from the lobby and a reset leaves a normal game behind', () => {
+  const r = tutorialRig();
+  r.rules.startTutorial('pc'); // already running: ignored
+  assert.equal(r.state.mapMode, 'table');
+  r.rules.tutorialSkip('A');
+  r.rules.togglePause();
+  r.rules.tutorialSkip('A'); // paused: ignored
+  assert.equal(r.state.tutorial!.teams.A.step, 1);
+  r.rules.togglePause();
+  r.rules.resetToLobby();
+  assert.equal(r.state.tutorial, null);
+  assert.equal(r.state.params.armWindowS, config.armWindowS);
+  assert.equal(r.state.walls.length + r.state.arcs.length, 0);
+  r.rules.tutorialSkip('A'); // no tutorial: harmless
+  r.rules.startRace(generatePreset());
+  assert.equal(r.state.tutorial, null);
+  r.state.cars.B.lap = config.lapsToWin;
+  r.state.phase = 'RACE';
+  r.advance(3100);
+  assert.equal(r.state.phase, 'RESULT', 'a normal race ends again');
 });
 
 // ─── Pylons: T-03, T-04, T-10 ────────────────────────────────────────────────
