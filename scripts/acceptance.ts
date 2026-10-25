@@ -5,6 +5,8 @@
  */
 import assert from 'node:assert/strict';
 import { OzMap } from '../client-oz/OzMap.js';
+import { OzController, ozShortcut } from '../client-oz/OzController.js';
+import { viewTransform, viewToWorld, worldToView } from '../client-oz/ozView.js';
 import { rotateWall, wallEndpoints } from '../client-shared/tangibleGeometry.js';
 import type { GameState, Team, Vec2, Phase } from '../server/types.js';
 import { GameRules, createInitialState } from '../server/GameRules.js';
@@ -637,92 +639,83 @@ test('timeout → RESULT, leader wins', () => {
 
 // ─── Pylons: T-03, T-04, T-10 ────────────────────────────────────────────────
 
-section('Tangibles · charge, placement and electrical pairs');
-function charge(r: Rig, id: 1 | 2 | 3 | 4, team: Team, kind: 'wall' | 'pylon' = 'wall') {
-  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id, team, kind, action: 'dock' }));
-  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id, team, action: 'activate' }));
+section('Tangibles · neutral fixed objects');
+function place(r: Rig, id: 1 | 2 | 3, x = .5, y = .5, angle = 0, active = true) {
+  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id, x, y, angle, active }));
 }
-function placeBlocking(r: Rig, ids: number[]) {
+function placeBlocking(r: Rig) {
   const p = r.state.cars.A.pos;
-  ids.forEach((id, i) => {
-    charge(r, id as 1, id <= 2 ? 'A' : 'B');
-    r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: id as 1, x: (p.x + i * 150) / config.logicalWidth, y: p.y / config.logicalHeight, angle: 0 }));
-  });
+  place(r, 1, p.x / config.logicalWidth, p.y / config.logicalHeight);
 }
-test('POWER arms pickups only; inactive tangibles can be positioned, only Oz activates them', () => {
-  const r = raceRig();
-  r.state.cars.B.heldItem = 'boost';
-  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 1, team: 'B', kind: 'wall', action: 'configure' }));
-  r.rules.onPower('A'); r.rules.onPower('B');
-  assert.equal(r.state.cars.B.itemArmed, true);
-  assert.equal(r.state.tangibles[1].active, false);
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 1, x: .4, y: .5, angle: 0 }));
-  assert.equal(r.state.tangibles[1].status, 'placed'); assert.equal(r.state.walls.length, 0);
+test('atomic first placement fixes the kind and neutral ownership; POWER has no effect', () => {
+  const r = raceRig(); place(r, 1, .4, .5, 20, false);
+  assert.equal(r.state.tangibles[1].kind, 'wall');
+  assert.equal(r.state.tangibles[1].team, null);
+  assert.equal(r.state.walls.length, 0);
+  r.rules.onPower('A'); assert.equal(r.state.tangibles[1].active, false);
   r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 1, action: 'activate' }));
-  assert.equal(r.state.walls[0].team, 'B', 'id does not impose ownership');
+  assert.equal(r.state.walls.length, 1);
   const placed = { ...r.state.tangibles[1] };
   r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 1, action: 'deactivate' }));
   assert.equal(r.state.walls.length, 0);
   assert.deepEqual(r.state.tangibles[1], { ...placed, active: false });
   r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 1, action: 'activate' }));
-  assert.equal(r.state.walls[0].pos.x, placed.x * config.logicalWidth, 'reactivation preserves placement');
+  assert.deepEqual(r.state.tangibles[1], placed);
+  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 1, action: 'configure', team: 'B', kind: 'pylon' }));
+  assert.deepEqual(r.state.tangibles[1], placed, 'legacy configuration cannot change fixed type or neutrality');
 });
-test('T-03 hostile wall: damage then invulnerability; own wall leaves own car safe', () => {
-  const r = raceRig();
-  placeBlocking(r, [3]);
-  r.rules.afterMove('A', r.state.cars.A.pos, r.clock.now);
-  assert.equal(r.state.cars.A.hp, config.hpMax - config.dmgWall);
-  r.state.cars.A.pos = { ...r.state.walls[0].pos };
-  r.rules.afterMove('A', r.state.cars.A.pos, r.clock.now);
-  assert.equal(r.state.cars.A.hp, config.hpMax - config.dmgWall);
-  const own = raceRig(); placeBlocking(own, [1]);
-  own.rules.afterMove('A', own.state.cars.A.pos, own.clock.now);
-  assert.equal(own.state.cars.A.hp, config.hpMax);
+test('T-03 neutral wall damages and bounces both teams', () => {
+  for (const team of ['A', 'B'] as const) {
+    const r = raceRig(), p = { ...r.state.cars[team].pos };
+    place(r, 1, p.x / config.logicalWidth, p.y / config.logicalHeight);
+    r.rules.afterMove(team, p, r.clock.now);
+    assert.equal(r.state.cars[team].hp, config.hpMax - config.dmgWall);
+    r.rules.afterMove(team, p, r.clock.now);
+    assert.equal(r.state.cars[team].hp, config.hpMax - config.dmgWall, 'invulnerability still applies');
+  }
 });
-test('T-04 explicit allied pillars form an arc, slow and damage the opponent', () => {
-  const r = raceRig(), p = { ...r.state.cars.A.pos };
-  charge(r, 3, 'B', 'pylon'); charge(r, 4, 'B', 'pylon');
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 3, x: (p.x - 100) / config.logicalWidth, y: p.y / config.logicalHeight, angle: 0 }));
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 4, x: (p.x + 100) / config.logicalWidth, y: p.y / config.logicalHeight, angle: 0 }));
-  assert.equal(r.state.arcs.length, 1); assert.equal(r.state.walls.length, 0);
-  r.state.cars.A.speed = 300; r.rules.afterMove('A', p, r.clock.now);
-  assert.equal(r.state.cars.A.hp, config.hpMax - config.dmgArc);
-  assert.equal(r.state.cars.A.speed, 300 * config.arcSlowFactor);
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 4, x: .9, y: .5, angle: 0 }));
-  assert.equal(r.state.arcs.length, 0, 'moving outside range breaks arc');
-  assert.equal(r.state.walls.length, 0, 'unpaired pillars never become walls');
+test('T-04 two fixed pylons form a neutral arc that slows both teams', () => {
+  for (const team of ['A', 'B'] as const) {
+    const r = raceRig(), car = r.state.cars[team], p = { ...car.pos };
+    place(r, 2, (p.x - 100) / config.logicalWidth, p.y / config.logicalHeight);
+    assert.equal(r.state.arcs.length, 0);
+    place(r, 3, (p.x + 100) / config.logicalWidth, p.y / config.logicalHeight);
+    assert.equal(r.state.arcs.length, 1); assert.equal(r.state.walls.length, 0);
+    assert.equal(r.state.arcs[0].team, null);
+    car.speed = 300; r.rules.afterMove(team, p, r.clock.now);
+    assert.equal(car.hp, config.hpMax - config.dmgArc);
+    assert.equal(car.speed, 300 * config.arcSlowFactor);
+    assert.equal(car.slowUntil, r.clock.now + config.arcSlowS * 1000);
+  }
 });
-test('walls retain type at close range; redocking removes effect and charge', () => {
-  const r = raceRig(); charge(r, 1, 'A'); charge(r, 2, 'A');
-  for (const id of [1, 2] as const) r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id, x: .4 + id * .04, y: .5, angle: 15 }));
-  assert.equal(r.state.walls.length, 2); assert.equal(r.state.arcs.length, 0);
-  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 1, team: 'B', action: 'dock' }));
-  assert.equal(r.state.walls.length, 1); assert.equal(r.state.tangibles[1].status, 'docked');
-  assert.equal(r.state.tangibles[1].team, 'B');
-  assert.equal(r.state.tangibles[1].active, false);
-  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 2, action: 'deactivate' }));
-  assert.equal(r.state.walls.length, 0); assert.equal(r.state.tangibles[2].active, false);
+test('arc includes exactly 500 px, breaks beyond range, and unpaired pylons stay pylons', () => {
+  const r = raceRig(); place(r, 2, 600 / 1920, .5); place(r, 3, 1100 / 1920, .5);
+  assert.equal(r.state.arcs.length, 1);
+  place(r, 3, 1101 / 1920, .5); assert.equal(r.state.arcs.length, 0);
+  assert.equal(r.state.walls.length, 0);
+  assert.equal(r.state.tangibles[2].kind, 'pylon');
 });
-test('physical zone drop uses same charging lifecycle; resets clear all tangibles', () => {
-  const r = raceRig();
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 2, x: 1627 / 1920, y: 972 / 1080, angle: 0 }));
-  assert.equal(r.state.tangibles[2].dockTeam, 'A');
-  r.rules.onPower('A'); assert.equal(r.state.tangibles[2].active, false);
-  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 2, action: 'activate' }));
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 2, x: .5, y: .5, angle: 45 }));
-  assert.equal(r.state.walls[0].angle, 45);
+test('direct placement rejects player stations without docking or reassignment; reset clears objects', () => {
+  const r = raceRig(); place(r, 2, 1627 / 1920, 972 / 1080);
+  assert.equal(r.state.tangibles[2], undefined);
+  place(r, 1, .5, .5, 45);
+  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 1, action: 'dock', team: 'A' }));
+  assert.equal(r.state.tangibles[1].dockTeam, null); assert.equal(r.state.tangibles[1].active, true);
   r.rules.resetToLobby(); assert.deepEqual(r.state.tangibles, {});
   r.rules.enterMap(); r.rules.startRace(); assert.equal(r.state.walls.length, 0);
 });
-test('invalid lifecycle and coordinates are ignored; removal breaks an arc', () => {
-  const r = raceRig(); charge(r, 1, 'B', 'pylon'); charge(r, 2, 'B', 'pylon');
-  for (const id of [1, 2] as const) r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id, x: .4 + id * .05, y: .5, angle: 0 }));
-  assert.equal(r.state.arcs.length, 1);
-  r.rules.onTangibleRemoved(msg({ type: 'TangibleRemoved', id: 1 })); assert.equal(r.state.arcs.length, 0);
-  const before = structuredClone(r.state.tangibles[2]);
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 2, x: NaN, y: .5, angle: 0 }));
-  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 2, team: 'A', action: 'activate' }));
-  assert.deepEqual(r.state.tangibles[2], before);
+test('invalid ids, phases, coordinates and activation are ignored; omitted activation is preserved', () => {
+  const r = raceRig(); place(r, 2); place(r, 3, .6);
+  r.rules.onTangibleRemoved(msg({ type: 'TangibleRemoved', id: 2 })); assert.equal(r.state.arcs.length, 0);
+  const before = structuredClone(r.state.tangibles[3]);
+  for (const value of [NaN, Infinity, -0.1, 1.1]) place(r, 3, value);
+  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 4 as 1, x: .5, y: .5, angle: 0, active: true }));
+  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 3, x: .5, y: .5, angle: 0, active: 'yes' as unknown as boolean }));
+  assert.deepEqual(r.state.tangibles[3], before); assert.equal(r.state.tangibles[4], undefined);
+  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 3, action: 'deactivate' }));
+  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 3, x: .7, y: .5, angle: 0 }));
+  assert.equal(r.state.tangibles[3].active, false);
+  r.state.phase = 'RESULT'; place(r, 1); assert.equal(r.state.tangibles[1], undefined);
 });
 
 // ─── Items: T-05, T-06, T-07 ─────────────────────────────────────────────────
@@ -865,7 +858,7 @@ test('T-08 ghost: ignores hostile elements for 3 s, then 20 s recharge', () => {
   const car = r.state.cars.A;
   r.rules.onAbility(msg({ type: 'Ability' as const, team: 'A' as Team, kind: 'ghost' as const }));
   assert.ok(car.ghostUntil - r.clock.now === config.ghostS * 1000);
-  placeBlocking(r, [3]);
+  placeBlocking(r);
   r.rules.afterMove('A', car.pos, r.clock.now);
   assert.equal(car.hp, config.hpMax, 'ghost passes through the wall');
   const readyAt = r.state.cooldowns.A.ghost;
@@ -874,20 +867,16 @@ test('T-08 ghost: ignores hostile elements for 3 s, then 20 s recharge', () => {
   r.rules.onAbility(msg({ type: 'Ability' as const, team: 'A' as Team, kind: 'ghost' as const }));
   assert.ok(car.ghostUntil < r.clock.now, 'cooldown prevents re-activation');
 });
-test('destroy: disables an opponent wall for 10 s (15 s cooldown); own walls untouched', () => {
-  const r = raceRig();
-  charge(r, 3, 'B'); charge(r, 1, 'A');
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved' as const, id: 3, x: 0.2, y: 0.5, angle: 0 }));
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved' as const, id: 1, x: 0.8, y: 0.5, angle: 0 }));
-  r.rules.onAbility(msg({ type: 'Ability' as const, team: 'A' as Team, kind: 'destroy' as const, targetId: 'wall-1' }));
-  assert.equal(r.state.walls.find(w => w.id === 'wall-1')!.disabledUntil, 0, 'own wall untouched');
-  r.rules.onAbility(msg({ type: 'Ability' as const, team: 'A' as Team, kind: 'destroy' as const, targetId: 'wall-3' }));
-  const w = r.state.walls.find(x => x.id === 'wall-3')!;
+test('destroy: disables a neutral wall but still spares legacy owned walls', () => {
+  const r = raceRig(); place(r, 1, .2, .5);
+  r.state.walls.push({ id: 'legacy-own', team: 'A', pos: { x: 1500, y: 500 }, angle: 0, lengthPx: 120, disabledUntil: 0 });
+  r.rules.onAbility(msg({ type: 'Ability', team: 'A', kind: 'destroy', targetId: 'legacy-own' }));
+  assert.equal(r.state.walls.find(w => w.id === 'legacy-own')!.disabledUntil, 0);
+  r.rules.onAbility(msg({ type: 'Ability', team: 'A', kind: 'destroy', targetId: 'wall-1' }));
+  const w = r.state.walls.find(x => x.id === 'wall-1')!;
   assert.equal(w.disabledUntil - r.clock.now, config.destroyDisableS * 1000);
   assert.equal(r.state.cooldowns.A.destroy - r.clock.now, config.destroyCooldownS * 1000);
-  // disabled wall does not hurt
-  r.state.cars.A.pos = { ...w.pos };
-  r.rules.afterMove('A', w.pos, r.clock.now);
+  r.state.cars.A.pos = { ...w.pos }; r.rules.afterMove('A', w.pos, r.clock.now);
   assert.equal(r.state.cars.A.hp, config.hpMax);
 });
 
@@ -952,7 +941,7 @@ test('invincible: no damage from walls, arcs or stones, and a fall just respawns
   r.state.mapMode = 'pc';
   toggle(r, 'invincible', true);
   const A = r.state.cars.A;
-  placeBlocking(r, [3]);
+  placeBlocking(r);
   r.rules.afterMove('A', A.pos, r.clock.now);
   assert.equal(A.hp, config.hpMax, 'wall');
   // stone right on the car
@@ -1031,15 +1020,15 @@ test('BorderPull shifts a local section, then reforms without changing its width
 // ─── Oz fallback & T-11 replay ───────────────────────────────────────────────
 
 section('Oz console');
-test('T-11 replaying dock, activation, placement and removal reproduces tangible state', () => {
+test('T-11 replaying atomic placement, activation and removal reproduces tangible state', () => {
   const a = raceRig();
-  charge(a, 1, 'A'); charge(a, 2, 'B', 'pylon');
+  place(a, 1); place(a, 2);
   a.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 1, x: .4, y: .5, angle: 35 }));
   a.rules.onTangibleRemoved(msg({ type: 'TangibleRemoved', id: 2 }));
   const b = raceRig();
   for (const e of a.rules.tangibleLog) {
     if (e.type === 'TangibleControl') b.rules.onTangibleControl(msg({ type: e.type, id: e.id as 1, action: e.action!, team: e.team, kind: e.kind }));
-    else if (e.type === 'TangibleMoved') b.rules.onTangibleMoved(msg({ type: e.type, id: e.id as 1, x: e.x!, y: e.y!, angle: e.angle! }));
+    else if (e.type === 'TangibleMoved') b.rules.onTangibleMoved(msg({ type: e.type, id: e.id as 1, x: e.x!, y: e.y!, angle: e.angle!, active: e.active }));
     else b.rules.onTangibleRemoved(msg({ type: e.type, id: e.id as 1 }));
   }
   assert.deepEqual(b.state.tangibles, a.state.tangibles);
@@ -1082,7 +1071,7 @@ test('endpoint 2 rotates around a fixed endpoint 1 with constant length through 
   assert.equal(rotateWall(anchor, anchor, length), null, 'zero-length direction is ignored');
 });
 test('server preserves the rotation anchor and rejects walls over the table controls', () => {
-  const r = raceRig(); charge(r, 1, 'A');
+  const r = raceRig(); place(r, 1);
   const anchor = { x: 700, y: 500 };
   const pose = rotateWall(anchor, { x: 700, y: 900 }, config.wallLengthPx)!;
   r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 1, x: pose.x / config.logicalWidth, y: pose.y / config.logicalHeight, angle: pose.angle }));
@@ -1093,16 +1082,16 @@ test('server preserves the rotation anchor and rejects walls over the table cont
   assert.deepEqual(r.state.tangibles[1], before, 'wall endpoint cannot overlap pilot controls');
 });
 test('deactivating either pillar cuts its arc; reactivation restores the same pair', () => {
-  const r = raceRig(); charge(r, 1, 'B', 'pylon'); charge(r, 2, 'B', 'pylon');
-  for (const id of [1, 2] as const) r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id, x: .4 + id * .05, y: .5, angle: 0 }));
+  const r = raceRig(); place(r, 2); place(r, 3);
+  for (const id of [2, 3] as const) r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id, x: .4 + id * .05, y: .5, angle: 0 }));
   assert.equal(r.state.arcs.length, 1);
-  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 1, action: 'deactivate' })); assert.equal(r.state.arcs.length, 0);
+  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 2, action: 'deactivate' })); assert.equal(r.state.arcs.length, 0);
   r.rules.onPower('B'); assert.equal(r.state.arcs.length, 0, 'POWER cannot reactivate it');
-  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 1, action: 'activate' })); assert.equal(r.state.arcs.length, 1);
+  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 2, action: 'activate' })); assert.equal(r.state.arcs.length, 1);
 });
 
 function mapRig() {
-  const r = raceRig(); charge(r, 1, 'A');
+  const r = raceRig(); place(r, 1);
   r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 1, x: .5, y: .5, angle: 0 }));
   const listeners = new Map<string, (event: PointerEvent) => void>();
   let draws = 0;
@@ -1111,7 +1100,7 @@ function mapRig() {
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 960, height: 540 }),
     addEventListener: (name: string, fn: (event: PointerEvent) => void) => listeners.set(name, fn), setPointerCapture: () => {} } as unknown as HTMLCanvasElement;
   const sent: Array<{ x: number; y: number; angle: number }> = [];
-  const map = new OzMap(canvas, { enabled: () => true, selectedId: () => 1, selectedKind: () => 'wall', selectedTeam: () => 'A',
+  const map = new OzMap(canvas, { enabled: () => true, selectedId: () => 1, selectedKind: () => 'wall', preparing: () => false, draftAngle: () => 0, onPlace: () => false, onDragStart: () => {}, onDragEnd: () => {},
     onSelect: () => {}, onMove: (_id, x, y, angle) => { sent.push({ x, y, angle }); return true; } });
   map.setState(r.state);
   const pointer = (name: string, x: number, y: number) => listeners.get(name)!({ pointerId: 1, clientX: x, clientY: y, preventDefault: () => {} } as PointerEvent);
@@ -1143,13 +1132,122 @@ test('dragging the wall body preserves grab offset; cancelled drags stop sending
   r.pointer('pointermove', 600, 300); assert.equal(r.sent.length, count);
 });
 
-test('a confirmed return to the copilot zone clears the drag preview and stops movement', () => {
+test('a confirmed removal clears the drag preview and stops movement', () => {
   const r = mapRig(); r.pointer('pointerdown', 475, 270);
   const next = structuredClone(r.state);
-  next.tangibles[1].status = 'docked'; next.tangibles[1].dockTeam = 'A';
+  next.tangibles[1].active = false;
   r.map.setState(next);
   r.pointer('pointermove', 485, 280); r.pointer('pointerup', 485, 280);
-  assert.equal(r.sent.length, 0, 'a docked object is not moved back onto the map by an older gesture');
+  assert.equal(r.sent.length, 0, 'an absent object is not moved back onto the map by an older gesture');
+});
+
+section('Fast Oz console');
+function operatorRig() {
+  const r = raceRig(), sent: Array<{ type: string } & Record<string, unknown>> = [];
+  let time = 0;
+  const c = new OzController((type, params) => { sent.push({ type, ...params }); return true; }, () => {}, () => time);
+  c.setConnected(true); c.applyState(structuredClone(r.state));
+  return { c, sent, source: r.state, tick: (ms: number) => { time += ms; } };
+}
+test('preparation and preview rotation are local; invalid placement stays prepared and is not sent', () => {
+  const { c, sent } = operatorRig();
+  c.prepare(1); c.rotate(15); assert.equal(c.draftAngle, 15); assert.equal(sent.length, 0);
+  assert.equal(c.place({ x: .01, y: .01, angle: 15 }), false);
+  assert.equal(c.preparing, true); assert.equal(c.canUndo, false); assert.equal(sent.length, 0);
+  c.cancelPreparation(); assert.equal(c.preparing, false);
+});
+test('one placement atomically activates; rapid edits and undo use optimistic poses despite old snapshots', () => {
+  const { c, sent, source } = operatorRig();
+  c.prepare(1); c.place({ x: .4, y: .5, angle: 15 });
+  assert.equal(sent.length, 1); assert.equal(sent[0].active, true); assert.equal(c.preparing, false);
+  c.applyState(structuredClone(source)); assert.equal(c.state!.tangibles[1].x, .4);
+  c.prepare(1); c.place({ x: .6, y: .5, angle: 15 }); c.undo();
+  assert.equal(c.state!.tangibles[1].x, .4); assert.equal(c.state!.tangibles[1].active, true);
+  c.undo(); assert.equal(c.state!.tangibles[1], undefined); assert.equal(c.canUndo, false);
+});
+test('first pylon prepares the second only on its first placement', () => {
+  const { c } = operatorRig(); c.prepare(2); c.place({ x: .4, y: .5, angle: 0 });
+  assert.equal(c.selectedId, 3); assert.equal(c.preparing, true);
+  c.place({ x: .6, y: .5, angle: 0 }); assert.equal(c.preparing, false);
+  assert.equal(c.state!.arcs.length, 1, 'arc preview follows optimistic pylons before a network reply');
+  c.prepare(2); c.place({ x: .45, y: .5, angle: 0 });
+  assert.equal(c.selectedId, 2); assert.equal(c.preparing, false);
+});
+test('temporary removal preserves pose and type; restore and undo do not need configuration', () => {
+  const { c, sent } = operatorRig(); c.presence(); assert.equal(sent.length, 0); assert.ok(c.notice);
+  c.prepare(1); c.place({ x: .5, y: .5, angle: 35 }); const before = { ...c.state!.tangibles[1] };
+  c.presence(false); assert.deepEqual(c.state!.tangibles[1], { ...before, active: false });
+  c.presence(); assert.deepEqual(c.state!.tangibles[1], before);
+  c.undo(); assert.equal(c.state!.tangibles[1].active, false);
+});
+test('a repeated keyboard rotation or drag is undone in one action; keyboard rotation preserves center', () => {
+  const { c } = operatorRig(); c.prepare(1); c.place({ x: .5, y: .5, angle: 0 });
+  c.beginGesture(); for (let i = 0; i < 8; i++) c.rotate(5); c.endGesture();
+  assert.equal(c.state!.tangibles[1].angle, 40); assert.equal(c.state!.tangibles[1].x, .5);
+  c.undo(); assert.equal(c.state!.tangibles[1].angle, 0);
+  c.beginGesture(); c.move(1, { x: .6, y: .5, angle: 0 }); c.move(1, { x: .7, y: .5, angle: 0 }); c.endGesture();
+  c.undo(); assert.equal(c.state!.tangibles[1].x, .5);
+});
+test('disconnect cancels preparation and queued previews; reconnect never replays commands', () => {
+  const { c, sent, source } = operatorRig(); c.prepare(1); c.place({ x: .5, y: .5, angle: 0 }); c.prepare(2);
+  const count = sent.length; c.setConnected(false); c.place({ x: .4, y: .5, angle: 0 });
+  c.setConnected(true); assert.equal(c.enabled, false, 'wait for the full reconnect snapshot'); c.applyState(structuredClone(source));
+  assert.equal(sent.length, count); assert.equal(c.preparing, false); assert.equal(c.state!.tangibles[1], undefined);
+  c.prepare(1); c.place({ x: .5, y: .5, angle: 0 }); c.applyState({ ...source, phase: 'LOBBY', tangibles: {} });
+  assert.equal(c.canUndo, false); assert.equal(c.preparing, false); assert.equal(c.enabled, false);
+});
+test('confirmed snapshots reconcile pending edits; rejected or reset state cannot keep an immortal preview', () => {
+  const { c, source, tick } = operatorRig(); c.prepare(1); c.place({ x: .5, y: .5, angle: 0 });
+  const confirmed = structuredClone(c.state!); c.applyState(confirmed);
+  c.applyState({ ...source, tangibles: {} }); assert.equal(c.state!.tangibles[1], undefined);
+  c.prepare(1); c.place({ x: .5, y: .5, angle: 0 }); tick(1600); c.applyState(structuredClone(source));
+  assert.equal(c.state!.tangibles[1], undefined); assert.equal(c.canUndo, false); assert.ok(c.notice.includes('resynchronisée'));
+});
+test('shortcuts support AZERTY, numpad and modifiers without hijacking other browser shortcuts', () => {
+  const event = (key: string, code = '', extra = {}) => ({ key, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...extra });
+  assert.equal(ozShortcut(event('M')), 'wall');
+  assert.equal(ozShortcut(event('&', 'Digit1')), 'pylon1');
+  assert.equal(ozShortcut(event('é', 'Digit2')), 'pylon2');
+  assert.equal(ozShortcut(event('1', 'Numpad1')), 'pylon1');
+  assert.equal(ozShortcut(event('2', 'Numpad2')), 'pylon2');
+  for (const [key, action] of [['ArrowLeft', 'left'], ['ArrowRight', 'right'], [' ', 'presence'], ['Delete', 'remove'], ['Escape', 'cancel'], ['r', 'view']]) assert.equal(ozShortcut(event(key)), action);
+  assert.equal(ozShortcut(event('z', '', { ctrlKey: true })), 'undo');
+  assert.equal(ozShortcut(event('r', '', { ctrlKey: true })), null);
+  assert.equal(ozShortcut(event('m', '', { altKey: true })), null);
+});
+test('all four view transforms round-trip valid edges, center and forbidden player stations', () => {
+  for (let q = 0; q < 4; q++) for (const size of [[1920, 1080], [1280, 390], [700, 500]]) {
+    const transform = viewTransform(size[0], size[1], 1920, 1080, q);
+    for (const p of [{ x: 0, y: 0 }, { x: 1920, y: 1080 }, { x: 960, y: 540 }, { x: 1627, y: 972 }, { x: 60, y: 500 }]) {
+      const restored = viewToWorld(worldToView(p, transform), transform);
+      assert.ok(Math.hypot(restored.x - p.x, restored.y - p.y) < 1e-8);
+    }
+  }
+});
+test('map placement, body dragging and rotation-handle picking work in all four views', () => {
+  for (let q = 0; q < 4; q++) {
+    const rig = operatorRig(), listeners = new Map<string, (e: PointerEvent) => void>();
+    const canvas = { width: 1920, height: 1080,
+      getContext: () => new Proxy({}, { get: () => () => {} }),
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 960, height: 540 }),
+      addEventListener: (name: string, fn: (e: PointerEvent) => void) => listeners.set(name, fn), setPointerCapture() {} } as unknown as HTMLCanvasElement;
+    const c = rig.c, map = new OzMap(canvas, { enabled: () => c.enabled, selectedId: () => c.selectedId,
+      selectedKind: () => 'wall', preparing: () => c.preparing, draftAngle: () => c.draftAngle,
+      onSelect: id => c.select(id), onPlace: pose => c.place(pose), onMove: (id, x, y, angle) => c.move(id, { x, y, angle }),
+      onDragStart: () => c.beginGesture(), onDragEnd: () => c.endGesture() });
+    const t = viewTransform(1920, 1080, 1920, 1080, q);
+    const pointer = (name: string, p: Vec2) => { const at = worldToView(p, t); listeners.get(name)!({ pointerId: 1, clientX: at.x / 2, clientY: at.y / 2, preventDefault() {} } as PointerEvent); };
+    map.setQuarter(q); map.setState(c.state!); c.prepare(1);
+    pointer('pointermove', { x: 960, y: 540 }); assert.equal(rig.sent.length, 0);
+    pointer('pointerdown', { x: 960, y: 540 }); map.setState(c.state!);
+    assert.ok(Math.abs(c.state!.tangibles[1].x - .5) < 1e-10);
+    pointer('pointerdown', { x: 930, y: 540 }); pointer('pointermove', { x: 970, y: 570 }); pointer('pointerup', { x: 970, y: 570 });
+    assert.ok(Math.abs(c.state!.tangibles[1].x - 1000 / 1920) < 1e-10);
+    map.setState(c.state!); const before = { ...c.state!.tangibles[1] };
+    pointer('pointerdown', { x: 1060, y: 570 }); pointer('pointermove', { x: 940, y: 690 }); pointer('pointerup', { x: 940, y: 690 });
+    const [anchor] = wallEndpoints({ x: c.state!.tangibles[1].x * 1920, y: c.state!.tangibles[1].y * 1080 }, c.state!.tangibles[1].angle, 120);
+    assert.ok(Math.hypot(anchor.x - (before.x * 1920 - 60), anchor.y - before.y * 1080) < 1e-8);
+  }
 });
 
 let passed = 0;

@@ -1,5 +1,6 @@
 // ─── Shared types ────────────────────────────────────────────────────────────
 // Used by server code and imported by clients via the @shared alias.
+import type { TangibleId } from './tangibles.js';
 
 export interface Vec2 {
   x: number;
@@ -14,10 +15,10 @@ export type DriveMode = 'auto' | 'pedal';
 export interface Tangible {
   x: number; y: number; angle: number; // normalized position, angle in degrees
   kind: 'wall' | 'pylon';
-  team: Team;
+  team: Team | null;
   active: boolean;
-  dockTeam: Team | null;
-  status: 'docked' | 'placed';
+  dockTeam: Team | null; // legacy field; fixed neutral objects always use null
+  status: 'docked' | 'placed'; // fixed objects use 'placed'; active reports presence
 }
 
 export interface Car {
@@ -43,7 +44,7 @@ export interface Car {
 
 export interface Wall {
   id: string;
-  team: Team;
+  team: Team | null;
   pos: Vec2;
   angle: number;
   lengthPx: number;
@@ -53,7 +54,7 @@ export interface Wall {
 
 export interface ArcElectric {
   id: string;
-  team: Team;
+  team: Team | null;
   pylon1: Vec2;
   pylon2: Vec2;
   disabledUntil: number; // 0 = active
@@ -157,6 +158,7 @@ export interface GameParams {
   wallLengthPx: number;
   logicalWidth: number;
   logicalHeight: number;
+  arcMaxDistPx: number;
 }
 
 export interface GameState {
@@ -302,21 +304,23 @@ export interface ToggleDriveModeMsg extends BaseMsg {
 // Console Oz → Server
 export interface TangibleMovedMsg extends BaseMsg {
   type: 'TangibleMoved';
-  id: 1 | 2 | 3 | 4;
+  id: TangibleId;
   x: number; // normalized 0–1
   y: number;
   angle: number; // degrees
+  active?: boolean; // atomic placement + activation; omitted preserves activation
 }
 
 export interface TangibleRemovedMsg extends BaseMsg {
   type: 'TangibleRemoved';
-  id: 1 | 2 | 3 | 4;
+  id: TangibleId;
 }
 
 /** Semantic lifecycle, shared by Oz and a future tangible sensor adapter. */
 export interface TangibleControlMsg extends BaseMsg {
   type: 'TangibleControl';
-  id: 1 | 2 | 3 | 4;
+  id: TangibleId;
+  /** configure/dock are legacy messages, ignored by the fixed-object server. */
   action: 'configure' | 'dock' | 'activate' | 'deactivate';
   team?: Team;
   kind?: Tangible['kind'];

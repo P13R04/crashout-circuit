@@ -293,7 +293,8 @@ export class Renderer {
   }
 
   /** Elements are semi-transparent next to the car of the team that owns them (R-09). */
-  private ownerAlpha(state: GameState, team: Team, p: Vec2): number {
+  private ownerAlpha(state: GameState, team: Team | null, p: Vec2): number {
+    if (team === null) return 1;
     const own = state.cars[team].pos;
     return Math.hypot(own.x - p.x, own.y - p.y) < 90 ? 0.35 : 1;
   }
@@ -317,7 +318,7 @@ export class Renderer {
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       ctx.setLineDash([]);
       ctx.shadowBlur = 0;
-      ctx.fillStyle = TEAM_COLOR[w.team];
+      ctx.fillStyle = w.team === null ? '#f4c678' : TEAM_COLOR[w.team];
       for (const e of [a, b]) { ctx.beginPath(); ctx.arc(e.x, e.y, 7, 0, Math.PI * 2); ctx.fill(); }
       ctx.restore();
     }
@@ -357,7 +358,7 @@ export class Renderer {
         ctx.stroke();
         ctx.shadowBlur = 0;
       }
-      ctx.fillStyle = TEAM_COLOR[arc.team];
+      ctx.fillStyle = arc.team === null ? '#ffe14a' : TEAM_COLOR[arc.team];
       for (const e of [arc.pylon1, arc.pylon2]) { ctx.beginPath(); ctx.arc(e.x, e.y, 9, 0, Math.PI * 2); ctx.fill(); }
       ctx.restore();
     }
@@ -367,10 +368,10 @@ export class Renderer {
     for (const [id, t] of Object.entries(state.tangibles)) {
       if (t.status !== 'placed' || !t.active || t.kind !== 'pylon') continue;
       const x = t.x * state.params.logicalWidth, y = t.y * state.params.logicalHeight;
-      ctx.save(); ctx.strokeStyle = TEAM_COLOR[t.team]; ctx.fillStyle = '#101a30'; ctx.lineWidth = 3;
+      ctx.save(); ctx.strokeStyle = '#ffe14a'; ctx.fillStyle = '#101a30'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
-      ctx.fillText(id, x, y + 4); ctx.restore();
+      ctx.fillText(Number(id) === 2 ? '1' : '2', x, y + 4); ctx.restore();
     }
   }
 

@@ -3,54 +3,74 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Crashout Circuit — Tangibles Oz</title>
+  <title>Crashout Circuit — Console Oz</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; background: #090f1d; color: #e2e8f0; font: 14px system-ui, sans-serif; }
-    header { padding: 18px 24px; border-bottom: 1px solid #253149; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
-    h1 { font-size: 17px; margin: 0; } h2 { font-size: 14px; margin: 0 0 14px; }
-    #status { font-size: 12px; color: #94a3b8; }
-    main { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; padding: 20px 24px; align-items: start; }
-    canvas { display: block; width: 100%; aspect-ratio: 16 / 9; background: #04081f; border: 1px solid #34435e; border-radius: 12px; touch-action: none; }
-    p { color: #9eacc1; line-height: 1.55; margin: 12px 0 0; }
-    fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
-    section { background: #101a2b; border: 1px solid #253149; border-radius: 12px; padding: 16px; }
-    button, select { font: inherit; background: #1d2c43; color: #e2e8f0; border: 1px solid #42526d; border-radius: 8px; padding: 10px 12px; cursor: pointer; }
-    button:hover { background: #2c405d; } button:disabled, select:disabled { opacity: .45; cursor: default; }
-    button:focus-visible, select:focus-visible, canvas:focus-visible { outline: 2px solid #ffe14a; outline-offset: 3px; }
-    #tangible-list { display: grid; gap: 8px; margin-bottom: 22px; }
-    #tangible-list button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; }
-    #tangible-list .selected { border-color: #ffe14a; background: #293449; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; background: #667085; flex-shrink: 0; }
-    .dot.on { background: #3ddc84; box-shadow: 0 0 9px #3ddc8444; }
-    label { display: block; color: #a9b7cd; font-size: 12px; margin-top: 14px; }
-    select { display: block; width: 100%; margin-top: 6px; }
-    #activation { width: 100%; margin-top: 20px; font-weight: 600; border-color: #3ddc84; }
-    #activation[aria-pressed="true"] { background: #175039; }
-    .actions { display: flex; gap: 8px; margin-top: 10px; }
-    .actions button { flex: 1; font-size: 12px; padding: 9px 6px; }
-    #notice { font-size: 12px; color: #ffe14a; min-height: 20px; }
-    @media(max-width: 850px) { main { grid-template-columns: 1fr; padding: 14px; } #tangible-list { grid-template-columns: repeat(2, 1fr); } }
+    header { height: 52px; padding: 0 22px; border-bottom: 1px solid #253149; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    h1 { font-size: 15px; margin: 0; letter-spacing: .06em; } h1 span { color: #9eacc1; font-weight: 400; letter-spacing: 0; }
+    #status { color: #9eacc1; font-size: 12px; } #status.online { color: #9be5bb; }
+    main { max-width: 1600px; margin: auto; height: calc(100dvh - 52px); min-height: 570px; display: grid; grid-template-rows: auto minmax(180px, 1fr) auto auto; gap: 10px; padding: 12px 20px; }
+    fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    button { font: inherit; background: #152238; color: #e2e8f0; border: 1px solid #34445e; border-radius: 8px; padding: 9px 12px; cursor: pointer; }
+    button:hover { background: #22344e; } button:disabled { opacity: .4; cursor: default; }
+    button:focus-visible, canvas:focus-visible { outline: 2px solid #f4c678; outline-offset: 3px; }
+    #tangible-list { display: flex; gap: 8px; flex: 1; }
+    .object { display: flex; align-items: center; gap: 12px; text-align: left; flex: 1; min-width: 160px; padding: 10px 12px; }
+    .object strong { display: block; font-size: 13px; } .object-state { display: block; color: #9eacc1; font-size: 11px; margin-top: 3px; }
+    .object-icon { color: #78869b; font-size: 26px; line-height: 1; } .object.present .object-icon { color: #9be5bb; }
+    .object.selected { border-color: #f4c678; background: #293044; } .object.selected strong { color: #f9dbab; }
+    .object kbd { margin-left: auto; }
+    kbd { display: inline-block; font: 11px system-ui, sans-serif; color: #e8d7bb; white-space: nowrap; border: 1px solid #4b5061; border-radius: 4px; background: #0c1423; padding: 2px 5px; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; } .actions button { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+    .map-stage { position: relative; min-height: 0; border: 1px solid #34435e; border-radius: 10px; overflow: hidden; background: #04081f; }
+    canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+    #arc-state { position: absolute; pointer-events: none; top: 12px; left: 12px; font-size: 12px; padding: 6px 10px; border: 1px solid #34435e; border-radius: 20px; background: #0a1225e8; color: #b4c1d4; }
+    #arc-state.linked { color: #ffe14a; border-color: #766526; }
+    .feedback { min-height: 20px; display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; }
+    #hint { color: #a9b7cd; margin: 0; } #notice { color: #ffca8b; margin: 0; }
+    .shortcuts { border-top: 1px solid #253149; padding-top: 9px; }
+    .shortcuts h2 { margin: 0 0 7px; color: #9eacc1; font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+    .shortcut-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 16px; }
+    .shortcut-grid div { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #bdc9da; }
+    @media(max-width: 1050px) { fieldset { gap: 8px; } .actions { width: 100%; } .object { min-width: 0; } }
+    @media(max-width: 650px) { main { padding: 10px; min-height: 700px; } h1 span { display: none; } .object { gap: 5px; padding: 8px; } .object-icon { display: none; } .object kbd { font-size: 10px; } .shortcut-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   </style>
 </head>
 <body>
-  <header><h1>CRASHOUT · Tangibles Oz</h1><span id="status" role="status">Connexion…</span></header>
+  <header><h1>CRASHOUT <span>· Console du magicien d’Oz</span></h1><span id="status" role="status">Connexion…</span></header>
   <main>
-    <div>
-      <canvas id="oz-map" width="1920" height="1080" tabindex="0" aria-label="Circuit et zones copilote. Sélectionner un tangible pour le placer ou le déplacer. Poignée 2 pour tourner le mur autour de la poignée 1."></canvas>
-      <p id="hint">Clic : placer · glisser : déplacer · poignée 2 : tourner autour de 1.</p>
-      <p id="notice" role="status" aria-live="polite"></p>
-    </div>
-    <fieldset id="controls" disabled>
-      <section>
-        <h2>Tangibles</h2>
-        <div id="tangible-list" role="group" aria-label="Tangible sélectionné"></div>
-        <label for="kind">Type</label><select id="kind"><option value="wall">Mur</option><option value="pylon">Pilier électrique</option></select>
-        <label for="team">Équipe</label><select id="team"><option value="A">Cyan</option><option value="B">Rose</option></select>
-        <button id="activation" aria-pressed="false">Activer</button>
-        <div class="actions"><button id="dock">Zone copilote</button><button id="remove">Retirer</button></div>
-      </section>
+    <fieldset id="controls" disabled aria-label="Commandes des objets neutres">
+      <div id="tangible-list" role="group" aria-label="Préparer un objet"></div>
+      <div class="actions">
+        <button type="button" id="presence" aria-keyshortcuts="Space"><span>Réafficher</span><kbd>Espace</kbd></button>
+        <button type="button" id="cancel" aria-keyshortcuts="Escape"><span>Annuler la pose</span><kbd>Échap</kbd></button>
+        <button type="button" id="undo" aria-keyshortcuts="Control+z"><span>Annuler l’action</span><kbd>Ctrl Z</kbd></button>
+        <button type="button" id="rotate-view" aria-keyshortcuts="R"><span>Vue 0°</span><kbd>R</kbd></button>
+      </div>
     </fieldset>
+    <div class="map-stage">
+      <canvas id="oz-map" width="1920" height="1080" tabindex="0" aria-label="Carte opérateur. Préparer un objet avec M, 1 ou 2, puis cliquer pour le placer. Glisser un objet présent pour le déplacer."></canvas>
+      <span id="arc-state" role="status">Pylône manquant</span>
+    </div>
+    <div class="feedback"><p id="hint"></p><p id="notice" role="status" aria-live="polite"></p></div>
+    <section class="shortcuts" aria-label="Aide-mémoire des raccourcis">
+      <h2>RACCOURCIS · TOUJOURS À PORTÉE DE MAIN</h2>
+      <div class="shortcut-grid">
+        <div><kbd>M</kbd> Préparer le mur</div>
+        <div><kbd>1 / &amp;</kbd> Préparer le pylône 1</div>
+        <div><kbd>2 / é</kbd> Préparer le pylône 2</div>
+        <div><kbd>Clic</kbd> Placer l’objet préparé</div>
+        <div><kbd>← / →</kbd> Tourner le mur de 5°</div>
+        <div><kbd>Maj + ← / →</kbd> Tourner de 15°</div>
+        <div><kbd>Espace</kbd> Retirer / réafficher</div>
+        <div><kbd>Suppr</kbd> Retirer l’objet</div>
+        <div><kbd>Échap</kbd> Annuler la pose préparée</div>
+        <div><kbd>Ctrl + Z</kbd> Annuler la dernière action</div>
+        <div><kbd>R</kbd> Tourner la vue de 90°</div>
+        <div>Objets neutres · affectent les deux équipes</div>
+      </div>
+    </section>
   </main>
   <script type="module" src="./main.ts"></script>
 </body>

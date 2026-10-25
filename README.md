@@ -33,12 +33,12 @@ Ouvrir `http://localhost:5173/client-table/` et `http://localhost:5173/client-oz
 2. Cyan place P1, Rose place P2 ; Cyan dessine P1 → P2, puis Rose dessine P2 → P1. Les deux modes utilisent cette création guidée et séquentielle. Le circuit suit les tracés, y compris les boucles et croisements ; les refus sont expliqués à l’écran.
 3. Toucher **GÉNÉRER LE CIRCUIT**, puis **LANCER LA COURSE** sur la table. Le lancement, la pause et la remise à zéro appartiennent aux joueurs.
 4. Le pilote conduit avec la bande gauche / droite. Le bouton central **PÉDALE** bascule entre l’avance automatique et une pédale maintenue pour accélérer, à vitesse maximale réduite. Le pilote n’a plus de bouton pour utiliser les objets.
-5. Le copilote utilise **POWER** pour son objet ramassé, réalise les gestes et répare avec le pilote. Oz gère seul l’activation des tangibles.
+5. Le copilote utilise **POWER** pour son objet ramassé, réalise les gestes et répare avec le pilote. Oz reproduit la présence des tangibles neutres.
 6. Une sortie de piste immobilise la voiture. Maintenir les deux pads de réparation pour la remettre en jeu. La pause fige la course et les durées des effets.
 
 ## POWER et objets ramassés
 
-Les boutons nommés **FANTÔME** et **DÉTRUIRE** ont été retirés de la zone copilote. Le copilote possède un seul bouton d’action, **POWER**, plus la zone tangible et le pad de réparation.
+Les boutons nommés **FANTÔME** et **DÉTRUIRE** ont été retirés de la zone copilote. Le copilote possède un seul bouton d’action, **POWER**, et le pad de réparation.
 
 1. La voiture ramasse un objet lorsque son stock est vide. Son icône apparaît comme information dans le poste copilote.
 2. **Seul POWER du copilote de l’équipe propriétaire peut armer ce stock.** POWER adverse ne l’arme pas. Appuyer plusieurs fois ne prolonge pas la fenêtre.
@@ -59,26 +59,46 @@ Les simulations passent par les mêmes règles d’armement, de vol et de consom
 
 En course **PC uniquement**, la barre de test de la table conserve **Véhicules invincibles** et **Tous les objets utilisables**. Ces outils de développement restent ignorés en mode table et ne sont pas accessibles à Oz.
 
-## Console Oz : uniquement les tangibles
+## Console Oz : rapide au pavé tactile
 
-La console montre le circuit, les zones copilote et un seul panneau de gestion. Les points verts de la liste indiquent les tangibles activés. Oz ne dispose d’aucune commande de partie ou de bonus ; cette séparation est également appliquée au serveur, y compris pour les anciennes commandes.
+La console `/oz` présente une grande carte et trois objets fixes : **Mur** (id 1), **Pylône 1** (id 2), **Pylône 2** (id 3). Ils sont **neutres** : le mur et l’arc affectent les deux véhicules. Aucun choix de type, d’équipe ou de zone de dépôt n’est nécessaire. Oz ne dispose d’aucune commande de partie ou de bonus ; le serveur maintient cette séparation.
 
-1. Choisir un des **quatre identifiants**, son **type** (mur ou pilier électrique) et son **équipe**.
-2. Cliquer sur la carte pour le placer. Il peut être placé et déplacé **désactivé**, ce qui permet de préparer sa position sans produire d’effet.
-3. Cliquer sur **Activer / Désactiver** pour changer son état. Seul Oz peut le faire. Désactiver conserve sa position, son orientation et son équipe ; réactiver restaure son effet au même endroit. Les murs désactivés apparaissent en pointillés uniquement dans la console.
-4. Glisser le corps du mur ou sa poignée **1** pour le déplacer. Glisser la poignée **2** pour le tourner autour de **1**, qui reste fixe. La longueur du mur ne change pas ; l’aperçu est immédiat, même entre deux mises à jour réseau. Un clic de sélection ne déplace plus le mur.
-5. **Zone copilote** simule son dépôt dans la zone de son équipe ; on peut aussi le déplacer directement sur cette zone. Le dépôt coupe son effet. Oz peut alors marquer le tangible comme activé et le replacer sur le circuit. **POWER n’a aucun effet sur lui.**
-6. **Retirer** simule le retrait physique et efface le tangible. Modifier son type ou son équipe le désactive ; modifier un tangible placé conserve sa position.
+1. Presser **M**, **1** ou **2**, ou cliquer sur le bouton de l’objet, pour préparer sa pose. L’aperçu suit le pointeur uniquement dans la console ; la table ne change pas.
+2. **Cliquer sur la carte** pour placer ou repositionner l’objet et l’activer en une seule action. Après la pose, l’objet reste sélectionné ; son raccourci prépare le prochain déplacement. Un clic dans le vide sans préparation ne déplace rien.
+3. Après la toute première pose du Pylône 1, le Pylône 2 est automatiquement préparé s’il est absent. Les déplacements suivants ne changent pas automatiquement la sélection.
+4. Pour le mur, **← / →** tournent de 5°, **Maj + ← / →** de 15°. Avant la pose, seule l’orientation de l’aperçu change ; après la pose, la rotation garde le centre du mur fixe. Les pylônes ne tournent pas au clavier.
+5. **Espace** ou le bouton **Retirer / Réafficher** reproduit le soulèvement ou la repose au même endroit. **Suppr** retire seulement. La position, l’orientation et le type sont conservés. Un objet jamais placé ne peut pas être réaffiché.
+6. **Ctrl + Z** ou **Annuler l’action** restaure l’état précédent du tangible : pose, déplacement, rotation ou présence. Un glissement ou une rotation maintenue compte comme une manipulation. Les dégâts déjà infligés ne sont pas annulés. **Échap** ou **Annuler la pose** abandonne seulement l’aperçu préparé.
+7. Le glissement direct reste disponible : corps ou poignée **1** pour déplacer le mur, poignée **2** pour le tourner autour de **1** à longueur constante. Un simple clic sélectionne sans déplacement.
+8. **R** ou **Vue** tourne la carte de 90° pour correspondre au point de vue de l’opérateur. Ce réglage est mémorisé dans le navigateur ; il ne déplace pas les objets sur la table.
 
-Deux piliers **activés**, placés sur le circuit par la même équipe à moins de **500 px logiques**, forment un arc électrique. Désactiver un pilier coupe l’arc ; le réactiver le restaure si la paire est toujours à portée. Chaque pilier participe à une seule paire. Un mur reste un mur.
+L’aide-mémoire reste affiché sous la carte et les boutons rappellent leurs raccourcis :
 
-Les joueurs lancent et contrôlent la partie depuis la table. Les bonus fonctionnent sans magicien connecté. La nouvelle partie efface tous les tangibles. La console reste disponible avant le départ, pendant la course et en pause ; elle attend qu’un circuit existe pour autoriser les modifications.
+| Commande | Action |
+|---|---|
+| `M` | Préparer le mur |
+| `1` / touche `&` sur AZERTY | Préparer le Pylône 1 |
+| `2` / touche `é` sur AZERTY | Préparer le Pylône 2 |
+| Clic | Placer l’objet préparé |
+| `←` / `→` | Tourner le mur de 5° |
+| `Maj` + `←` / `→` | Tourner le mur de 15° |
+| `Espace` | Retirer / réafficher |
+| `Suppr` | Retirer |
+| `Échap` | Annuler la pose préparée |
+| `Ctrl` + `Z` | Annuler la dernière manipulation |
+| `R` | Tourner la vue de 90° |
+
+Les touches physiques **1/&** et **2/é** fonctionnent sans Maj, ainsi que les chiffres du pavé numérique. Les raccourcis ne s’appliquent pas dans un champ de saisie. Les postes joueurs ombrés restent interdits aux objets ; un aperçu rouge et un message expliquent les placements refusés. Aucun alignement automatique ne décale la position observée.
+
+Les deux pylônes présents à une distance d’au plus **500 px logiques** forment automatiquement un arc. Les états **Pylône manquant**, **Hors portée** et **Arc établi** sont affichés dans la console. Retirer un pylône coupe l’arc ; le réafficher le restaure si la paire est à portée. Le jeu applique automatiquement les collisions, dégâts et ralentissements.
+
+Les joueurs contrôlent la partie depuis la table. La console fonctionne avant le départ, en course et en pause, après création du circuit. Une nouvelle partie retire tous les objets et vide l’historique. En cas de déconnexion, la préparation est annulée et les commandes sont bloquées ; la reconnexion récupère l’état serveur sans rejouer de commandes. L’historique local est alors vidé. La pose et l’arc sont prévisualisés immédiatement ; les états réseau anciens ne font pas sauter un objet pendant une manipulation.
 
 ## Commandes et extensions futures
 
-Le jeu reçoit des **actions de jeu**, indépendantes des périphériques. `client-shared/controls.ts` est l’interface commune aux adaptateurs clavier et tactile : direction, POWER et gestes. Les types de messages sont dans `server/types.ts` ; les règles et la consommation des stocks restent validées dans `server/GameRules.ts`.
+Le jeu reçoit des **actions de jeu**, indépendantes des périphériques. `client-shared/controls.ts` est l’interface commune aux adaptateurs clavier et tactile : direction, POWER et gestes. Les types de messages sont dans `server/types.ts` ; les objets fixes et la validation partagée sont dans `server/tangibles.ts` ; les règles et la consommation des stocks restent validées dans `server/GameRules.ts`.
 
-Un futur adaptateur mobile pourra convertir un gyroscope en direction normalisée `[-1, 1]` et utiliser la même interface, sans modifier la physique. Aucun contrôle mobile, appairage ni accès aux capteurs n’est implémenté à ce stade. Un futur lecteur de tangibles pourra envoyer les mêmes actions de configuration, dépôt, activation, déplacement et retrait qu’Oz, après ajout de son rôle de connexion.
+Un futur adaptateur mobile pourra convertir un gyroscope en direction normalisée `[-1, 1]` et utiliser la même interface, sans modifier la physique. Aucun contrôle mobile, appairage ni accès aux capteurs n’est implémenté à ce stade. Un futur lecteur de tangibles pourra envoyer les mêmes actions de présence, déplacement et retrait qu’Oz, après ajout de son rôle de connexion.
 
 | Équipe | Direction clavier | Accélération en mode pédale | POWER du copilote | Réparation des deux postes |
 |---|---|---|---|---|
@@ -86,6 +106,10 @@ Un futur adaptateur mobile pourra convertir un gyroscope en direction normalisé
 | Rose | `←` / `→` | maintenir `↑` | `M` | maintenir `M` + `C` |
 
 Deux doigts proches saisissant le même bord de piste et glissant vers l’extérieur créent toujours une déformation locale temporaire. Les paramètres sont dans `config.json` ; relancer le serveur après modification.
+
+### Messages tangibles
+
+`TangibleMoved` reçoit `{ id, x, y, angle, active? }` : coordonnées normalisées, angle en degrés et présence facultative. Le champ `active` permet une pose et une activation atomiques ; son omission conserve la présence précédente (inactive pour un objet neuf). Le serveur impose le type selon l’identifiant et `team: null`. `TangibleControl` conserve `activate` / `deactivate` pour les objets déjà placés ; les anciennes actions `configure` / `dock` sont ignorées. `TangibleRemoved` efface l’état, notamment pour annuler une première pose. Le quatrième identifiant est refusé. Le journal `/api/oz-log` conserve la présence effective pour pouvoir rejouer les événements.
 
 ## Vérification
 
@@ -97,7 +121,7 @@ npm run test:network
 npm run build
 ```
 
-Les tests couvrent génération, conduite, collisions, réparation, armement, vol, durée de pause, activation / placement / désactivation des tangibles, rotation à pivot fixe, interactions de déplacement, journal serveur rejoué, séparation des rôles réseau et récupération d’un état complet à la connexion. La validation matérielle des contacts simultanés et de la latence sur la table réelle reste à réaliser ; voir `measures.md`. L’affichage de diagnostic s’active avec `?debug=1` ou F3. Le journal des événements tangibles du serveur est disponible sur `/api/oz-log`.
+Les tests couvrent génération, conduite, collisions neutres, réparation, armement, vol, pause, présence des trois tangibles fixes, pose atomique, rotation autour du centre et à pivot fixe, raccourcis AZERTY, annulation groupée, transformations dans les quatre vues, commandes rapides avec anciens états réseau, déconnexion, journal serveur rejoué et séparation des rôles réseau. La validation matérielle des contacts simultanés et de la latence sur la table réelle reste à réaliser ; voir `measures.md`. L’affichage de diagnostic s’active avec `?debug=1` ou F3. Le journal des événements tangibles du serveur est disponible sur `/api/oz-log`.
 
 ## Structure
 

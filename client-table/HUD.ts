@@ -1,11 +1,11 @@
 /**
  * HUD — the four corner panels (REQ-6.2), each rotated towards its own table edge.
- * Pilot panel: HP, steering and repair. Copilot: POWER, tangible charging zone,
+ * Pilot panel: HP, steering and repair. Copilot: POWER,
  * repair and neutral armed-item countdown.
  */
 import type { GameState, Team, Car } from '../server/types.js';
 import {
-  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, CHARGE_ZONE_LOCAL,
+  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL,
   type PanelLayout,
 } from '../server/layout.js';
 import { TEAM_COLOR, TEAM_NAME, type View } from './view.js';
@@ -149,8 +149,6 @@ export class HUD {
     const car = state.cars[panel.team];
     const color = TEAM_COLOR[panel.team];
     const armed = car.itemArmed && now < car.itemArmExpiry;
-    const docked = Object.entries(state.tangibles).filter(([, t]) => t.dockTeam === panel.team);
-    const ready = docked.some(([, t]) => t.active);
     const canPower = !!car.heldItem;
     const b = POWER_BTN_LOCAL;
     ctx.fillStyle = armed ? '#ffe14a33' : canPower ? `${color}22` : '#ffffff08';
@@ -163,18 +161,6 @@ export class HUD {
     ctx.beginPath(); ctx.moveTo(b.x, b.y - 24); ctx.lineTo(b.x, b.y - 7); ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 12px monospace';
     ctx.fillText('POWER', b.x, b.y + 25);
-
-    const z = CHARGE_ZONE_LOCAL;
-    ctx.fillStyle = ready ? '#3ddc8422' : '#ffffff08';
-    ctx.strokeStyle = ready ? '#3ddc84' : color;
-    ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.roundRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h, 12); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = ready ? '#3ddc84' : '#fff'; ctx.font = 'bold 11px monospace';
-    ctx.fillText(ready ? 'ACTIVÉ' : docked.length ? 'INACTIF' : 'TANGIBLE', z.x, z.y - 9);
-    ctx.font = '11px monospace';
-    ctx.fillText(docked.length ? docked.map(([id]) => `#${id}`).join(' ') : 'DÉPOSER ICI', z.x, z.y + 12);
-    ctx.fillStyle = '#ffffff99'; ctx.font = '10px monospace';
-    ctx.fillText(ready ? 'replacer sur piste' : 'activation par Oz', z.x, z.y + 32);
 
     // A stocked icon is information only; POWER is the only activation button.
     if (car.heldItem) {

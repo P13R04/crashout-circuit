@@ -1,103 +1,116 @@
-import type { GameState, Tangible, Team } from '../server/types.js';
-import { StateSync, connectWs } from '../client-shared/net.js';
-import { wallEndpoints } from '../client-shared/tangibleGeometry.js';
-import { chargeZoneTeam, insidePanel } from '../server/layout.js';
+import { StateSync, connectWs, type Connection } from '../client-shared/net.js';
+import { TANGIBLES, tangibleDefinition, type TangibleId } from '../server/tangibles.js';
 import { OzMap } from './OzMap.js';
+import { OzController, ozShortcut } from './OzController.js';
 
 const status = document.getElementById('status')!;
 const controls = document.getElementById('controls') as HTMLFieldSetElement;
-const kind = document.getElementById('kind') as HTMLSelectElement;
-const team = document.getElementById('team') as HTMLSelectElement;
-const activation = document.getElementById('activation') as HTMLButtonElement;
-const remove = document.getElementById('remove') as HTMLButtonElement;
 const notice = document.getElementById('notice')!;
-const list = document.getElementById('tangible-list')!;
+const hint = document.getElementById('hint')!;
+const arc = document.getElementById('arc-state')!;
+const presence = document.getElementById('presence') as HTMLButtonElement;
+const undo = document.getElementById('undo') as HTMLButtonElement;
+const cancel = document.getElementById('cancel') as HTMLButtonElement;
+const view = document.getElementById('rotate-view') as HTMLButtonElement;
+const canvas = document.getElementById('oz-map') as HTMLCanvasElement;
 const sync = new StateSync();
-let state: GameState | null = null;
-let selectedId = 1;
-let previousSelectionKey = '';
-const names = { A: 'Cyan', B: 'Rose' };
-const buttons = new Map<number, HTMLButtonElement>();
-
-const conn = connectWs('/ws/oz', {
-  onOpen: () => { status.textContent = 'Connecté'; },
-  onClose: () => { controls.disabled = true; status.textContent = 'Déconnecté · reconnexion…'; map.cancel(); },
-  onMessage: msg => {
-    if (msg.type !== 'State') return;
-    state = sync.apply(msg.state, msg.t);
-    const enabled = ['READY', 'RACE', 'PAUSED'].includes(state.phase);
-    controls.disabled = !enabled;
-    status.textContent = enabled ? 'Connecté' : 'En attente du circuit';
-    map.setState(state);
-    refresh();
-  },
+const buttons = new Map<TangibleId, HTMLButtonElement>();
+let conn: Connection;
+let quarter = 0;
+try { const stored = Number(localStorage.getItem('oz-view')); if (Number.isInteger(stored) && stored >= 0 && stored < 4) quarter = stored; } catch { /* Storage may be disabled. */ }
+const controller = new OzController((type, params) => {
+  if (!conn?.isOpen()) return false;
+  conn.send({ type, ...params }); return true;
+}, () => refresh());
+const map = new OzMap(canvas, {
+  enabled: () => controller.enabled,
+  selectedId: () => controller.selectedId,
+  selectedKind: () => tangibleDefinition(controller.selectedId)!.kind,
+  preparing: () => controller.preparing,
+  draftAngle: () => controller.draftAngle,
+  onSelect: id => controller.select(id),
+  onPlace: pose => controller.place(pose),
+  onMove: (id, x, y, angle) => controller.move(id, { x, y, angle }),
+  onDragStart: () => controller.beginGesture(),
+  onDragEnd: () => controller.endGesture(),
 });
-function emit(type: string, params: Record<string, unknown>): boolean {
-  if (!conn.isOpen() || controls.disabled) { notice.textContent = 'Action indisponible : attendre la connexion et le circuit.'; return false; }
-  conn.send({ type, ...params }); notice.textContent = ''; return true;
+map.setQuarter(quarter);
+for (const t of TANGIBLES) {
+  const button = document.createElement('button'); button.type = 'button';
+  button.className = 'object'; button.dataset.id = String(t.id);
+  button.setAttribute('aria-keyshortcuts', t.id === 1 ? 'M' : String(t.id - 1));
+  button.innerHTML = `<span class="object-icon" aria-hidden="true">${t.kind === 'wall' ? '━' : '◉'}</span><span><strong>${t.name}</strong><span class="object-state">Absent</span></span><kbd>${t.shortcut}</kbd>`;
+  button.addEventListener('click', () => controller.prepare(t.id));
+  buttons.set(t.id, button); document.getElementById('tangible-list')!.append(button);
 }
-function configure(): void {
-  emit('TangibleControl', { id: selectedId, action: 'configure', team: team.value, kind: kind.value });
-}
-function ensureConfigured(): void {
-  if (!state?.tangibles[selectedId]) configure();
-}
-const map = new OzMap(document.getElementById('oz-map') as HTMLCanvasElement, {
-  enabled: () => conn.isOpen() && !controls.disabled,
-  selectedId: () => selectedId,
-  selectedKind: () => kind.value as Tangible['kind'],
-  selectedTeam: () => team.value as Team,
-  onSelect: id => { selectedId = id; previousSelectionKey = ''; refresh(); },
-  onMove: (id, x, y, angle) => {
-    if (!state) return false;
-    const point = { x: x * state.params.logicalWidth, y: y * state.params.logicalHeight };
-    const dockTeam = chargeZoneTeam(point);
-    if (dockTeam) {
-      if (state.tangibles[id]?.dockTeam !== dockTeam) emit('TangibleControl', { id, action: 'dock', team: dockTeam, kind: kind.value });
-      return false;
-    }
-    const ends = kind.value === 'wall' ? wallEndpoints(point, angle, state.params.wallLengthPx) : [point];
-    if ([point, ...ends].some(p => insidePanel(p) || p.x < 0 || p.y < 0 || p.x > state!.params.logicalWidth || p.y > state!.params.logicalHeight)) {
-      notice.textContent = 'Gardez le tangible dans la surface de jeu.'; return false;
-    }
-    ensureConfigured();
-    return emit('TangibleMoved', { id, x, y, angle });
-  },
-});
-for (const id of [1, 2, 3, 4]) {
-  const b = document.createElement('button');
-  b.addEventListener('click', () => { selectedId = id; previousSelectionKey = ''; refresh(); map.draw(); });
-  buttons.set(id, b); list.append(b);
+function rotateView(): void {
+  quarter = (quarter + 1) % 4; map.setQuarter(quarter);
+  try { localStorage.setItem('oz-view', String(quarter)); } catch { /* Optional preference. */ }
+  refresh();
 }
 function refresh(): void {
-  const chosen = state?.tangibles[selectedId];
-  const key = `${selectedId}:${chosen?.kind ?? 'wall'}:${chosen?.team ?? 'A'}`;
-  if (key !== previousSelectionKey) {
-    kind.value = chosen?.kind ?? 'wall'; team.value = chosen?.team ?? 'A'; previousSelectionKey = key;
-  }
+  const s = controller.state;
+  controls.disabled = !controller.enabled;
+  status.textContent = !controller.connected ? 'Déconnecté · reconnexion…' : !controller.enabled ? 'En attente du circuit' : 'Connecté · objets neutres';
+  status.classList.toggle('online', controller.enabled);
   for (const [id, button] of buttons) {
-    const t = state?.tangibles[id];
-    button.classList.toggle('selected', id === selectedId);
-    button.setAttribute('aria-pressed', String(id === selectedId));
-    const label = t ? `#${id} · ${t.kind === 'wall' ? 'Mur' : 'Pilier'} · ${names[t.team]}` : `#${id} · Non placé`;
-    if (button.dataset.label !== label || button.dataset.active !== String(!!t?.active)) {
-      button.replaceChildren();
-      const dot = document.createElement('span'); dot.className = `dot${t?.active ? ' on' : ''}`; dot.setAttribute('aria-hidden', 'true');
-      const text = document.createElement('span'); text.textContent = label;
-      button.append(dot, text); button.dataset.label = label; button.dataset.active = String(!!t?.active);
-      button.setAttribute('aria-label', `${label} · ${t?.active ? 'activé' : 'désactivé'}`);
-    }
+    const selected = id === controller.selectedId, active = !!s?.tangibles[id]?.active;
+    button.classList.toggle('selected', selected); button.classList.toggle('present', active);
+    button.setAttribute('aria-pressed', String(selected));
+    button.querySelector('.object-state')!.textContent = selected && controller.preparing ? 'À placer · cliquez sur la carte' : active ? 'Présent' : 'Absent';
   }
-  activation.textContent = chosen?.active ? 'Désactiver' : 'Activer';
-  activation.setAttribute('aria-pressed', String(!!chosen?.active));
-  remove.disabled = !chosen;
+  arc.textContent = !s?.tangibles[2]?.active || !s?.tangibles[3]?.active ? 'Pylône manquant' : s.arcs.length ? 'Arc établi' : 'Hors portée';
+  arc.classList.toggle('linked', !!s?.arcs.length);
+  const chosen = s?.tangibles[controller.selectedId];
+  presence.querySelector('span')!.textContent = chosen?.active ? 'Retirer' : 'Réafficher';
+  undo.disabled = !controller.canUndo; cancel.disabled = !controller.preparing;
+  view.querySelector('span')!.textContent = `Vue ${quarter * 90}°`;
+  const name = tangibleDefinition(controller.selectedId)!.name;
+  hint.textContent = controller.preparing ? `${name} : cliquez pour placer · Échap pour annuler${controller.selectedId === 1 ? ` · angle ${controller.draftAngle}°` : ''}`
+    : `${name} sélectionné${controller.selectedId === 1 && chosen ? ` · angle ${chosen.angle}°` : ''} · son raccourci prépare un déplacement · glisser reste possible`;
+  notice.textContent = controller.notice;
+  canvas.style.cursor = controller.preparing ? 'crosshair' : 'default';
+  if (s) map.setState(s); else map.draw();
 }
-kind.addEventListener('change', configure);
-team.addEventListener('change', configure);
-activation.addEventListener('click', () => {
-  const active = state?.tangibles[selectedId]?.active;
-  ensureConfigured(); emit('TangibleControl', { id: selectedId, action: active ? 'deactivate' : 'activate' });
+presence.addEventListener('click', () => controller.presence());
+undo.addEventListener('click', () => { map.cancel(); controller.undo(); });
+cancel.addEventListener('click', () => { map.cancel(); controller.cancelPreparation(); });
+view.addEventListener('click', rotateView);
+let rotating = false;
+document.addEventListener('keydown', e => {
+  if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+  const action = ozShortcut(e);
+  if (!action || !controller.enabled) return;
+  e.preventDefault();
+  if (action === 'left' || action === 'right') {
+    if (!rotating) { map.cancel(); controller.beginGesture(); rotating = true; }
+    controller.rotate((action === 'left' ? -1 : 1) * (e.shiftKey ? 15 : 5)); return;
+  }
+  if (e.repeat) return;
+  rotating = false; controller.endGesture(); map.cancel();
+  switch (action) {
+    case 'wall': controller.prepare(1); break;
+    case 'pylon1': controller.prepare(2); break;
+    case 'pylon2': controller.prepare(3); break;
+    case 'presence': controller.presence(); break;
+    case 'remove': controller.presence(false); break;
+    case 'cancel': controller.cancelPreparation(); break;
+    case 'undo': controller.undo(); break;
+    case 'view': rotateView(); break;
+  }
 });
-document.getElementById('dock')!.addEventListener('click', () => emit('TangibleControl', { id: selectedId, action: 'dock', team: team.value, kind: kind.value }));
-remove.addEventListener('click', () => emit('TangibleRemoved', { id: selectedId }));
+document.addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { rotating = false; controller.endGesture(); }
+});
+window.addEventListener('blur', () => { rotating = false; map.cancel(); controller.cancelPreparation(); });
+new ResizeObserver(() => {
+  const rect = canvas.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.max(1, Math.round(rect.width * dpr)); canvas.height = Math.max(1, Math.round(rect.height * dpr));
+  map.cancel(); map.draw();
+}).observe(canvas);
+conn = connectWs('/ws/oz', {
+  onOpen: () => controller.setConnected(true),
+  onClose: () => { map.cancel(); controller.setConnected(false); },
+  onMessage: msg => { if (msg.type === 'State') controller.applyState(sync.apply(msg.state, msg.t)); },
+});
 refresh();
