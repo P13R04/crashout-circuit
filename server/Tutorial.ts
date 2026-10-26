@@ -117,7 +117,7 @@ export class Tutorial {
     }
   }
 
-  /** The drive mode is shared: the lesson of each team follows it. */
+  /** Each lesson follows its own pilot’s drive mode. */
   onDriveMode(): void {
     for (const team of TEAMS) this.syncPedal(team);
   }
@@ -129,7 +129,7 @@ export class Tutorial {
   /** Oz placed or changed a pylon: a lesson needs one of the team's own arcs. */
   onTangibles(): void {
     for (const team of TEAMS) {
-      if (this.current(team) === 'pylon' && this.state.arcs.some(a => a.team === team && !a.id.startsWith(TUTORIAL_OBSTACLE_PREFIX))) {
+      if (this.current(team) === 'pylon' && this.state.arcs.some(a => (a.team === null || a.team === team) && !a.id.startsWith(TUTORIAL_OBSTACLE_PREFIX))) {
         this.complete(team);
       }
     }

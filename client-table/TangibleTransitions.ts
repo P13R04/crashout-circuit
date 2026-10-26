@@ -2,16 +2,17 @@ import type { GameState, Team, Vec2 } from '../server/types.js';
 import { glow } from './neon.js';
 interface TrackedTangibleItem {
   id: string;
-  team: Team;
+  team: Team | null;
   pos: Vec2;
   angle?: number;
   lengthPx?: number;
+  widthPx?: number;
   birth: number;
 }
 
 interface TrackedArcItem {
   id: string;
-  team: Team;
+  team: Team | null;
   pylon1: Vec2;
   pylon2: Vec2;
   birth: number;
@@ -19,10 +20,11 @@ interface TrackedArcItem {
 
 interface DissolvingItem {
   kind: 'wall' | 'pylon' | 'arc';
-  team: Team;
+  team: Team | null;
   pos?: Vec2;
   angle?: number;
   lengthPx?: number;
+  widthPx?: number;
   pylon1?: Vec2;
   pylon2?: Vec2;
   start: number;
@@ -63,20 +65,20 @@ export class TangibleTransitions {
           team: w.team,
           pos: { ...w.pos },
           angle: w.angle,
-          lengthPx: w.lengthPx,
+          lengthPx: w.lengthPx, widthPx: w.widthPx,
           birth: now,
         });
         this.cue('wallPlaced');
       } else {
         const d = Math.hypot(existing.pos.x - w.pos.x, existing.pos.y - w.pos.y);
-        const aDiff = Math.abs((existing.angle ?? 0) - w.angle);
+        const aDiff = Math.abs(((existing.angle ?? 0) - w.angle + 540) % 360 - 180);
         if (d > 12 || aDiff > 6) {
           this.dissolvingItems.push({
             kind: 'wall',
             team: existing.team,
             pos: { ...existing.pos },
             angle: existing.angle,
-            lengthPx: existing.lengthPx,
+            lengthPx: existing.lengthPx, widthPx: existing.widthPx,
             start: now,
             dur: 500,
           });
@@ -94,7 +96,7 @@ export class TangibleTransitions {
           team: existing.team,
           pos: { ...existing.pos },
           angle: existing.angle,
-          lengthPx: existing.lengthPx,
+          lengthPx: existing.lengthPx, widthPx: existing.widthPx,
           start: now,
           dur: 500,
         });
@@ -224,7 +226,7 @@ export class TangibleTransitions {
         ctx.beginPath(); ctx.moveTo(item.pylon1.x, item.pylon1.y); ctx.lineTo(item.pylon2.x, item.pylon2.y); ctx.stroke();
       } else if (item.pos) {
         ctx.save(); ctx.translate(item.pos.x, item.pos.y); ctx.rotate((item.angle ?? 0) * Math.PI / 180);
-        if (item.kind === 'wall') ctx.strokeRect(-(item.lengthPx ?? 120) / 2, -8, item.lengthPx ?? 120, 16);
+        if (item.kind === 'wall') ctx.strokeRect(-(item.lengthPx ?? 120) / 2, -(item.widthPx ?? 16)/2, item.lengthPx ?? 120, item.widthPx ?? 16);
         else { ctx.beginPath(); ctx.arc(0, 0, 24 + (reduced ? 0 : f * 16), 0, Math.PI * 2); ctx.stroke(); }
         ctx.restore();
       }

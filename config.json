@@ -28,7 +28,6 @@
   "ghostCooldownS": 20,
   "destroyDisableS": 10,
   "destroyCooldownS": 15,
-  "wallLengthPx": 120,
   "arcMaxDistPx": 500,
   "trackWidthBasePx": 140,
   "trackWidthMinPx": 90,
@@ -48,5 +47,6 @@
   "physicsHz": 60,
   "broadcastHz": 30,
   "logicalWidth": 1920,
-  "logicalHeight": 1080
+  "logicalHeight": 1080,
+  "tableDiagonalInches": 55
 }

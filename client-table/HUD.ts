@@ -165,9 +165,9 @@ export class HUD {
     const car = state.cars[panel.team];
     const color = TEAM_COLOR[panel.team];
     const armed = car.itemArmed && now < car.itemArmExpiry;
-    const docked = Object.entries(state.tangibles).filter(([, t]) => t.dockTeam === panel.team);
-    const ready = docked.some(([, t]) => t.active);
     const canPower = !!car.heldItem;
+    const docked = Object.values(state.tangibles).filter(t => t.status === 'docked' && t.dockTeam === panel.team);
+    const ready = docked.some(t => t.active);
     const b = POWER_BTN_LOCAL;
     if (canPower) glow(ctx, b.x, b.y, 62, armed ? NEON.gold : color, armed ? .3 : .15);
     ctx.fillStyle = armed ? '#ffce661f' : canPower ? `${color}14` : '#050d1c';
@@ -177,9 +177,9 @@ export class HUD {
     icon(ctx, 'power', b.x, b.y, 32, canPower ? armed ? '#ffce66' : '#fff' : '#586078');
     // Inventory sits above POWER. A short connector makes their relationship visible.
     if (car.heldItem) {
-      drawItemIcon(ctx, car.heldItem, b.x + 82, -67, 14, armed ? '#ffce66' : color);
+      drawItemIcon(ctx, car.heldItem, b.x + 82, -78, 14, armed ? '#ffce66' : color);
       ctx.strokeStyle = armed ? '#ffce66' : color; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(b.x + 70, -53); ctx.lineTo(b.x + 24, -25); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(b.x + 70, -64); ctx.lineTo(b.x + 24, -25); ctx.stroke();
     }
 
     const z = CHARGE_ZONE_LOCAL;
@@ -193,7 +193,7 @@ export class HUD {
     ctx.beginPath(); ctx.roundRect(z.x - 30, z.y - 22, 40, 12, 3); ctx.stroke();
     ctx.beginPath(); ctx.arc(z.x + 21, z.y - 16, 8, 0, Math.PI * 2); ctx.stroke();
     icon(ctx, ready ? 'bolt' : 'target', z.x, z.y + 16, 23, ready ? '#61f4ba' : '#94a3b8');
-    docked.forEach(([, tangible], i) => {
+    docked.forEach((tangible, i) => {
       ctx.fillStyle = tangible.active ? '#61f4ba' : '#94a3b8';
       ctx.beginPath(); ctx.arc(z.x + (i - (docked.length - 1) / 2) * 14, z.y + 40, 4, 0, Math.PI * 2); ctx.fill();
     });

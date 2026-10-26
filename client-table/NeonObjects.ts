@@ -6,7 +6,8 @@ import { glow, noise, NEON, plate } from './neon.js';
 
 type Ctx = CanvasRenderingContext2D;
 const TAU = Math.PI * 2;
-function ownerAlpha(state: GameState, team: Team, p: Vec2): number {
+function ownerAlpha(state: GameState, team: Team | null, p: Vec2): number {
+  if (team === null) return 1;
   const own = state.cars[team].pos;
   return Math.hypot(own.x - p.x, own.y - p.y) < 90 ? .35 : 1;
 }
@@ -52,7 +53,7 @@ export class NeonObjects {
       }
       for (const x of [0, length]) {
         glow(ctx, x, 0, 30, NEON.gold, .5);
-        ctx.fillStyle = '#102030'; ctx.strokeStyle = TEAM_COLOR[g.team]; ctx.lineWidth = 2;
+        ctx.fillStyle = '#102030'; ctx.strokeStyle = (g.team === null ? this.electric : TEAM_COLOR[g.team]); ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(x, 0, 10, 0, TAU); ctx.fill(); ctx.stroke();
         ctx.fillStyle = NEON.gold; ctx.beginPath(); ctx.arc(x, 0, 4, 0, TAU); ctx.fill();
       }
@@ -65,36 +66,30 @@ export class NeonObjects {
       const disabled = w.disabledUntil > now, length = w.lengthPx;
       ctx.save(); ctx.globalAlpha = ownerAlpha(state, w.team, w.pos); ctx.translate(w.pos.x, w.pos.y); ctx.rotate(w.angle * Math.PI / 180);
       if (disabled) {
-        ctx.strokeStyle = '#708194'; ctx.setLineDash([5, 6]); ctx.lineWidth = 2; ctx.strokeRect(-length / 2, -5, length, 10); ctx.restore(); continue;
+        ctx.strokeStyle = '#708194'; ctx.setLineDash([5, 6]); ctx.lineWidth = 2; ctx.strokeRect(-length / 2, -(w.widthPx ?? 12)/2, length, w.widthPx ?? 12); ctx.restore(); continue;
       }
-      if (this.theme === 'scrap') {
-        plate(ctx, -length / 2 - 2, -3, length + 4, 17, 2, '#02080b');
-        plate(ctx, -length / 2, -8, length, 16, 2, '#65777b', '#bbcbca');
-        for (let x = -length / 2 + 3, i = 0; x < length / 2 - 3; x += 19, i++) {
-          plate(ctx, x, -6 + (i % 2), Math.min(17, length / 2 - 2 - x), 11, 1, i % 3 ? '#34454b' : '#899794', '#aab9b366');
-          ctx.strokeStyle = '#121e24'; ctx.lineWidth = 1;
-          for (let j = 0; j < 3; j++) { ctx.beginPath(); ctx.moveTo(x + 3 + j * 3, -4); ctx.lineTo(x + 3 + j * 3, 3); ctx.stroke(); }
-        }
-        // A salvaged retaining chain across the plates, echoing the physical LEGO wall.
-        ctx.strokeStyle = '#102029'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-length / 2 + 5, 0); ctx.quadraticCurveTo(0, 9, length / 2 - 5, 0); ctx.stroke();
-        ctx.strokeStyle = '#c3ceca'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
-        for (const x of [-length / 2 + 3, length / 2 - 3]) {
-          plate(ctx, x - 3, -10, 6, 20, 1, '#22343c', TEAM_COLOR[w.team]);
-          glow(ctx, x, 0, 23, this.electric, .38); ctx.fillStyle = this.electric; ctx.fillRect(x - 1, -5, 2, 10);
-        }
-        ctx.restore(); continue;
+      const width = w.widthPx ?? 12, fringe = w.tolerancePx ?? 0;
+      if (fringe) {
+        ctx.fillStyle = this.electric + '09'; ctx.strokeStyle = this.electric + '36'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.roundRect(-length/2-fringe, -width/2-fringe, length+fringe*2, width+fringe*2, fringe); ctx.fill(); ctx.stroke();
       }
-      plate(ctx, -length / 2, -2, length, 13, 3, '#01050d');
-      plate(ctx, -length / 2, -6, length, 12, 3, '#26334a', '#74869a');
-      ctx.save(); ctx.beginPath(); ctx.rect(-length / 2 + 5, -4, length - 10, 8); ctx.clip();
-      ctx.strokeStyle = '#ffbf6777'; ctx.lineWidth = 4;
-      for (let x = -length / 2; x < length / 2; x += 13) { ctx.beginPath(); ctx.moveTo(x, -5); ctx.lineTo(x + 8, 5); ctx.stroke(); } ctx.restore();
-      ctx.strokeStyle = NEON.danger; ctx.globalAlpha *= reduced ? .8 : .75 + .12 * Math.sin(time / 450); ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.moveTo(-length / 2 + 4, -6); ctx.lineTo(length / 2 - 4, -6); ctx.stroke();
-      for (const x of [-length / 2, length / 2]) {
-        glow(ctx, x, 0, 26, TEAM_COLOR[w.team], .45);
-        plate(ctx, x - 4, -8, 8, 16, 2, '#23364b', TEAM_COLOR[w.team]);
-        ctx.fillStyle = NEON.white; ctx.fillRect(x - 1, -3, 2, 6);
+      plate(ctx, -length/2, -width/2+4, length, width, 3, '#01060c');
+      plate(ctx, -length/2, -width/2, length, width, 3, this.theme === 'scrap' ? '#45565b' : '#26364c', '#829799');
+      ctx.save(); ctx.beginPath(); ctx.rect(-length/2+5, -width/2+4, length-10, width-8); ctx.clip();
+      ctx.strokeStyle = this.electric + '45'; ctx.lineWidth = 4;
+      for(let x=-length/2-width;x<length/2;x+=16){ctx.beginPath();ctx.moveTo(x,-width/2);ctx.lineTo(x+width,width/2);ctx.stroke();}
+      ctx.restore();
+      if(this.theme === 'scrap'){
+        ctx.strokeStyle='#0b171e';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-length/2+7,-3);ctx.quadraticCurveTo(0,12,length/2-7,-3);ctx.stroke();
+        ctx.strokeStyle='#b6c5c2';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+      }
+      const pulse = reduced ? .8 : .75+.12*Math.sin(time/450);
+      ctx.strokeStyle = this.electric;ctx.globalAlpha*=pulse;ctx.lineWidth=2;
+      ctx.strokeRect(-length/2+2,-width/2+2,length-4,width-4);
+      for(const x of [-length/2+5,length/2-5]){
+        plate(ctx,x-3,-width/2+4,6,width-8,1,'#172a36','#aabdbb');
+        glow(ctx,x,0,25,this.electric,.4);
+        ctx.fillStyle=this.electric;ctx.fillRect(x-1,-width/2+8,2,width-16);
       }
       ctx.restore();
     }
@@ -143,7 +138,23 @@ export class NeonObjects {
     for (const t of Object.values(state.tangibles)) {
       if (t.status !== 'placed' || !t.active || t.kind !== 'pylon') continue;
       const x = t.x * state.params.logicalWidth, y = t.y * state.params.logicalHeight;
-      ctx.save(); ctx.translate(x, y); const color = TEAM_COLOR[t.team];
+      ctx.save(); ctx.translate(x, y); const color = this.electric;
+      const radius = state.params.pylonFieldRadiusPx, base = state.params.pylonBasePx;
+      glow(ctx, 0, 0, radius, color, .24);
+      ctx.fillStyle = color+'09'; ctx.strokeStyle = color+'65'; ctx.lineWidth=1.2;
+      ctx.beginPath(); ctx.arc(0,0,radius,0,TAU);ctx.fill();ctx.stroke();
+      // Three bounded, deterministic discharges crawl around the ground field.
+      const phase = reduced ? 0 : time/1700;
+      for(let branch=0;branch<3;branch++){
+        const start = phase+branch*TAU/3;ctx.strokeStyle=color+'90';ctx.lineWidth=1.5;ctx.beginPath();
+        for(let i=0;i<=9;i++){
+          const angle=start+i*.055,r=radius*(.68+.12*noise(branch*43+i*7+Math.floor(reduced?0:time/120)));
+          const px=Math.cos(angle)*r,py=Math.sin(angle)*r;if(i)ctx.lineTo(px,py);else ctx.moveTo(px,py);
+        }ctx.stroke();
+      }
+      ctx.rotate(t.angle*Math.PI/180);
+      plate(ctx,-base/2,-base/2,base,base,2,'#20353e','#83b2ba');
+      ctx.scale(base/40,base/40);
       if (this.theme === 'scrap') {
         // Concentric coils and four terminals have no privileged direction.
         ctx.fillStyle = '#010609bb'; ctx.beginPath(); ctx.arc(2, 3, 20, 0, TAU); ctx.fill();

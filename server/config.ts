@@ -1,3 +1,4 @@
+import { physicalDimensions } from './tangibleGeometry.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -35,7 +36,8 @@ const defaults = {
   ghostCooldownS: 20,
   destroyDisableS: 10,
   destroyCooldownS: 15,
-  wallLengthPx: 120,
+  tableDiagonalInches: 55,
+  ...physicalDimensions(55),
   arcMaxDistPx: 500,
   trackWidthBasePx: 140,
   trackWidthMinPx: 90,
@@ -67,7 +69,10 @@ function loadConfig(): Config {
   try {
     const raw = readFileSync(configPath, 'utf-8');
     const overrides = JSON.parse(raw) as Partial<Config>;
-    return { ...defaults, ...overrides };
+    const diagonal = Number(overrides.tableDiagonalInches);
+    const tableDiagonalInches = Number.isFinite(diagonal) && diagonal >= 20 && diagonal <= 120 ? diagonal : 55;
+    return { ...defaults, ...overrides, tableDiagonalInches,
+      ...physicalDimensions(tableDiagonalInches, defaults.logicalWidth, defaults.logicalHeight) };
   } catch {
     // config.json not found — use defaults
     return { ...defaults };

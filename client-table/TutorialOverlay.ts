@@ -89,26 +89,26 @@ function lessonOf(id: TutorialStepId, sub: number, team: Team, pc: boolean): Les
         ? { text: 'Lance-pierre : cliquez, tirez, relâchez.', hint: 'Visez devant la voiture adverse' }
         : { text: 'Posez 3 doigts, tirez-en un, relâchez.', hint: 'La pierre part à l’opposé de la traction' };
     case 'boostPickup':
-      return { text: 'Ramassez un nouvel objet : un BOOST' };
+      return { text: 'Ramassez un boost.' };
     case 'boostPower':
-      return { text: 'POWER pour armer le boost', hint: pc ? `clavier : ${KEYS.power[team]}` : undefined };
+      return { text: 'Armez le boost avec ⏻.', hint: pc ? `clavier : ${KEYS.power[team]}` : undefined };
     case 'boost':
       return pc
-        ? { text: 'Paramètres → Boost, puis deux clics.', hint: 'Entre 100 et 400 px' }
+        ? { text: 'Paramètres → Boost, puis deux clics.', hint: 'Écartez les deux contacts.' }
         : { text: 'Posez 2 doigts écartés sur la piste.', hint: 'Devant votre voiture.' };
     case 'boostCross':
-      return { text: 'Faites passer votre voiture dans le portail jaune' };
+      return { text: 'Traversez le portail jaune.' };
     case 'borderPull':
       return { text: 'À 2 doigts, tirez un bord vers l’extérieur.' };
     case 'repair':
       return {
-        text: 'Maintenez ensemble vos deux pads 🔧.',
+        text: 'Maintenez ensemble les deux clés.',
         hint: pc ? `clavier : maintenez ${KEYS.repair[team]}` : 'Si l’un des deux lâche, la jauge retombe',
       };
     case 'wall':
-      return { text: 'MUR ADVERSE · roulez dessus pour voir ce qu’il fait', hint: 'Ici, sans dégât' };
+      return { text: 'Touchez le mur avec votre voiture.', hint: 'Ici, sans dégât' };
     case 'arc':
-      return { text: 'ARC ÉLECTRIQUE · traversez-le pour voir ce qu’il fait', hint: 'Ici, sans dégât' };
+      return { text: 'Traversez l’arc électrique.', hint: 'Ici, sans dégât' };
     case 'pylon':
       return { text: 'Oz : chargez et posez les deux piliers.', hint: 'Sans Oz : passez cette étape.' };
   }

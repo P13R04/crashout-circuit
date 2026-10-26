@@ -46,7 +46,7 @@ export const STEER_AREA_LOCAL = { x: -215, y: 10, w: 240, h: 130 };
 /** Pedal shown only in manual-drive mode, held to accelerate. */
 export const PEDAL_LOCAL = { x: 95, y: 10, w: 100, h: 130 };
 export const POWER_BTN_LOCAL = { x: -162, y: 15, r: 44 };
-export const CHARGE_ZONE_LOCAL = { x: -43, y: 12, w: 118, h: 104 };
+export const CHARGE_ZONE_LOCAL = { x: -43, y: 12, w: 144, h: 144 };
 
 export function chargeZoneTeam(p: Vec2): Team | null {
   for (const panel of PANELS.filter(p => p.role === 'copilot')) {

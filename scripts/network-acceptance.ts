@@ -53,15 +53,31 @@ try {
   await table.until(s => s.phase === 'READY');
   assert.ok(game.getState().track);
 
-  // Only Oz can simulate a tangible or mark a station as activated.
-  table.send({ type: 'TangibleControl', id: 1, action: 'dock', team: 'A', kind: 'wall' });
+  // Only Oz can atomically place and activate the fixed neutral objects.
+  table.send({ type: 'TangibleMoved', id: 1, x: .5, y: .5, angle: 90, active: true });
   await table.flush(); assert.equal(game.getState().tangibles[1], undefined);
-  oz.send({ type: 'TangibleControl', id: 1, action: 'dock', team: 'A', kind: 'wall' });
-  await table.until(s => s.tangibles[1]?.status === 'docked');
-  oz.send({ type: 'TangibleControl', id: 1, action: 'activate', team: 'A' });
-  await table.until(s => s.tangibles[1]?.active === true);
-  oz.send({ type: 'TangibleMoved', id: 1, x: .5, y: .5, angle: 90 });
+  oz.send({ type: 'TangibleMoved', id: 1, x: .5, y: .5, angle: 90, active: true });
+  await oz.flush(); assert.equal(game.getState().tangibles[1], undefined, 'uncharged direct placement is refused');
+  table.send({type:'TangibleControl',id:1,action:'dock',team:'A'});
+  await table.flush();assert.equal(game.getState().tangibles[1],undefined);
+  oz.send({type:'TangibleControl',id:1,action:'dock',team:'B'});
+  oz.send({type:'TangibleControl',id:1,action:'activate'});
+  oz.send({ type: 'TangibleMoved', id: 1, x: .5, y: .5, angle: 90, active: true });
   await table.until(s => s.walls.length === 1 && s.walls[0].angle === 90);
+  assert.equal(game.getState().walls[0].team, null);
+  assert.ok(game.getState().params.wallWidthPx > 50, 'physical wall width is shared with clients');
+  oz.send({type:'TangibleMoved',id:1,x:.7,y:.5,angle:90,active:true});
+  await oz.flush();assert.equal(game.getState().tangibles[1].x,.5,'distant placement requires recharge');
+  oz.send({type:'TangibleControl',id:1,action:'dock',team:'A'});
+  await table.until(s=>s.tangibles[1]?.status==='docked'&&!s.tangibles[1].active);
+  assert.equal(game.getState().walls.length,0,'dock removes the effect');
+  oz.send({type:'TangibleMoved',id:1,x:.5,y:.5,angle:90,active:true});
+  await oz.flush();assert.equal(game.getState().tangibles[1].status,'docked','activation flag cannot substitute for charging');
+  oz.send({type:'TangibleControl',id:1,action:'activate'});
+  oz.send({type:'TangibleMoved',id:1,x:.5,y:.5,angle:90,active:true});
+  await table.until(s=>s.tangibles[1]?.status==='placed');
+  oz.send({ type: 'TangibleControl', id: 1, action: 'configure', team: 'B', kind: 'pylon' });
+  await oz.flush(); assert.equal(game.getState().tangibles[1].kind, 'wall');
   for (const type of ['BeginRace', 'Pause', 'NewGame', 'Reset', 'StartGame']) oz.send({ type });
   oz.send({ type: 'OzTrigger', kind: 'fallbackTrack', params: {} });
   await oz.flush(); assert.equal(game.getState().phase, 'READY', 'Oz cannot change game phase');
@@ -94,7 +110,8 @@ try {
   await oz.until(s => s.boostGates[0]?.team === 'B' && s.cars.A.heldItem === null);
 
   const reconnected = await client('oz');
-  await reconnected.until(s => s.track !== null && s.tangibles[1]?.status === 'placed');
+  // Tick snapshots omit the track; inspect the initial full snapshot separately.
+  await reconnected.until(s => s.tangibles[1]?.status === 'placed');
   assert.ok(reconnected.snapshots[0].track, 'reconnect receives full geometry');
   oz.send({ type: 'TangibleControl', id: 1, action: 'deactivate' });
   await table.until(s => s.walls.length === 0 && s.tangibles[1]?.active === false);

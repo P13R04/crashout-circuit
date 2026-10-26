@@ -16,9 +16,11 @@ import type {
 import { config } from './config.js';
 import { dist, distToSegment, nearestOnTrack, segmentsIntersect, slingshotShot, wrapAngle } from './geometry.js';
 import { generate, generatePreset, validateStroke, rebuildEdges } from './MapGenerator.js';
-import { nearestStationTeam, LOGICAL_W, checkDivider, chargeZoneTeam, insidePanel, panelOf, localToWorld, CHARGE_ZONE_LOCAL } from './layout.js';
+import { nearestStationTeam, LOGICAL_W, checkDivider, chargeZoneTeam, localToWorld, panelOf, CHARGE_ZONE_LOCAL } from './layout.js';
 import { activeMapTeam, mapEndpointError } from './mapCreation.js';
 import { Tutorial, TUTORIAL_ARM_WINDOW_S, TUTORIAL_PICKUP_RESPAWN_S, TUTORIAL_OBSTACLE_PREFIX } from './Tutorial.js';
+import { withinCorrection, wallContact } from './tangibleGeometry.js';
+import { tangibleArc, tangibleDefinition, validTangiblePose } from './tangibles.js';
 
 export const CAR_RADIUS = 10;
 export const WALL_HALF_THICKNESS = 4;
@@ -45,6 +47,7 @@ export interface TangibleLogEntry {
   x?: number;
   y?: number;
   angle?: number;
+  active?: boolean;
 }
 
 export const other = (t: Team): Team => (t === 'A' ? 'B' : 'A');
@@ -131,6 +134,14 @@ export function createInitialState(): GameState {
       boostLenMaxPx: config.boostLenMaxPx,
       repairHoldS: config.repairHoldS,
       wallLengthPx: config.wallLengthPx,
+      wallWidthPx: config.wallWidthPx,
+      pylonBasePx: config.pylonBasePx,
+      pylonFieldRadiusPx: config.pylonFieldRadiusPx,
+      tangibleTolerancePx: config.tangibleTolerancePx,
+      tangibleCorrectionPx: config.tangibleCorrectionPx,
+      tangibleCorrectionDegrees: config.tangibleCorrectionDegrees,
+      tableDiagonalInches: config.tableDiagonalInches,
+      arcMaxDistPx: config.arcMaxDistPx,
       logicalWidth: config.logicalWidth,
       logicalHeight: config.logicalHeight,
     },
@@ -784,96 +795,63 @@ export class GameRules {
 
   // ─── Tangible pylons (C-05) ────────────────────────────────────────────────
 
-  /** Same semantic lifecycle for Oz now and a sensor bridge later. */
+  /** Neutral inventory; only Oz can acknowledge the physical charging cycle. */
   onTangibleControl(msg: TangibleControlMsg): void {
-    const id = Number(msg.id);
-    if (![1, 2, 3, 4].includes(id) || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
-    const s = this.state;
-    if (msg.action === 'dock' || msg.action === 'configure') {
+    const id = Number(msg.id), definition = tangibleDefinition(id);
+    if (!definition || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
+    if (msg.action === 'dock') {
       if (msg.team !== 'A' && msg.team !== 'B') return;
-      if (msg.kind !== undefined && msg.kind !== 'wall' && msg.kind !== 'pylon') return;
-      const old = s.tangibles[id];
-      const zone = CHARGE_ZONE_LOCAL;
-      const pos = localToWorld(panelOf(msg.team, 'copilot'), zone.x, zone.y);
-      const kind = msg.kind ?? old?.kind ?? 'wall';
-      if (msg.action === 'configure' && old) {
-        const changed = old.kind !== kind || old.team !== msg.team;
-        old.kind = kind; old.team = msg.team;
-        if (changed) old.active = false;
-        if (old.status === 'docked') { old.dockTeam = msg.team; old.x = pos.x / config.logicalWidth; old.y = pos.y / config.logicalHeight; }
-      } else {
-        s.tangibles[id] = {
-          x: pos.x / config.logicalWidth, y: pos.y / config.logicalHeight, angle: 0,
-          kind, team: msg.team, dockTeam: msg.team, status: 'docked', active: false,
-        };
-      }
+      const at = localToWorld(panelOf(msg.team, 'copilot'), CHARGE_ZONE_LOCAL.x, CHARGE_ZONE_LOCAL.y);
+      this.state.tangibles[id] = { x: at.x / config.logicalWidth, y: at.y / config.logicalHeight,
+        angle: 0, kind: definition.kind, team: null, dockTeam: msg.team, status: 'docked', active: false };
     } else if (msg.action === 'activate' || msg.action === 'deactivate') {
-      const t = s.tangibles[id];
-      if (!t || (msg.team !== undefined && msg.team !== t.team)) return;
+      const t = this.state.tangibles[id];
+      if (!t) return;
       t.active = msg.action === 'activate';
     } else return;
-    this.tangibleLog.push({ t: this.now, type: 'TangibleControl', id, action: msg.action, team: msg.team, kind: msg.kind });
+    this.tangibleLog.push({ t: this.now, type: 'TangibleControl', id, action: msg.action, team: msg.action === 'dock' ? msg.team : undefined });
     this.rebuildTangibles();
   }
 
   onTangibleMoved(msg: TangibleMovedMsg): void {
-    const id = Number(msg.id);
-    if (![1, 2, 3, 4].includes(id) || ![msg.x, msg.y, msg.angle].every(Number.isFinite)
-      || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
-    const x = clamp(msg.x, 0, 1), y = clamp(msg.y, 0, 1);
-    const at = { x: x * config.logicalWidth, y: y * config.logicalHeight };
-    const dockTeam = chargeZoneTeam(at);
-    const t = this.state.tangibles[id];
-    if (dockTeam) {
-      // A nudge within the same docking station does not change activation.
-      if (t?.dockTeam === dockTeam && t.status === 'docked') return;
-      this.onTangibleControl({ type: 'TangibleControl', t: msg.t, id: msg.id, action: 'dock', team: dockTeam });
-      return;
-    }
-    if (!t || insidePanel(at)) return;
-    if (t.kind === 'wall') {
-      const ends = GameRules.wallEnds({ pos: at, angle: msg.angle, lengthPx: config.wallLengthPx });
-      if (ends.some(p => p.x < 0 || p.y < 0 || p.x > config.logicalWidth || p.y > config.logicalHeight || insidePanel(p))) return;
-    }
-    this.tangibleLog.push({ t: this.now, type: 'TangibleMoved', id, x, y, angle: msg.angle });
-    Object.assign(t, { x, y, angle: msg.angle, dockTeam: null, status: 'placed' });
+    const id = Number(msg.id), definition = tangibleDefinition(id);
+    if (!definition || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)
+      || ![msg.x, msg.y, msg.angle].every(Number.isFinite)
+      || (msg.active !== undefined && typeof msg.active !== 'boolean')) return;
+    const dock = chargeZoneTeam({ x: msg.x * config.logicalWidth, y: msg.y * config.logicalHeight });
+    if (dock) { this.onTangibleControl({ ...msg, type: 'TangibleControl', action: 'dock', team: dock }); return; }
+    if (!validTangiblePose(definition.kind, msg, config)) return;
+    const old = this.state.tangibles[id];
+    if (!old || (old.status === 'docked' && !old.active)) return;
+    if (old.status === 'placed' && (!old.placementOrigin || !withinCorrection(old.placementOrigin, msg, config))) return;
+    const { x, y } = msg, angle = ((msg.angle % 360) + 360) % 360;
+    const active = msg.active ?? old.active;
+    const placementOrigin = old.status === 'placed' ? old.placementOrigin : { x, y, angle };
+    this.state.tangibles[id] = { x, y, angle, active, kind: definition.kind, team: null,
+      dockTeam: null, status: 'placed', placementOrigin };
+    this.tangibleLog.push({ t: this.now, type: 'TangibleMoved', id, x, y, angle, active });
     this.rebuildTangibles();
   }
 
   onTangibleRemoved(msg: TangibleRemovedMsg): void {
     const id = Number(msg.id);
-    if (![1, 2, 3, 4].includes(id) || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
+    if (!tangibleDefinition(id) || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
     this.tangibleLog.push({ t: this.now, type: 'TangibleRemoved', id });
     delete this.state.tangibles[id];
     this.rebuildTangibles();
   }
 
-  /** Walls and electrical pillars have explicit types; distance never turns a wall into an arc. */
   private rebuildTangibles(): void {
     const s = this.state;
     const oldDisabled = new Map([...s.walls, ...s.arcs].map(w => [w.id, w.disabledUntil]));
     s.walls = s.walls.filter(w => w.expiresAt);
     s.arcs = s.arcs.filter(a => a.id.startsWith(TUTORIAL_OBSTACLE_PREFIX));
     const px = (t: { x: number; y: number }): Vec2 => ({ x: t.x * config.logicalWidth, y: t.y * config.logicalHeight });
-    for (const [id, t] of Object.entries(s.tangibles)) {
-      if (t.status !== 'placed' || !t.active || t.kind !== 'wall') continue;
-      const wid = `wall-${id}`;
-      s.walls.push({ id: wid, team: t.team, pos: px(t), angle: t.angle,
-        lengthPx: config.wallLengthPx, disabledUntil: oldDisabled.get(wid) ?? 0 });
-    }
-    for (const team of TEAMS) {
-      const pylons = Object.entries(s.tangibles).filter(([, t]) => t.status === 'placed' && t.active && t.team === team && t.kind === 'pylon');
-      const pending = [...pylons];
-      while (pending.length > 1) {
-        const [id1, p1] = pending.shift()!;
-        let nearest = -1, distance = config.arcMaxDistPx + 1e-6;
-        pending.forEach(([, p], i) => { const d = dist(px(p1), px(p)); if (d < distance) { nearest = i; distance = d; } });
-        if (nearest < 0) continue;
-        const [id2, p2] = pending.splice(nearest, 1)[0];
-        const id = `arc-${id1}-${id2}`;
-        s.arcs.push({ id, team, pylon1: px(p1), pylon2: px(p2), disabledUntil: oldDisabled.get(id) ?? 0 });
-      }
-    }
+    const wall = s.tangibles[1];
+    if (wall?.active && wall.status === 'placed') s.walls.push({ id: 'wall-1', team: null, pos: px(wall), angle: wall.angle,
+      lengthPx: config.wallLengthPx, widthPx: config.wallWidthPx, tolerancePx: config.tangibleTolerancePx, disabledUntil: oldDisabled.get('wall-1') ?? 0 });
+    const arc = tangibleArc(s.tangibles, config);
+    if (arc) s.arcs.push({ ...arc, disabledUntil: oldDisabled.get(arc.id) ?? 0 });
     this.tutorial?.onTangibles();
   }
 
@@ -1066,23 +1044,37 @@ export class GameRules {
       }
     }
 
-    // Hostile walls and arcs (never the team's own, never while ghost/invulnerable)
+    // Neutral obstacles affect both teams; legacy owned obstacles still spare their owner.
     if (car.ghostUntil <= now && car.invulnUntil <= now && !s.testMode.invincible) {
       for (const w of s.walls) {
         if (w.team === team || w.disabledUntil > now) continue;
-        const [a, b] = GameRules.wallEnds(w);
-        if (distToSegment(car.pos, a, b) <= CAR_RADIUS + WALL_HALF_THICKNESS) {
+        const hit = wallContact(prev, car.pos, w.pos, w.angle, w.lengthPx,
+          w.widthPx ?? WALL_HALF_THICKNESS * 2, CAR_RADIUS + (w.tolerancePx ?? 0));
+        if (hit) {
           this.damage(car, config.dmgWall, now);
           car.invulnUntil = now + config.invulnAfterHitS * 1000;
-          this.bounceOffSegment(car, a, b);
+          car.pos = hit.point;
+          this.reflect(car, hit.normal.x, hit.normal.y);
           this.tutorial?.onObstacleHit(team, 'wall');
+          break;
+        }
+      }
+      if (car.invulnUntil <= now) {
+        for (const t of Object.values(s.tangibles)) {
+          if (!t.active || t.status !== 'placed' || t.kind !== 'pylon') continue;
+          const at = { x: t.x * config.logicalWidth, y: t.y * config.logicalHeight };
+          if (distToSegment(at, prev, car.pos) > config.pylonFieldRadiusPx + CAR_RADIUS) continue;
+          this.damage(car, config.dmgArc, now);
+          car.invulnUntil = now + config.invulnAfterHitS * 1000;
+          car.slowUntil = now + config.arcSlowS * 1000;
+          car.speed *= config.arcSlowFactor;
           break;
         }
       }
       if (car.invulnUntil <= now) {
         for (const arc of s.arcs) {
           if (arc.team === team || arc.disabledUntil > now) continue;
-          if (distToSegment(car.pos, arc.pylon1, arc.pylon2) <= CAR_RADIUS + WALL_HALF_THICKNESS) {
+          if (Math.min(distToSegment(car.pos, arc.pylon1, arc.pylon2), distToSegment(arc.pylon1, prev, car.pos), distToSegment(arc.pylon2, prev, car.pos)) <= CAR_RADIUS + WALL_HALF_THICKNESS || segmentsIntersect(prev, car.pos, arc.pylon1, arc.pylon2)) {
             this.damage(car, config.dmgArc, now);
             car.invulnUntil = now + config.invulnAfterHitS * 1000;
             car.slowUntil = now + config.arcSlowS * 1000;

@@ -9,6 +9,10 @@ Cette fiche conserve les décisions de conception et leurs identifiants (R-xx, C
 
 ---
 
+## Règles actuelles des tangibles LEGO (octobre 2026)
+
+Un mur neutre 10 × 4 et deux piliers neutres 4 × 4. Effets identiques pour les deux équipes. Avant chaque nouvelle pose, retour physique à l’une des deux stations copilote ; Oz constate le dépôt puis charge l’objet. POWER concerne seulement les bonus ramassés. Une désactivation ne recharge pas. Après la pose, seules des corrections de 15 mm / 15° autour de l’origine immuable sont permises. L’échelle est calculée pour l’image active 16:9 sur 55 pouces, réglable via `tableDiagonalInches`. Mur 80 × 32 mm + frange de 10 mm ; pilier 32 × 32 mm, champ de diamètre 84 mm, arc entre piliers à portée. Le [README](README.md#console-oz--tangibles-neutres-et-recharge) décrit le protocole actuel et les essais. Les spécifications historiques ci-dessous concernant quatre objets par équipe, les murs plats et les secours Oz sont dépassées.
+
 ## Évolution intégrée — console Oz (22 octobre 2026)
 
 La console Oz gère uniquement le placement, la rotation et l’activation des tangibles. POWER appartient au copilote et arme les objets ramassés, dont le geste est neutre et volable. Le lancement, la pause et les outils de test PC restent sur la table. Le mode pédale, le lance-pierre à élastique et la création guidée du circuit intégrés dans `main` sont conservés. Le [README](README.md) décrit ces commandes actuelles ; les passages historiques ci-dessous sur UTILISER côté pilote ou les secours Oz sont dépassés.
@@ -37,7 +41,7 @@ La console Oz gère uniquement le placement, la rotation et l’activation des t
 |---|---|---|
 | D1 | Moteur | WebApp. Navigateur plein écran sur la table. Canvas 2D (PixiJS si besoin de perf) |
 | D2 | Serveur | Node.js + WebSocket, **autoritaire** sur la physique et les règles |
-| D3 | Pilotage | **Table, station fixe** : un bouton central partagé bascule entre avance continue et pédale maintenue; bande de direction à deux zones franchissable + bouton d'action. Un tangible orienté pourra remplacer ces entrées sans changer la logique [DÉCISION] |
+| D3 | Pilotage | **Table, station fixe** : un bouton par pilote bascule son équipe entre avance continue et pédale maintenue; bande de direction à deux zones franchissable + bouton d'action. Un tangible orienté pourra remplacer ces entrées sans changer la logique [DÉCISION] |
 | D4 | Tangibles | Magicien d'Oz via une console web séparée. Format d'événements TUIO (`id`, `x`, `y`, `angle`) |
 | D5 | Attribution des joueurs | On ne suit **jamais un doigt vers une personne**. L'équipe se déduit du contexte (zone, bouton d'équipe, objet armé par le Pilote) |
 | D6 | Réparation | Action synchrone: **Pilote et Copilote posent chacun un doigt sur leur pad de station** (table). Remplace la « réparation localisée » [DÉCISION] |
