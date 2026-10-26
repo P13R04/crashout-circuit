@@ -26,9 +26,9 @@ export interface PanelLayout {
 
 export const PANELS: PanelLayout[] = [
   { team: 'A', role: 'pilot',   cx: 370,  cy: 960, rot: 0 },
-  { team: 'A', role: 'copilot', cx: 1670, cy: 960, rot: 0 },
+  { team: 'A', role: 'copilot', cx: 1670, cy: 120, rot: Math.PI },
   { team: 'B', role: 'pilot',   cx: 370,  cy: 120, rot: Math.PI },
-  { team: 'B', role: 'copilot', cx: 1670, cy: 120, rot: Math.PI },
+  { team: 'B', role: 'copilot', cx: 1670, cy: 960, rot: 0 },
 ];
 
 /**

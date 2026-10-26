@@ -60,14 +60,14 @@ Principes de conception retenus:
 | Pilote (×2) | **Fixe**, doit rester à sa station | Zones gauche/droite + bouton d'action sur la table | Pad de réparation + panneau HUD |
 | Copilote (×2) | **Mobile** autour de la table | Doigts sur la table + tangibles | Pad de réparation + panneau HUD |
 
-Disposition [DÉCISION]: les équipes sont sur les deux grands côtés de la table.
+Disposition [DÉCISION]: le pilote et le copilote d'une même équipe sont dans deux angles opposés (diagonale). Les pilotes sont à gauche (bas-gauche pour A, haut-gauche pour B) et les copilotes sont à droite (haut-droite pour A, bas-droite pour B).
 
 | Coin | Joueur | Couleur d'équipe |
 |---|---|---|
 | Bas-gauche | Pilote A | cyan |
-| Bas-droite | Copilote A | cyan |
+| Bas-droite | Copilote B | rose |
 | Haut-gauche | Pilote B | rose |
-| Haut-droite | Copilote B | rose |
+| Haut-droite | Copilote A | cyan |
 
 Chaque coin porte un **panneau HUD** orienté vers son joueur (voir §11).
 

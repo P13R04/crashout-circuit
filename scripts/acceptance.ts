@@ -16,6 +16,7 @@ import { nearestOnTrack, slingshotShot } from '../server/geometry.js';
 import { mock } from 'node:test';
 import { GestureRecognizer } from '../client-table/GestureRecognizer.js';
 import { createView } from '../client-table/view.js';
+import { localToWorld, panelOf, CHARGE_ZONE_LOCAL } from '../server/layout.js';
 
 const queue: Array<{ name: string; fn?: () => void | Promise<void> }> = [];
 function test(name: string, fn: () => void | Promise<void>): void { queue.push({ name, fn }); }
@@ -705,7 +706,8 @@ test('walls retain type at close range; redocking removes effect and charge', ()
 });
 test('physical zone drop uses same charging lifecycle; resets clear all tangibles', () => {
   const r = raceRig();
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 2, x: 1627 / 1920, y: 972 / 1080, angle: 0 }));
+  const at = localToWorld(panelOf('A', 'copilot'), CHARGE_ZONE_LOCAL.x, CHARGE_ZONE_LOCAL.y);
+  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 2, x: at.x / 1920, y: at.y / 1080, angle: 0 }));
   assert.equal(r.state.tangibles[2].dockTeam, 'A');
   r.rules.onPower('A'); assert.equal(r.state.tangibles[2].active, false);
   r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 2, action: 'activate' }));
@@ -853,7 +855,7 @@ test('boost gate rejects lengths outside 100–400 px and expires after 8 s', ()
 test('R-03 both teams armed → team of the nearest station wins the gesture', () => {
   const r = raceRig();
   for (const t of ['A', 'B'] as Team[]) { r.state.cars[t].heldItem = 'slingshot'; r.rules.onPower(t); }
-  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, anchor: { x: 1600, y: 950 }, pouch: { x: 1600, y: 1050 } })); // fork near copilot A (bottom-right)
+  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, anchor: { x: 1600, y: 150 }, pouch: { x: 1600, y: 250 } })); // fork near copilot A (top-right)
   assert.equal(r.state.stones[0].team, 'A');
 });
 

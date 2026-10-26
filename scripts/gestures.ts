@@ -50,7 +50,7 @@ function rig(held: Held = 'slingshot') {
 }
 
 // Fork fingers 1 and 2 side by side, finger 3 below them.
-const F1 = { x: 880, y: 500 }, F2 = { x: 1000, y: 500 }, F3 = { x: 940, y: 600 };
+const F1 = { x: 880, y: 580 }, F2 = { x: 1000, y: 580 }, F3 = { x: 940, y: 680 };
 
 async function land(r: ReturnType<typeof rig>): Promise<void> {
   r.down(1, F1.x, F1.y); await sleep(4);
@@ -82,8 +82,8 @@ await test('pulling the third finger back and lifting it fires one shot opposite
   assert.equal(r.sent.length, 1);
   const m = r.sent[0] as { type: string; anchor: { x: number; y: number }; pouch: { x: number; y: number }; team: string };
   assert.equal(m.type, 'Slingshot');
-  near(m.anchor, { x: 940, y: 500 }, 'anchor');
-  near(m.pouch, { x: 940, y: 750 }, 'pouch');
+  near(m.anchor, { x: 940, y: 580 }, 'anchor');
+  near(m.pouch, { x: 940, y: 830 }, 'pouch');
   assert.equal(m.team, 'B', 'the fork is nearer the rose station: it can steal the item armed by cyan');
 });
 
@@ -115,7 +115,7 @@ await test('REGRESSION fingers 2/3: finger 2 sliding while settling does not ste
   r.up(3, F3.x, F3.y + 150);
   const m = r.sent[0] as { anchor: { x: number; y: number }; pouch: { x: number; y: number } };
   assert.ok(m, 'a shot is fired');
-  near(m.pouch, { x: 940, y: 750 }, 'finger 3 is the pouch');
+  near(m.pouch, { x: 940, y: 830 }, 'finger 3 is the pouch');
   near(m.anchor, { x: (F1.x + F2.x + 22) / 2, y: (F1.y + F2.y + 8) / 2 }, 'fork = fingers 1 and 2 at their current position');
 });
 
@@ -144,11 +144,11 @@ await test('a pull shorter than the minimum fires nothing', async () => {
   const r = rig();
   r.down(1, F1.x, F1.y); await sleep(4);
   r.down(2, F2.x, F2.y); await sleep(4);
-  r.down(3, 940, 515); await sleep(4); // lands 15 px from the fork centre
-  r.move(3, 940, 535); // moved 20 px (a role is chosen) but the elastic is only 35 px long
+  r.down(3, 940, 595); await sleep(4); // lands 15 px from the fork centre
+  r.move(3, 940, 615); // moved 20 px (a role is chosen) but the elastic is only 35 px long
   assert.equal(r.view.sling?.idle, false);
   assert.equal(r.view.sling?.shot.valid, false);
-  r.up(3, 940, 535);
+  r.up(3, 940, 615);
   assert.deepEqual(r.sent, []);
 });
 
