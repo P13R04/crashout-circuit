@@ -16,6 +16,7 @@ import { nearestOnTrack, slingshotShot } from '../server/geometry.js';
 import { mock } from 'node:test';
 import { GestureRecognizer } from '../client-table/GestureRecognizer.js';
 import { createView } from '../client-table/view.js';
+import { panelOf, localToWorld, chargeZoneTeam, nearestStationTeam, rotationTowardsTeam, CHARGE_ZONE_LOCAL } from '../server/layout.js';
 
 const queue: Array<{ name: string; fn?: () => void | Promise<void> }> = [];
 function test(name: string, fn: () => void | Promise<void>): void { queue.push({ name, fn }); }
@@ -388,7 +389,7 @@ test('guided MAP: P1 survives a lifted finger and a long wait, on table and PC',
       assert.deepEqual(c.view.pendingDivider, [p1]);
       c.down(2, { x: 650, y: 540 }); c.up(2, { x: 650, y: 540 });
       assert.equal(c.dividers().length, 0);
-      assert.match(c.view.mapNotice!.text, /360/);
+      assert.equal(c.view.mapNotice!.reason, 'tooShort');
       assert.deepEqual(c.view.pendingDivider, [p1], 'refusing P2 preserves P1');
       c.down(3, { x: 60, y: 60 }); c.up(3, { x: 60, y: 60 });
       assert.match(c.view.mapNotice!.text, /zone/);
@@ -705,7 +706,8 @@ test('walls retain type at close range; redocking removes effect and charge', ()
 });
 test('physical zone drop uses same charging lifecycle; resets clear all tangibles', () => {
   const r = raceRig();
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 2, x: 1627 / 1920, y: 972 / 1080, angle: 0 }));
+  const zone = localToWorld(panelOf('A', 'copilot'), CHARGE_ZONE_LOCAL.x, CHARGE_ZONE_LOCAL.y);
+  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 2, x: zone.x / 1920, y: zone.y / 1080, angle: 0 }));
   assert.equal(r.state.tangibles[2].dockTeam, 'A');
   r.rules.onPower('A'); assert.equal(r.state.tangibles[2].active, false);
   r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 2, action: 'activate' }));
@@ -851,10 +853,33 @@ test('boost gate rejects lengths outside 100–400 px and expires after 8 s', ()
   assert.equal(r.state.boostGates.length, 0);
 });
 test('R-03 both teams armed → team of the nearest station wins the gesture', () => {
-  const r = raceRig();
-  for (const t of ['A', 'B'] as Team[]) { r.state.cars[t].heldItem = 'slingshot'; r.rules.onPower(t); }
-  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, anchor: { x: 1600, y: 950 }, pouch: { x: 1600, y: 1050 } })); // fork near copilot A (bottom-right)
-  assert.equal(r.state.stones[0].team, 'A');
+  for (const [team, y] of [['A', 350], ['B', 750]] as const) {
+    const r = raceRig();
+    for (const t of ['A', 'B'] as Team[]) { r.state.cars[t].heldItem = 'slingshot'; r.rules.onPower(t); }
+    r.rules.onSlingshot(msg({ type: 'Slingshot', anchor: { x: 1600, y }, pouch: { x: 1600, y: y + 100 } }));
+    assert.equal(r.state.stones[0].team, team);
+    assert.equal(r.state.cars[team].heldItem, null);
+    assert.equal(r.state.cars[team === 'A' ? 'B' : 'A'].heldItem, 'slingshot');
+  }
+});
+
+test('diagonal teammates: corners, docking, gesture ownership and feedback orientation agree', () => {
+  assert.deepEqual(panelOf('A', 'copilot'), { team: 'A', role: 'copilot', cx: 1670, cy: 120, rot: Math.PI });
+  assert.deepEqual(panelOf('B', 'copilot'), { team: 'B', role: 'copilot', cx: 1670, cy: 960, rot: 0 });
+  for (const team of ['A', 'B'] as const) {
+    const pilot = panelOf(team, 'pilot'), copilot = panelOf(team, 'copilot');
+    assert.notEqual(pilot.cy, copilot.cy);
+    assert.notEqual(pilot.cx, copilot.cx);
+    const zone = localToWorld(copilot, CHARGE_ZONE_LOCAL.x, CHARGE_ZONE_LOCAL.y);
+    assert.equal(chargeZoneTeam(zone), team);
+    assert.equal(nearestStationTeam(zone), team);
+    assert.equal(rotationTowardsTeam(team, zone), copilot.rot);
+    assert.equal(rotationTowardsTeam(team, { x: pilot.cx, y: pilot.cy }), pilot.rot);
+    const r = raceRig();
+    r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 1, action: 'dock', team, kind: 'wall' }));
+    assert.equal(r.state.tangibles[1].x * 1920, zone.x);
+    assert.ok(Math.abs(r.state.tangibles[1].y * 1080 - zone.y) < 1e-6);
+  }
 });
 
 // ─── Abilities: T-08 ─────────────────────────────────────────────────────────

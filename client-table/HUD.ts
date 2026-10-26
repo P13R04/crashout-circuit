@@ -8,7 +8,10 @@ import {
   PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, CHARGE_ZONE_LOCAL,
   type PanelLayout,
 } from '../server/layout.js';
-import { TEAM_COLOR, TEAM_NAME, type View } from './view.js';
+import { TEAM_COLOR, type View } from './view.js';
+import { icon, contacts } from './icons.js';
+import type { ThemeId } from './themes.js';
+import { glow, NEON } from './neon.js';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -47,9 +50,10 @@ export function drawItemIcon(ctx: Ctx, kind: 'slingshot' | 'boost', x: number, y
     ctx.beginPath(); ctx.arc(0, -r * 0.3, r * 0.2, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
     return;
-  } else { // compass
-    ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2);
-    ctx.moveTo(0, -r * 0.6); ctx.lineTo(r * 0.25, 0); ctx.lineTo(0, r * 0.6); ctx.lineTo(-r * 0.25, 0); ctx.closePath();
+  } else { // speed chevrons
+    for (const dx of [-r * .45, r * .45]) {
+      ctx.moveTo(dx - r * .3, -r * .8); ctx.lineTo(dx + r * .3, 0); ctx.lineTo(dx - r * .3, r * .8);
+    }
   }
   ctx.stroke();
   ctx.restore();
@@ -62,7 +66,7 @@ export class HUD {
       ctx.save();
       ctx.translate(panel.cx, panel.cy);
       ctx.rotate(panel.rot);
-      this.drawFrame(ctx, panel);
+      this.drawFrame(ctx, panel, view.theme);
       if (panel.role === 'pilot') this.drawPilot(ctx, panel, state, view, now);
       else this.drawCopilot(ctx, panel, state, view, now);
       this.drawPad(ctx, panel, state, view);
@@ -70,20 +74,36 @@ export class HUD {
     }
   }
 
-  private drawFrame(ctx: Ctx, panel: PanelLayout): void {
+  private drawFrame(ctx: Ctx, panel: PanelLayout, theme: ThemeId): void {
     const PANEL_W = panelWidth(panel.role);
     const color = TEAM_COLOR[panel.team];
-    ctx.fillStyle = 'rgba(6,10,32,0.88)';
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    const metal = ctx.createLinearGradient(0, -PANEL_H / 2, 0, PANEL_H / 2);
+    metal.addColorStop(0, theme === 'scrap' ? '#35444b' : '#132039'); metal.addColorStop(.45, theme === 'scrap' ? '#1b282f' : '#0b1528'); metal.addColorStop(1, theme === 'scrap' ? '#101b21' : '#080e1c');
+    ctx.fillStyle = metal; ctx.strokeStyle = '#344760'; ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.roundRect(-PANEL_W / 2, -PANEL_H / 2, PANEL_W, PANEL_H, 18);
     ctx.fill();
     ctx.stroke();
+    ctx.strokeStyle = '#ffffff07'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(-PANEL_W / 2 + 5, -PANEL_H / 2 + 5, PANEL_W - 10, PANEL_H - 10, 14); ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    for (const side of [-1, 1]) {
+      const x = side * (PANEL_W / 2 - 14);
+      ctx.beginPath(); ctx.moveTo(x - side * 24, -PANEL_H / 2 + 1); ctx.lineTo(x, -PANEL_H / 2 + 1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x - side * 24, PANEL_H / 2 - 1); ctx.lineTo(x, PANEL_H / 2 - 1); ctx.stroke();
+    }
+    if (theme === 'scrap') {
+      for (const x of [-PANEL_W / 2 + 10, PANEL_W / 2 - 10]) for (const y of [-PANEL_H / 2 + 11, PANEL_H / 2 - 11]) {
+        ctx.fillStyle = '#03090d'; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#9aafaf'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - 1.5, y - 1); ctx.lineTo(x + 1.5, y + 1); ctx.stroke();
+      }
+    }
     ctx.fillStyle = color;
-    ctx.font = 'bold 15px monospace';
+    ctx.font = '600 13px system-ui';
     ctx.textAlign = 'left';
-    ctx.fillText(`${panel.role === 'pilot' ? 'PILOTE' : 'COPILOTE'} · ${TEAM_NAME[panel.team]}`, -PANEL_W / 2 + (panel.role === 'pilot' ? 190 : 16), -PANEL_H / 2 + 24);
+    const left = -PANEL_W / 2 + 18;
+    icon(ctx, panel.role === 'pilot' ? 'wheel' : 'power', left + 8, -77, 20, color);
+    ctx.fillText(panel.role === 'pilot' ? 'PILOTE' : 'COPILOTE', left + 28, -71);
   }
 
   private drawPilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
@@ -93,21 +113,22 @@ export class HUD {
 
     // HP bar (animated towards the real value by the main loop)
     const frac = Math.max(0, Math.min(1, view.hpShown[team] / state.params.hpMax));
-    const bx = -80, by = -62, bw = 110, bh = 22;
+    const bx = -74, by = -65, bw = 108, bh = 18;
+    icon(ctx, 'heart', bx - 20, by + 9, 20, frac > .25 ? color : '#ff6060');
     ctx.fillStyle = 'rgba(255,255,255,0.1)';
     ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = frac > 0.5 ? '#3ddc84' : frac > 0.25 ? '#ffb020' : '#ff4040';
+    ctx.fillStyle = frac > 0.5 ? '#61f4ba' : frac > 0.25 ? '#ffb020' : '#ff4040';
     ctx.fillRect(bx, by, bw * frac, bh);
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 16px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText(`HP ${Math.round(car.hp)}`, bx + 8, by + 17);
+    ctx.fillText(`${Math.round(car.hp)}`, bx + 8, by + 15);
 
     // Full-turn left/right strip: crossing its centre changes direction without lifting.
     const stick = view.sticks[team];
     const area = STEER_AREA_LOCAL;
-    ctx.fillStyle = stick.active ? `${color}33` : 'rgba(255,255,255,0.05)';
-    ctx.strokeStyle = stick.active ? '#ffffff' : color;
+    ctx.fillStyle = stick.active ? `${color}19` : '#081323';
+    ctx.strokeStyle = stick.active ? color : '#3e6177';
     ctx.lineWidth = stick.active ? 4 : 2;
     ctx.beginPath(); ctx.roundRect(area.x - area.w / 2, area.y - area.h / 2, area.w, area.h, 14); ctx.fill(); ctx.stroke();
     ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 2;
@@ -117,28 +138,23 @@ export class HUD {
     ctx.fillText('▶', area.x + area.w / 2 - 24, area.y + 10);
     if (stick.active) {
       const knobX = area.x + stick.x * (area.w / 2 - 18);
-      ctx.fillStyle = '#fff'; ctx.shadowColor = color; ctx.shadowBlur = 16;
-      ctx.beginPath(); ctx.arc(knobX, area.y, 15, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+      glow(ctx, knobX, area.y, 30, color, .6);
+      ctx.fillStyle = '#e8fcff';
+      ctx.beginPath(); ctx.arc(knobX, area.y, 12, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
     }
-    ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('DIRECTION · GLISSEZ', area.x, 94);
+    icon(ctx, 'wheel', area.x, area.y, 36, stick.active ? '#ffffff33' : color);
 
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.font = '12px monospace';
-    ctx.textAlign = 'center';
-    if (state.driveMode === 'auto') {
-      ctx.fillText('CONDUITE', -20, 34);
-      ctx.fillText('POWER AU COPILOTE', -20, 54);
-    }
+    // Each team keeps its own lap counter, facing its players.
+    icon(ctx, 'flag', -60, 28, 24, color);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 24px monospace'; ctx.textAlign = 'left';
+    ctx.fillText(`${Math.min(state.params.lapsToWin, car.lap + 1)}/${state.params.lapsToWin}`, -36, 36);
     if (state.driveMode === 'pedal') {
       const p = PEDAL_LOCAL;
       const active = view.localPedals[team];
       ctx.fillStyle = active ? `${color}66` : 'rgba(255,255,255,0.08)';
       ctx.strokeStyle = active ? '#ffffff' : color; ctx.lineWidth = active ? 4 : 2;
       ctx.beginPath(); ctx.roundRect(p.x - p.w / 2, p.y - p.h / 2, p.w, p.h, 14); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
-      ctx.fillText('ACCÉLÉRER', p.x, p.y - 4);
-      ctx.font = '20px monospace'; ctx.fillText('▲', p.x, p.y + 25);
+      icon(ctx, 'pedal', p.x, p.y, 44, active ? '#fff' : color);
     }
 
     ctx.textAlign = 'left';
@@ -153,38 +169,42 @@ export class HUD {
     const ready = docked.some(([, t]) => t.active);
     const canPower = !!car.heldItem;
     const b = POWER_BTN_LOCAL;
-    ctx.fillStyle = armed ? '#ffe14a33' : canPower ? `${color}22` : '#ffffff08';
+    if (canPower) glow(ctx, b.x, b.y, 62, armed ? NEON.gold : color, armed ? .3 : .15);
+    ctx.fillStyle = armed ? '#ffce661f' : canPower ? `${color}14` : '#050d1c';
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
     ring(ctx, b.x, b.y, b.r, armed ? (car.itemArmExpiry - now) / (state.params.armWindowS * 1000) : 1,
-      armed ? '#ffe14a' : canPower ? color : '#586078', 4);
-    // Universal power symbol, independent of the stocked bonus.
-    ctx.strokeStyle = armed ? '#ffe14a' : '#fff'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(b.x, b.y - 6, 13, -Math.PI * 0.35, Math.PI * 1.35); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(b.x, b.y - 24); ctx.lineTo(b.x, b.y - 7); ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 12px monospace';
-    ctx.fillText('POWER', b.x, b.y + 25);
+      armed ? '#ffce66' : canPower ? color : '#586078', 4);
+    icon(ctx, 'power', b.x, b.y, 32, canPower ? armed ? '#ffce66' : '#fff' : '#586078');
+    // Inventory sits above POWER. A short connector makes their relationship visible.
+    if (car.heldItem) {
+      drawItemIcon(ctx, car.heldItem, b.x + 82, -67, 14, armed ? '#ffce66' : color);
+      ctx.strokeStyle = armed ? '#ffce66' : color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(b.x + 70, -53); ctx.lineTo(b.x + 24, -25); ctx.stroke();
+    }
 
     const z = CHARGE_ZONE_LOCAL;
-    ctx.fillStyle = ready ? '#3ddc8422' : '#ffffff08';
-    ctx.strokeStyle = ready ? '#3ddc84' : color;
-    ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
+    if (ready) glow(ctx, z.x, z.y, 65, NEON.mint, .17);
+    ctx.fillStyle = ready ? '#61f4ba1a' : '#ffffff06';
+    ctx.strokeStyle = ready ? '#61f4ba' : '#64748b';
+    ctx.setLineDash(docked.length ? [] : [6, 7]); ctx.lineWidth = ready ? 3 : 2;
     ctx.beginPath(); ctx.roundRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h, 12); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = ready ? '#3ddc84' : '#fff'; ctx.font = 'bold 11px monospace';
-    ctx.fillText(ready ? 'ACTIVÉ' : docked.length ? 'INACTIF' : 'TANGIBLE', z.x, z.y - 9);
-    ctx.font = '11px monospace';
-    ctx.fillText(docked.length ? docked.map(([id]) => `#${id}`).join(' ') : 'DÉPOSER ICI', z.x, z.y + 12);
-    ctx.fillStyle = '#ffffff99'; ctx.font = '10px monospace';
-    ctx.fillText(ready ? 'replacer sur piste' : 'activation par Oz', z.x, z.y + 32);
+    // Physical footprints distinguish the dock from the circular POWER / repair controls.
+    ctx.strokeStyle = ready ? '#61f4ba' : '#94a3b8'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(z.x - 30, z.y - 22, 40, 12, 3); ctx.stroke();
+    ctx.beginPath(); ctx.arc(z.x + 21, z.y - 16, 8, 0, Math.PI * 2); ctx.stroke();
+    icon(ctx, ready ? 'bolt' : 'target', z.x, z.y + 16, 23, ready ? '#61f4ba' : '#94a3b8');
+    docked.forEach(([, tangible], i) => {
+      ctx.fillStyle = tangible.active ? '#61f4ba' : '#94a3b8';
+      ctx.beginPath(); ctx.arc(z.x + (i - (docked.length - 1) / 2) * 14, z.y + 40, 4, 0, Math.PI * 2); ctx.fill();
+    });
 
-    // A stocked icon is information only; POWER is the only activation button.
-    if (car.heldItem) {
-      drawItemIcon(ctx, car.heldItem, -180, 79, 9, armed ? '#ffe14a' : color);
-      ctx.fillStyle = armed ? '#ffe14a' : '#ffffffaa'; ctx.textAlign = 'left'; ctx.font = '11px monospace';
-      const gesture = state.testMode.allItems ? '3 ou 2 doigts' : car.heldItem === 'slingshot' ? '3 doigts' : '2 doigts';
-      ctx.fillText(armed ? `${gesture} · ${Math.max(0, (car.itemArmExpiry - now) / 1000).toFixed(1)}s · VOLABLE` : 'Objet en stock', -162, 83);
-    }
-    if (armed) {
-      ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 3;
+    if (armed && car.heldItem) {
+      // Neutral gold: either team can complete the armed gesture.
+      if (state.testMode.allItems) {
+        ctx.save(); ctx.translate(b.x, 81); ctx.scale(.7, .7);
+        contacts(ctx, 2, -32, 0, '#ffce66'); contacts(ctx, 3, 32, 0, '#ffce66'); ctx.restore();
+      } else contacts(ctx, car.heldItem === 'slingshot' ? 3 : 2, b.x, 81, '#ffce66');
+      ctx.strokeStyle = '#ffce66'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.roundRect(-226, -96, 452, 192, 16); ctx.stroke();
     }
     ctx.textAlign = 'left';
@@ -198,28 +218,28 @@ export class HUD {
     const car: Car = state.cars[panel.team];
     const color = TEAM_COLOR[panel.team];
     const { x, y, r } = padLocal(panel.role);
-    ctx.fillStyle = held ? 'rgba(61,220,132,0.28)' : car.disabled ? 'rgba(255,64,64,0.2)' : 'rgba(255,255,255,0.05)';
+    if (held) glow(ctx, x, y, r + 12, NEON.mint, .25);
+    ctx.fillStyle = held ? 'rgba(97,244,186,0.12)' : car.disabled ? 'rgba(255,64,64,0.2)' : 'rgba(255,255,255,0.05)';
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-    ring(ctx, x, y, r - 5, state.repairProgress[panel.team], '#3ddc84', 10);
-    ctx.strokeStyle = held ? '#3ddc84' : color;
+    ring(ctx, x, y, r - 5, state.repairProgress[panel.team], '#61f4ba', 10);
+    ctx.strokeStyle = held ? '#61f4ba' : color;
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 15px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('RÉPARATION', x, y - 4);
-    ctx.font = '12px monospace';
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.fillText(held ? 'maintenez…' : 'pad à 2', x, y + 14);
-    ctx.textAlign = 'left';
-
-    // Breakdown alert, blinking on the pilot's panel (REQ-6.1.4)
-    if (car.disabled && panel.role === 'pilot' && Math.floor(performance.now() / 400) % 2 === 0) {
-      ctx.fillStyle = '#ff4040';
-      ctx.font = 'bold 18px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText("HORS D'USAGE", 95, 40);
-      ctx.textAlign = 'left';
+    icon(ctx, 'wrench', x, y - 9, 40, held ? '#61f4ba' : car.disabled ? '#ff7070' : '#a9b6cd');
+    // The pair shows which partner is holding; the outer ring shows joint progress.
+    const partner = panel.role === 'pilot' ? 'copilot' : 'pilot';
+    const partnerKey = `${panel.team}-${partner}`;
+    const partnerHeld = view.localPads[partnerKey] || state.repairPads[partnerKey]?.held;
+    for (const [dx, on] of [[-15, held], [15, partnerHeld]] as const) {
+      ctx.fillStyle = on ? '#61f4ba' : '#ffffff15';
+      ctx.strokeStyle = on ? '#61f4ba' : '#8190aa'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x + dx, y + 30, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+    // One slow halo attracts attention only when repair is needed; no flashing text.
+    if (car.disabled) {
+      ctx.globalAlpha = view.reducedMotion ? .5 : .35 + .2 * Math.sin(view.visualTime / 450);
+      ctx.strokeStyle = '#ff7070'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(x, y, r - 13, 0, Math.PI * 2); ctx.stroke();
     }
   }
 }

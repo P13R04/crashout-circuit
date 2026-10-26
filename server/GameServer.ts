@@ -28,6 +28,7 @@ export class GameServer {
   private wss: WebSocketServer;
   private clients: Set<ConnectedClient> = new Set();
   private state: GameState;
+  private broadcastTrackVersion = -1;
   readonly rules: GameRules;
   readonly physics: PhysicsLoop;
 
@@ -179,18 +180,21 @@ export class GameServer {
     } satisfies PhaseChangeMsg);
   }
 
-  /** 30 Hz tick omits the heavy track, except while it is visibly reforming. */
+  /** Send geometry on a version change, including the final frame of a deformation. */
   private broadcastTick(): void {
+    const changed = this.broadcastTrackVersion !== this.state.trackVersion;
     this.broadcast({
       type: 'State',
       t: Date.now(),
-      state: { ...this.state, track: this.state.deformations.length ? this.state.track : null },
+      state: { ...this.state, track: changed ? this.state.track : null },
     } satisfies StateMsg);
+    this.broadcastTrackVersion = this.state.trackVersion;
   }
 
   /** Full state, including the track (on phase/track changes and connections). */
   broadcastFull(): void {
     this.broadcast({ type: 'State', t: Date.now(), state: this.state } satisfies StateMsg);
+    this.broadcastTrackVersion = this.state.trackVersion;
   }
 
   getState(): GameState {

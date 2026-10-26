@@ -1,11 +1,11 @@
 # CRASHOUT — Fiche technique unique
 
-Projet étudiant Polytech Nice Sophia, simulé en startup. Doc à jour au 5 oct 2026.
+Projet étudiant Polytech Nice Sophia, simulé en startup. Interface et disposition mises à jour au 26 octobre 2026. Les sections de conception historique sont signalées ci-dessous.
 Soutenance finale: **à confirmer** (le contexte d'origine indique le 28 sept 2026, antérieur à la date du doc).
 
 Fiabilité: **[OK]** vérifié source constructeur/littérature · **[EST]** estimation, valeur par défaut à régler en test · **[?]** non vérifié · **[DÉCISION]** choix arbitré entre sources contradictoires, à valider par l'équipe.
 
-Cette fiche est la **seule source de vérité**. Chaque règle porte un identifiant (R-xx, C-xx, E-xx, P-xx) pour être citée dans les spécifications dérivées.
+Cette fiche conserve les décisions de conception et leurs identifiants (R-xx, C-xx, E-xx, P-xx). Pour le prototype exécuté, le [README](README.md), les tests et les sources décrivent les commandes effectivement disponibles. Les variantes historiques (mobile, fantôme, destruction, secours Oz) ne sont pas des contrôles de l’interface actuelle.
 
 ---
 
@@ -13,13 +13,21 @@ Cette fiche est la **seule source de vérité**. Chaque règle porte un identifi
 
 La console Oz gère uniquement le placement, la rotation et l’activation des tangibles. POWER appartient au copilote et arme les objets ramassés, dont le geste est neutre et volable. Le lancement, la pause et les outils de test PC restent sur la table. Le mode pédale, le lance-pierre à élastique et la création guidée du circuit intégrés dans `main` sont conservés. Le [README](README.md) décrit ces commandes actuelles ; les passages historiques ci-dessous sur UTILISER côté pilote ou les secours Oz sont dépassés.
 
+## Évolution intégrée — interface et thèmes (26 octobre 2026)
+
+- Pilote et copilote d’une même équipe occupent des coins opposés (§3). Les pads, docks et retours de gestes utilisent cette même disposition.
+- **Paramètres → Ambiance** propose Néon et Ferraille ; choix local mémorisé, changement à chaud sans modifier les règles. Ferraille associe acier de récupération, vapeur, mécanismes vus de dessus et énergie cyan. Le code couleur cyan/rose des équipes reste stable.
+- L’interface privilégie pictogrammes, halos et animations : stock relié à POWER, contacts requis pour le geste, réparation à deux, dock distinct. Les erreurs utiles et les consignes courtes de création de circuit sont conservées. Les outils PC sont rangés dans les paramètres.
+- La console Oz reste consacrée aux tangibles. Les thèmes ne lui ajoutent aucun contrôle de bonus ou de partie.
+- Voir [l’audit des textes](docs/lisibilite.md), [les thèmes](docs/themes.md) et [le rendu néon](docs/rendu-neon.md). La définition logique reste 1920 × 1080, affichée sans déformation ; les animations respectent pause et mouvement réduit.
+
 ## 1. Résumé en 10 lignes
 
 - Jeu de course **2 équipes × 2 joueurs** sur une **table tactile 65"** posée à plat. Les deux équipes courent sur **le même circuit**.
 - Chaque équipe: **1 Pilote** (station fixe, conduit sur la table) + **1 Copilote** (mobile autour de la table, agit sur la table).
 - Le circuit est **généré** à partir de deux tracés partiels dessinés par deux joueurs, complétés automatiquement puis fusionnés.
-- Le Copilote agit par gestes tactiles (lance-pierre, boost, fantôme, destruction de mur), par **objets tangibles** (poteaux électriques) et par **actions synchrones avec son Pilote** (réparation).
-- Les objets ramassés en piste ne marchent que si **le Pilote les active et le Copilote les joue**.
+- Le Copilote agit par gestes tactiles (lance-pierre et boost), par **objets tangibles** (poteaux électriques) et par **actions synchrones avec son Pilote** (réparation).
+- Les objets ramassés en piste sont **armés par POWER au poste copilote de l’équipe propriétaire**, puis joués par un geste neutre qui peut être volé par l’autre équipe.
 - Les tangibles sont **simulés par un Magicien d'Oz** (aucune reconnaissance d'objets sur cette table), mais émettent des événements au format TUIO → du vrai matériel pourra être branché sans toucher au gameplay.
 - Moteur: **WebApp HTML/JS, pas Unity**. Serveur Node.js autoritaire.
 
@@ -60,14 +68,14 @@ Principes de conception retenus:
 | Pilote (×2) | **Fixe**, doit rester à sa station | Zones gauche/droite + bouton d'action sur la table | Pad de réparation + panneau HUD |
 | Copilote (×2) | **Mobile** autour de la table | Doigts sur la table + tangibles | Pad de réparation + panneau HUD |
 
-Disposition [DÉCISION]: les équipes sont sur les deux grands côtés de la table.
+Disposition actuelle : chaque équipe est en diagonale, avec un joueur sur chaque grand côté de la table.
 
 | Coin | Joueur | Couleur d'équipe |
 |---|---|---|
 | Bas-gauche | Pilote A | cyan |
-| Bas-droite | Copilote A | cyan |
+| Bas-droite | Copilote B | rose |
 | Haut-gauche | Pilote B | rose |
-| Haut-droite | Copilote B | rose |
+| Haut-droite | Copilote A | cyan |
 
 Chaque coin porte un **panneau HUD** orienté vers son joueur (voir §11).
 
@@ -333,32 +341,30 @@ Les gestes (3 doigts, 2 doigts, tracé) sont reconnus **côté navigateur de la 
 
 ---
 
-## 11. Interface (maquette de référence)
+## 11. Interface actuelle
 
-Style néon, vue de dessus, fond bleu nuit avec grille carrée discrète. Canvas de la maquette: 798×384, à utiliser comme **référence de proportions et de palette seulement** (le canvas réel est 1920×1080).
+Vue de dessus partagée, repère logique 1920 × 1080, format 16:9 conservé. Le choix de thème est une préférence de présentation indépendante des entrées et des règles.
 
-| Élément | Représentation |
-|---|---|
-| Piste | Boucle fermée en haricot, lobes larges à gauche et à droite, pincée au milieu |
-| Mur extérieur | Ligne pleine **magenta** lumineuse |
-| Mur intérieur | Ligne pleine **cyan** lumineuse |
-| Ligne centrale | Pointillés gris |
-| Voitures | Flèches, cyan (équipe A) et rose (équipe B) |
-| Mur ou barrière | Segment **rouge** lumineux |
-| Portail de boost | Segment **jaune** à extrémités en anneau |
-| Boutons | Violet (étincelle), teal (losange, zigzag) |
+| Élément | Néon | Ferraille |
+|---|---|---|
+| Vide | Brume numérique, code sur plusieurs plans | Structures industrielles en profondeur, engrenages, presses, turbines et vapeur |
+| Piste | Tablier opaque, LEDs neutres | Acier patiné, plaques irrégulières, chanfreins et épaisseur |
+| Véhicules | Coques à deux réacteurs | Bolides blindés à quatre roues et deux propulseurs |
+| Équipes | Cyan et rose | Cyan et rose |
+| Tangibles | Murs métalliques et piliers lumineux | Barricades de récupération et bobines sans direction privilégiée |
+| Bonus | Capsules à pictogrammes ; boost doré | Même vocabulaire de bonus |
 
-**Panneaux de coin** (4, en miroir, 1 par joueur), hors piste, jamais recouverts par la piste:
+**Panneaux de coin** orientés vers leur joueur, hors piste :
 
 | Panneau | Contenu |
 |---|---|
-| Pilote | Barre HP · icône de l'objet en stock (crosshair/compas) · **pad de réparation** |
-| Copilote | Boutons **Fantôme** et **Détruire mur** avec anneau de recharge · **pad de réparation** · halo « objet armé » |
+| Pilote | Direction continue, santé, tours, pédale optionnelle et pad de réparation |
+| Copilote | POWER, stock, dock tangible, pad de réparation et contacts du geste armé |
 
-Affectation exacte des icônes de la maquette aux boutons: à régler au moment du design.
+Les états de réparation sont représentés par les deux contacts et un anneau de progression. POWER arme uniquement le stock ; l’activation d’un tangible reste sous la responsabilité d’Oz. Aucun bouton Fantôme ou Détruire n’est présenté.
 
-**R-21** Les alertes (pierre en approche, véhicule en panne) s'affichent **à l'endroit concerné**, orientées vers le joueur le plus proche, pour inciter au déplacement.
-**R-22** La piste reste au centre; aucun panneau ne la recouvre.
+**R-21** Les alertes sont locales : cible d’impact, icône de panne, halo du pad concerné. Les informations textuelles partagées indispensables sont orientées vers les deux grands bords ; les états des équipes sont dans leurs panneaux.
+**R-22** La piste reste au centre, hors panneaux de commande. Les croisements restent des jonctions ouvertes ; les bordures lumineuses ne créent pas de faux obstacles.
 
 ---
 

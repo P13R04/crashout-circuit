@@ -110,9 +110,32 @@ try {
   game.rules.afterMove('A', car.pos, Date.now());
   table.send({ type: 'Power', team: 'A', role: 'copilot' });
   await table.until(s => s.cars.A.itemArmed);
+
+  // The final relaxation must carry its geometry, even though deformations is now empty.
+  // Otherwise StateSync clears the previous version and the road disappears.
+  game.physics.stop();
+  const state = game.getState(), start = Date.now(), edge = state.track!.outerEdge[20], center = state.track!.centerline[20];
+  for (const c of Object.values(state.cars)) c.disabled = true;
+  const dx = edge.x - center.x, dy = edge.y - center.y, length = Math.hypot(dx, dy);
+  game.rules.onBorderPull({ type: 'BorderPull', t: start, team: 'A', x: edge.x, y: edge.y, dx: dx / length * 50, dy: dy / length * 50 });
+  const frame = (now: number) => {
+    game.physics.step(now, 0);
+    if (state.tick % 2) game.physics.step(now, 0);
+  };
+  frame(start + 500); await table.flush();
+  assert.ok(table.snapshots.at(-1)!.track, 'a changed deck is sent');
+  frame(start + 600); await table.flush();
+  assert.equal(table.snapshots.at(-1)!.track, null, 'unchanged held geometry is omitted');
+  game.rules.updateTrackDeformations(start + 7000);
+  frame(start + 9000); await table.flush();
+  const finalDeck = table.snapshots.at(-1)!;
+  assert.equal(finalDeck.deformations.length, 0);
+  assert.ok(finalDeck.track, 'final relaxed geometry is sent despite an empty deformation list');
+  assert.deepEqual(finalDeck.track.centerline, state.track!.baseCenterline);
+
   table.send({ type: 'NewGame' });
   await table.until(s => s.phase === 'LOBBY' && Object.keys(s.tangibles).length === 0);
-  console.log('✓ Network: role boundaries, copilot POWER, Oz restricted to tangibles, autonomous pickups, theft, reconnect and reset');
+  console.log('✓ Network: role boundaries, copilot POWER, Oz tangibles, autonomous pickups, theft, reconnect, final deformation geometry and reset');
 } finally {
   game.physics.stop();
   for (const ws of clients) ws.terminate();

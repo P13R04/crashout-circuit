@@ -1,10 +1,12 @@
 import type { ServerMessage } from '../server/types.js';
 import { createControls } from '../client-shared/controls.js';
 import { StateSync, connectWs } from '../client-shared/net.js';
-import { createView, showDividerRefusal, showMapError, showMapNotice } from './view.js';
+import { createView, showDividerRefusal, showMapError } from './view.js';
 import { Renderer } from './Renderer.js';
 import { GestureRecognizer } from './GestureRecognizer.js';
 import { playFeedback, unlock } from './Sound.js';
+import { THEMES, loadTheme, saveTheme, type ThemeId } from './themes.js';
+import { advanceVisualTime } from './VisualMotion.js';
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const statusEl = document.getElementById('status') as HTMLDivElement;
@@ -14,11 +16,17 @@ const LOGICAL_W = 1920;
 const LOGICAL_H = 1080;
 
 function resizeCanvas(): void {
-  const dpr = Math.min(window.devicePixelRatio ?? 1, 2);
-  canvas.width  = LOGICAL_W * dpr;
-  canvas.height = LOGICAL_H * dpr;
-  canvas.style.width  = `${window.innerWidth}px`;
-  canvas.style.height = `${window.innerHeight}px`;
+  const fit = Math.min(window.innerWidth / LOGICAL_W, window.innerHeight / LOGICAL_H);
+  const resolution = Math.min(2, fit * Math.min(window.devicePixelRatio ?? 1, 2));
+  canvas.width = Math.round(LOGICAL_W * resolution);
+  canvas.height = Math.round(LOGICAL_H * resolution);
+  canvas.style.width = `${LOGICAL_W * fit}px`;
+  canvas.style.height = `${LOGICAL_H * fit}px`;
+  const left = (window.innerWidth - LOGICAL_W * fit) / 2;
+  const top = (window.innerHeight - LOGICAL_H * fit) / 2;
+  document.documentElement.style.setProperty('--tools-x', `${left + LOGICAL_W * fit * .5625}px`);
+  document.documentElement.style.setProperty('--tools-bottom', `${top + 8}px`);
+  document.documentElement.style.setProperty('--table-top', `${top + 18}px`);
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
@@ -30,17 +38,40 @@ const sync = new StateSync();
 const view = createView(() => sync.now());
 const renderer = new Renderer(ctx);
 const urlParams = new URLSearchParams(location.search);
+// Themes are a local display setting: switching never sends a command or restarts a race.
+const themeOptions = document.getElementById('theme-options')!;
+for (const theme of THEMES) {
+  const button = document.createElement('button'); button.type = 'button';
+  button.className = 'theme-option'; button.dataset.theme = theme.id;
+  button.setAttribute('aria-label', theme.name);
+  const swatch = document.createElement('span'); swatch.className = 'theme-swatch'; swatch.setAttribute('aria-hidden', 'true');
+  for (const color of theme.colors) { const chip = document.createElement('i'); chip.style.background = color; swatch.append(chip); }
+  const name = document.createElement('strong'); name.textContent = theme.name;
+  const detail = document.createElement('small'); detail.textContent = theme.detail;
+  button.append(swatch, name, detail); button.addEventListener('click', () => selectTheme(theme.id)); themeOptions.append(button);
+}
+function selectTheme(id: ThemeId): void {
+  view.theme = id; try { saveTheme(window.localStorage, id); } catch { /* Display preference still applies. */ }
+  document.body.dataset.theme = id; canvas.dataset.theme = id;
+  for (const button of themeOptions.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.theme === id));
+}
+// Access to localStorage itself can be denied in embedded/private contexts.
+try { selectTheme(loadTheme(window.localStorage)); } catch { selectTheme('neon'); }
 view.debug.on = urlParams.get('debug') === '1';
+const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+view.reducedMotion = motionPreference.matches || urlParams.get('motion') === '0';
+motionPreference.addEventListener('change', e => { view.reducedMotion = e.matches || urlParams.get('motion') === '0'; });
 
 const conn = connectWs('/ws', {
-  onOpen: () => { statusEl.textContent = 'Connecté'; },
-  onClose: () => { statusEl.textContent = 'Déconnecté — reconnexion dans 2 s…'; gestures.releaseAll(); },
+  onOpen: () => { statusEl.hidden = true; },
+  onClose: () => { statusEl.textContent = 'Connexion perdue · Reconnexion…'; statusEl.hidden = false; gestures.releaseAll(); },
   onMessage: handleMessage,
 });
 const controls = createControls(m => conn.send(m));
 const gestures = new GestureRecognizer(canvas, view, (m) => conn.send(m));
 
 // PC testing: buttons that stand in for the 3- and 2-finger gestures (shown with a mouse or ?sim=1)
+const pcTools = document.getElementById('pc-tools') as HTMLDetailsElement;
 const simBar = document.getElementById('sim') as HTMLDivElement;
 const sim3 = document.getElementById('sim3') as HTMLButtonElement;
 const sim2 = document.getElementById('sim2') as HTMLButtonElement;
@@ -51,15 +82,19 @@ const setSim = (k: 'slingshot' | 'boost' | null): void => {
   simKind = simKind === k ? null : k;
   sim3.classList.toggle('armed', simKind === 'slingshot');
   sim2.classList.toggle('armed', simKind === 'boost');
+  sim3.setAttribute('aria-pressed', String(simKind === 'slingshot'));
+  sim2.setAttribute('aria-pressed', String(simKind === 'boost'));
   gestures.simulate(simKind);
 };
 sim3.addEventListener('click', () => setSim('slingshot'));
 sim2.addEventListener('click', () => setSim('boost'));
+pcTools.addEventListener('toggle', () => { if (!pcTools.open && simKind) setSim(null); });
 gestures.onSimChange = (hint) => {
   simHint.textContent = hint;
   // The gesture was consumed (or failed): leave simulation mode
   if (!hint || hint.startsWith('Aucune') || hint.startsWith('Écart')) {
     simKind = null; sim3.classList.remove('armed'); sim2.classList.remove('armed');
+    sim3.setAttribute('aria-pressed', 'false'); sim2.setAttribute('aria-pressed', 'false');
   }
 };
 
@@ -74,10 +109,14 @@ testItems.addEventListener('click', () =>
 function syncTestBar(): void {
   const st = view.state;
   const racing = st?.phase === 'RACE' || st?.phase === 'PAUSED';
+  // Settings remain available in table mode and during map creation, including on touch screens.
   testBar.classList.toggle('on', st?.mapMode === 'pc' && racing);
   simBar.classList.toggle('on', showSimulation && racing);
+  if (!racing && simKind) setSim(null);
   testInvincible.classList.toggle('active', !!st?.testMode.invincible);
   testItems.classList.toggle('active', !!st?.testMode.allItems);
+  testInvincible.setAttribute('aria-pressed', String(!!st?.testMode.invincible));
+  testItems.setAttribute('aria-pressed', String(!!st?.testMode.allItems));
 }
 
 window.addEventListener('pointerdown', unlock, { once: true });
@@ -111,6 +150,7 @@ function updateKeyboardRepair(team: 'A' | 'B'): void {
   conn.send({ type: 'PadHold', team, role: 'copilot', on: active });
 }
 window.addEventListener('keydown', (e) => {
+  if (e.target instanceof Element && e.target.closest('button, summary, input, textarea, select, a')) return;
   const key = keyName(e);
   if (key === 'F3' && !e.repeat && !down.has('F3')) view.debug.on = !view.debug.on;
   if (down.has(key)) return;
@@ -153,6 +193,7 @@ function handleMessage(msg: ServerMessage): void {
       const prev = view.state;
       view.state = sync.apply(msg.state, msg.t);
       if (view.state.mapTargets) {
+        if (!prev?.mapTargets) view.mapNotice = null;
         view.pendingDivider = [];
         view.dividerSubmitting = false;
       }
@@ -176,9 +217,7 @@ function handleMessage(msg: ServerMessage): void {
         view.effects.length = 0;
         gestures.releaseAll();
       }
-      statusEl.textContent = `Phase: ${msg.state.phase}`;
       syncTestBar();
-      statusEl.style.display = view.debug.on ? 'block' : 'none';
       break;
     }
     case 'PhaseChange':
@@ -201,9 +240,9 @@ function handleMessage(msg: ServerMessage): void {
         showDividerRefusal(view, msg.kind === 'dividerTooShort' ? 'tooShort' : 'outOfZone');
       }
       view.effects.push({
-        kind: msg.kind, x: msg.x, y: msg.y, team: msg.team, start: performance.now(), dur: effectDuration(msg.kind),
-        ...(msg.kind === 'stoneHit' ? { text: HIT_WORDS[Math.floor(Math.random() * HIT_WORDS.length)], tilt: (Math.random() - 0.5) * 0.5 } : {}),
+        kind: msg.kind, x: msg.x, y: msg.y, team: msg.team, start: view.visualTime, dur: effectDuration(msg.kind),
       });
+      if (view.effects.length > 64) view.effects.splice(0, view.effects.length - 64);
       if (msg.kind.startsWith('map') && msg.kind !== 'mapAccepted') {
         showMapError(view, msg.kind, msg.team);
         view.mapErrorAt[msg.team] = performance.now();
@@ -214,11 +253,7 @@ function handleMessage(msg: ServerMessage): void {
           }
         }
       }
-      if (msg.kind === 'mapAccepted') {
-        showMapNotice(view, msg.team === 'A'
-          ? '✓ Cyan validé — équipe rose, à vous !'
-          : '✓ Les deux tracés sont validés.', '#3ddc84');
-      }
+      if (msg.kind === 'mapAccepted') view.mapNotice = null;
       playFeedback(msg.kind);
       break;
     case 'Pong':
@@ -227,11 +262,14 @@ function handleMessage(msg: ServerMessage): void {
   }
 }
 
-const HIT_WORDS = ['TOUCHÉ !', 'POW !', 'BAM !', 'BOUM !', 'AÏE !', 'KO !'];
-
 function effectDuration(kind: string): number {
   switch (kind) {
-    case 'stoneHit': return 1200;
+    case 'stoneHit': return 700;
+    case 'fall': return 950;
+    case 'pickup': return 650;
+    case 'itemArmed': return 650;
+    case 'checkpoint': return 550;
+    case 'trackDeformed': return 550;
     case 'stoneImpact': return 700;
     case 'wallDestroyed': return 450;
     case 'repairDone': return 900;
@@ -243,10 +281,13 @@ function effectDuration(kind: string): number {
 // ── Render loop ────────────────────────────────────────────────────────────────
 let lastFrame = performance.now();
 let fpsAcc = 0, fpsFrames = 0;
+const renderSamples: number[] = [];
+let metricsAt = 0;
 
 function drawFrame(now: number): void {
   const frameMs = now - lastFrame;
   lastFrame = now;
+  view.visualTime = advanceVisualTime(view.visualTime, frameMs, view.state?.phase === 'PAUSED');
   fpsAcc += frameMs; fpsFrames++;
   if (fpsAcc >= 500) { view.debug.fps = (fpsFrames * 1000) / fpsAcc; view.debug.frameMs = fpsAcc / fpsFrames; fpsAcc = 0; fpsFrames = 0; }
 
@@ -267,8 +308,19 @@ function drawFrame(now: number): void {
   const dpr = canvas.width / LOGICAL_W;
   ctx.save();
   ctx.scale(dpr, dpr);
-  drawBackground();
+  const renderStart = performance.now();
   renderer.render(view);
+  renderSamples.push(performance.now() - renderStart);
+  if (renderSamples.length > 120) renderSamples.shift();
+  if (now - metricsAt > 1000) {
+    metricsAt = now;
+    const sorted = [...renderSamples].sort((a, b) => a - b);
+    canvas.dataset.renderMedianMs = sorted[Math.floor(sorted.length / 2)].toFixed(2);
+    canvas.dataset.renderP95Ms = sorted[Math.floor((sorted.length - 1) * .95)].toFixed(2);
+    canvas.dataset.fps = view.debug.fps.toFixed(1);
+    canvas.dataset.trackBuilds = String(renderer.stats.trackBuilds);
+    canvas.dataset.trailPoints = String(renderer.stats.trailPoints);
+  }
   if (view.debug.on) drawDebug();
   ctx.restore();
 
@@ -279,37 +331,15 @@ function drawDebug(): void {
   const d = view.debug;
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.7)';
-  ctx.fillRect(LOGICAL_W / 2 - 230, 4, 460, 30);
+  ctx.fillRect(LOGICAL_W / 2 - 375, 4, 750, 30);
   ctx.fillStyle = d.fps >= 55 ? '#3ddc84' : '#ffb020';
-  ctx.font = '16px monospace';
+  ctx.font = '13px monospace';
   ctx.textAlign = 'center';
   ctx.fillText(
-    `${d.fps.toFixed(0)} fps · frame ${d.frameMs.toFixed(1)} ms · RTT ${d.rtt} ms · touch→frame ${d.touchMs.toFixed(0)} ms · ${d.contacts} pts`,
+    `${d.fps.toFixed(0)} fps · rendu ${canvas.dataset.renderMedianMs ?? '…'} ms · RTT ${d.rtt} ms · touch→frame ${d.touchMs.toFixed(0)} ms · ${d.contacts} pts`,
     LOGICAL_W / 2, 25,
   );
   ctx.restore();
-}
-
-function drawBackground(): void {
-  ctx.fillStyle = '#04081f';
-  ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
-
-  // Discrete square grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-  ctx.lineWidth = 1;
-  const GRID = 60;
-  for (let x = 0; x <= LOGICAL_W; x += GRID) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, LOGICAL_H);
-    ctx.stroke();
-  }
-  for (let y = 0; y <= LOGICAL_H; y += GRID) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(LOGICAL_W, y);
-    ctx.stroke();
-  }
 }
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────────

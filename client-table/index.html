@@ -6,63 +6,72 @@
   <title>Crashout Circuit — Table</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      width: 100%; height: 100%;
-      background: #04081f;
-      overflow: hidden;
-    }
-    canvas {
-      display: block;
-      touch-action: none; /* required for Pointer Events */
-    }
+    html, body { width: 100%; height: 100%; background: #030611; overflow: hidden; }
+    canvas { display: block; touch-action: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    [hidden] { display: none !important; }
     #status {
-      position: fixed;
-      top: 44px; left: 50%;
-      transform: translateX(-50%);
-      color: #888;
-      font-family: monospace;
-      font-size: 13px;
-      pointer-events: none;
+      position: fixed; top: var(--table-top, 18px); left: 50%; transform: translateX(-50%);
+      padding: 10px 18px; border: 1px solid #ffbe37; border-radius: 20px;
+      color: #ffdf9a; background: #080f26f5; font: 14px system-ui; pointer-events: none;
     }
-    #sim {
-      position: fixed; bottom: 6px; left: 50%; transform: translateX(-50%);
-      display: none; gap: 8px; align-items: center;
-      font: 13px monospace; color: #cfd8e3;
+    #pc-tools { position: fixed; bottom: var(--tools-bottom, 8px); left: var(--tools-x, 56.25%); transform: translateX(-50%); font: 13px system-ui; color: #d8e1f0; }
+    summary {
+      width: max-content; margin: auto; padding: 9px 18px; border: 1px solid #64748b;
+      border-radius: 20px; background: #080f26ee; cursor: pointer; list-style: none;
     }
-    #sim.on { display: flex; }
-    #sim button {
-      background: #12204a; color: #fff; border: 1px solid #00e5ff; border-radius: 6px;
-      padding: 8px 12px; font: inherit; cursor: pointer;
+    summary::-webkit-details-marker { display: none; }
+    summary { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+    summary svg { color: #8ee7ec; }
+    .tools-content {
+      position: absolute; bottom: 48px; left: 50%; transform: translateX(-50%);
+      width: min(400px, calc(100vw - 32px)); padding: 16px; background: #080f26f5;
+      border: 1px solid #64748b; border-radius: 18px; box-shadow: 0 8px 30px #0008;
     }
-    #sim button:hover { background: #1b3270; }
-    #sim button.armed { background: #00e5ff; color: #04081f; }
-    #testbar {
-      position: fixed; bottom: 52px; left: 54%; transform: translateX(-50%);
-      display: none; gap: 8px; align-items: center;
-      font: 12px monospace; color: #ffd08a;
+    .setting-label { font-size: 12px; color: #b9cbd0; margin-bottom: 10px; }
+    #theme-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 4px; }
+    .theme-option { padding: 12px; text-align: left; background: #101b26; }
+    .theme-option[aria-pressed="true"] { border-color: #9becf2; box-shadow: inset 0 0 0 1px #9becf2; background: #223a44; }
+    .theme-swatch { display: flex; gap: 5px; margin-bottom: 10px; }
+    .theme-swatch i { display: block; width: 23px; height: 12px; border-radius: 3px; border: 1px solid #ffffff25; }
+    .theme-option strong, .theme-option small { display: block; }
+    .theme-option small { color: #b4c8ce; font-size: 11px; margin-top: 4px; }
+    #sim.on { border-top: 1px solid #ffffff18; margin-top: 14px; padding-top: 12px; }
+    body[data-theme="scrap"] .tools-content, body[data-theme="scrap"] summary { background: #162329f5; border-color: #758c91; }
+    #sim, #testbar { display: none; flex-wrap: wrap; gap: 8px; }
+    #sim.on, #testbar.on { display: flex; }
+    #testbar.on { border-top: 1px solid #ffffff18; margin-top: 12px; padding-top: 12px; }
+    button {
+      flex: 1; padding: 10px 14px; border: 1px solid #64748b; border-radius: 10px;
+      background: #122044; color: #fff; font: inherit; cursor: pointer; min-height: 42px;
     }
-    #testbar.on { display: flex; }
-    #testbar button {
-      background: #3a2406; color: #fff; border: 1px solid #ff9c2e; border-radius: 6px;
-      padding: 7px 12px; font: inherit; cursor: pointer;
-    }
-    #testbar button:hover { background: #55330a; }
-    #testbar button.active { background: #ff9c2e; color: #1a0f00; font-weight: bold; }
+    button:hover { border-color: #00e5ff; }
+    button.armed { background: #00e5ff; color: #04081f; }
+    button.active { border-color: #ffbe37; background: #553a12; }
+    button.active::before { content: '✓ '; color: #ffbe37; }
+    :focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+    #sim-hint { width: 100%; color: #b7c2da; font-size: 12px; line-height: 1.5; }
+    #sim-hint:empty { display: none; }
   </style>
 </head>
 <body>
-  <canvas id="canvas"></canvas>
-  <div id="testbar">
-    <span>TEST (PC)</span>
-    <button id="test-invincible">🛡 Véhicules invincibles</button>
-    <button id="test-items">🎁 Tous les objets utilisables</button>
-  </div>
-  <div id="sim">
-    <button id="sim3">🏹 Simuler lance-pierre (clic + tirer + relâcher)</button>
-    <button id="sim2">✌ Simuler 2 doigts (boost)</button>
-    <span id="sim-hint"></span>
-  </div>
-  <div id="status">Connexion…</div>
+  <canvas id="canvas" aria-label="Table de jeu Crashout Circuit"></canvas>
+  <details id="pc-tools">
+    <summary title="Thème et options de jeu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z"/></svg>Paramètres</summary>
+    <div class="tools-content">
+      <p class="setting-label">Ambiance</p>
+      <div id="theme-options" role="group" aria-label="Thème visuel"></div>
+      <div id="sim" role="group" aria-label="Simuler un geste">
+        <button id="sim3" aria-label="Lance-pierre" aria-pressed="false" title="Maintenir le clic, tirer et relâcher">Lance-pierre</button>
+        <button id="sim2" aria-label="Boost" aria-pressed="false" title="Placer les deux contacts du boost par deux clics">Boost</button>
+        <span id="sim-hint" role="status"></span>
+      </div>
+      <div id="testbar" role="group" aria-label="Options de test PC">
+        <button id="test-invincible" aria-label="Invincibles" aria-pressed="false" title="Rendre les deux véhicules invincibles">Invincibles</button>
+        <button id="test-items" aria-label="Objets libres" aria-pressed="false" title="Utiliser les deux gestes sans limite de stock">Objets libres</button>
+      </div>
+    </div>
+  </details>
+  <div id="status" role="status">Connexion…</div>
   <script type="module" src="./main.ts"></script>
 </body>
 </html>

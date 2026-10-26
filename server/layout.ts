@@ -10,7 +10,7 @@ export const LOGICAL_H = 1080;
 export type Role = 'pilot' | 'copilot';
 
 export const PANEL_H = 200;
-/** The pilot panel is wider: it holds directional pads, the item button and repair. */
+/** The pilot panel is wider: it holds steering, the optional pedal and repair. */
 export const PILOT_PANEL_W = 700;
 export const COPILOT_PANEL_W = 460;
 export const panelWidth = (role: Role): number => (role === 'pilot' ? PILOT_PANEL_W : COPILOT_PANEL_W);
@@ -26,9 +26,9 @@ export interface PanelLayout {
 
 export const PANELS: PanelLayout[] = [
   { team: 'A', role: 'pilot',   cx: 370,  cy: 960, rot: 0 },
-  { team: 'A', role: 'copilot', cx: 1670, cy: 960, rot: 0 },
+  { team: 'A', role: 'copilot', cx: 1670, cy: 120, rot: Math.PI },
   { team: 'B', role: 'pilot',   cx: 370,  cy: 120, rot: Math.PI },
-  { team: 'B', role: 'copilot', cx: 1670, cy: 120, rot: Math.PI },
+  { team: 'B', role: 'copilot', cx: 1670, cy: 960, rot: 0 },
 ];
 
 /**

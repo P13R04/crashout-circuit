@@ -29,10 +29,12 @@ Ouvrir `http://localhost:5173/client-table/` et `http://localhost:5173/client-oz
 
 ## Déroulement
 
-1. Choisir **Jouer sur table** ou **Mode PC · séquentiel**.
+Les partenaires d’une équipe sont en diagonale : pilote cyan en bas à gauche et copilote cyan en haut à droite ; pilote rose en haut à gauche et copilote rose en bas à droite. Chaque poste fait face à son bord de table. Les dépôts tangibles et l’attribution des gestes suivent la position du copilote.
+
+1. Choisir **TABLE** (main) ou **PC** (souris).
 2. Cyan place P1, Rose place P2 ; Cyan dessine P1 → P2, puis Rose dessine P2 → P1. Les deux modes utilisent cette création guidée et séquentielle. Le circuit suit les tracés, y compris les boucles et croisements ; les refus sont expliqués à l’écran.
-3. Toucher **GÉNÉRER LE CIRCUIT**, puis **LANCER LA COURSE** sur la table. Le lancement, la pause et la remise à zéro appartiennent aux joueurs.
-4. Le pilote conduit avec la bande gauche / droite. Le bouton central **PÉDALE** bascule entre l’avance automatique et une pédale maintenue pour accélérer, à vitesse maximale réduite. Le pilote n’a plus de bouton pour utiliser les objets.
+3. Toucher le bouton à icône de circuit, puis **▶** sur la table. Le lancement, la pause et la remise à zéro appartiennent aux joueurs.
+4. Le pilote conduit avec la bande gauche / droite. Le sélecteur **AUTO / PÉDALE** en haut bascule entre l’avance automatique et une pédale maintenue pour accélérer, à vitesse maximale réduite. Le pilote n’a plus de bouton pour utiliser les objets.
 5. Le copilote utilise **POWER** pour son objet ramassé, réalise les gestes et répare avec le pilote. Oz gère seul l’activation des tangibles.
 6. Une sortie de piste immobilise la voiture. Maintenir les deux pads de réparation pour la remettre en jeu. La pause fige la course et les durées des effets.
 
@@ -50,14 +52,29 @@ La table tactile ne reconnaît pas l’identité d’une personne : l’équipe 
 
 ### Tester les gestes à la souris
 
-La barre de simulation apparaît avec une souris, ou avec `?sim=1`. Ramasser d’abord un objet avec la voiture, puis toucher **POWER** au poste copilote :
+Le tiroir **Test PC**, fermé par défaut, apparaît en course avec une souris, ou avec `?sim=1`. Ramasser d’abord un objet avec la voiture, puis toucher le symbole **POWER** au poste copilote :
 
-- **Simuler lance-pierre** : maintenir le clic pour poser la fourche, tirer en arrière, puis relâcher. La trajectoire est prévisualisée et la pierre vole depuis la poche. En mode PC, ce geste est disponible directement dès qu’un lance-pierre est armé.
-- **Simuler 2 doigts** puis deux clics définissent le portail.
+- **Lance-pierre** : maintenir le clic pour poser la fourche, tirer en arrière, puis relâcher. La trajectoire est prévisualisée et la pierre vole depuis la poche. En mode PC, ce geste est disponible directement dès qu’un lance-pierre est armé.
+- **Boost** puis deux clics définissent le portail.
 
 Les simulations passent par les mêmes règles d’armement, de vol et de consommation que les gestes tactiles. Le lance-pierre conserve les paramètres de `main` : traction minimale de 40 px, portée croissante et dégâts de 100 HP.
 
-En course **PC uniquement**, la barre de test de la table conserve **Véhicules invincibles** et **Tous les objets utilisables**. Ces outils de développement restent ignorés en mode table et ne sont pas accessibles à Oz.
+En course **PC uniquement**, ce tiroir contient aussi **Invincibles** et **Objets libres**. Ces outils de développement restent ignorés en mode table et ne sont pas accessibles à Oz.
+
+## Interface de la table : essai visuel
+
+Après `npm run build` puis `npm start`, ouvrir `http://localhost:3000/`.
+
+1. Choisir **TABLE** ou **PC**. Placer P1 puis P2 : les pastilles cyan et rose indiquent l’ordre. Essayer un P2 trop proche : un message bref apparaît et P1 reste en place.
+2. Relier le départ (main, cercle plein) à l’arrivée (drapeau, cercle pointillé), dans la moitié éclairée. L’arrivée devient verte au contact. Après le cyan, le rose prend la main. Les coches remplacent les messages de validation. Toucher le circuit, puis ▶ pour démarrer.
+3. Piloter avec la zone à volant. Basculer **AUTO / PÉDALE** en haut ; la pédale apparaît aux deux postes pilotes. Les tours se lisent près du drapeau de chaque pilote, le temps près du circuit.
+4. Ramasser un bonus : son icône se relie à POWER. Armer : le contour devient doré, l’anneau décompte les cinq secondes et les contacts indiquent le geste à deux ou trois doigts. Tester aussi le geste adverse, l’expiration et le lance-pierre (jauge de traction et cible).
+5. Déposer un tangible depuis Oz : la zone à empreintes devient occupée (contour continu et pastilles), puis verte avec un éclair après activation par Oz. POWER n’intervient pas dans ce changement.
+6. En panne, chercher la clé près de la voiture et dans les postes. Maintenir les deux clés : les deux témoins s’allument et l’anneau se remplit. Relâcher un poste interrompt la progression.
+7. Toucher ⏸ puis le grand ▶ central pour reprendre. À la fin, le trophée et le cadre indiquent le gagnant ; les cartes montrent tours et points de passage. ↶ relance une partie ; la maison retourne à l’accueil.
+8. Sur PC, ouvrir et refermer **Test PC** : les simulations et les deux options restent accessibles sans barre permanente sur le jeu. Une connexion perdue affiche un statut jusqu’au retour du serveur.
+
+Vérifier les deux orientations de lecture sur la table réelle. Les pictogrammes des commandes sont partagés ; seuls les intitulés courts, le temps et les résultats utiles à chaque côté sont orientés pour leur lecteur. Le réglage système « réduire les animations » stabilise les halos, les chevrons et les clignotements décoratifs.
 
 ## Console Oz : uniquement les tangibles
 
@@ -94,12 +111,15 @@ npm run typecheck
 npm run test:acceptance
 npm run test:gestures
 npm run test:network
+npm run test:visuals
 npm run build
 ```
 
 Les tests couvrent génération, conduite, collisions, réparation, armement, vol, durée de pause, activation / placement / désactivation des tangibles, rotation à pivot fixe, interactions de déplacement, journal serveur rejoué, séparation des rôles réseau et récupération d’un état complet à la connexion. La validation matérielle des contacts simultanés et de la latence sur la table réelle reste à réaliser ; voir `measures.md`. L’affichage de diagnostic s’active avec `?debug=1` ou F3. Le journal des événements tangibles du serveur est disponible sur `/api/oz-log`.
 
 ## Structure
+
+L’audit graphique, les trois directions proposées et la liste de sons à chercher sont dans [docs/direction-artistique.md](docs/direction-artistique.md). Deux thèmes sont disponibles dans **Paramètres → Ambiance** : **Néon** et **Ferraille**, une ambiance de récupération industrielle froide avec énergie cyan. Le choix est mémorisé localement et peut changer pendant la partie. Voir [les thèmes et leur parcours de vérification](docs/themes.md) et [les détails du rendu néon](docs/rendu-neon.md). L’[audit des textes et de l’orientation](docs/lisibilite.md) documente les choix de lisibilité des issues #26 et #35.
 
 ```text
 server/          état autoritaire, règles, physique, génération, WebSocket

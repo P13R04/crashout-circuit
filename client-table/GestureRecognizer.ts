@@ -210,7 +210,9 @@ export class GestureRecognizer {
     }
     if (state.phase === 'RACE' || state.phase === 'PAUSED') {
       const b = PAUSE_BUTTON;
-      if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
+      const resume = RACE_START_BUTTON;
+      const centralResume = state.phase === 'PAUSED' && p.x >= resume.x && p.x <= resume.x + resume.w && p.y >= resume.y && p.y <= resume.y + resume.h;
+      if (centralResume || p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
         c.zone = 'pause'; this.send({ type: 'Pause' }); return;
       }
       const mode = DRIVE_MODE_BUTTON;
@@ -658,7 +660,7 @@ export class GestureRecognizer {
     if (!team) return null;
     // A second finger must not erase the current stroke or submit a second copy.
     if ([...this.view.strokes.values()].some(s => s.team === team && (!s.done || s.submitting))) {
-      showMapNotice(this.view, 'Un seul tracé à la fois : terminez le geste en cours.', '#ffd400');
+      showMapNotice(this.view, 'Terminez le tracé en cours.', '#ffd400');
       return null;
     }
     const [start, end] = state.mapTargets[team];

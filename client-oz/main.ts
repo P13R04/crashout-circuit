@@ -33,7 +33,7 @@ const conn = connectWs('/ws/oz', {
   },
 });
 function emit(type: string, params: Record<string, unknown>): boolean {
-  if (!conn.isOpen() || controls.disabled) { notice.textContent = 'Action indisponible : attendre la connexion et le circuit.'; return false; }
+  if (!conn.isOpen() || controls.disabled) { notice.textContent = 'Connexion et circuit requis.'; return false; }
   conn.send({ type, ...params }); notice.textContent = ''; return true;
 }
 function configure(): void {

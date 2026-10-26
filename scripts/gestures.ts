@@ -75,6 +75,8 @@ async function test(name: string, fn: () => Promise<void>): Promise<void> {
 
 await test('pulling the third finger back and lifting it fires one shot opposite to the pull', async () => {
   const r = rig();
+  r.view.state!.cars.A.itemArmed = false; r.view.state!.cars.A.heldItem = null;
+  r.view.state!.cars.B.itemArmed = true; r.view.state!.cars.B.heldItem = 'slingshot';
   await land(r);
   await pullDown(r, 3, F3, 150);
   assert.equal(r.view.sling?.idle, false);
@@ -84,7 +86,7 @@ await test('pulling the third finger back and lifting it fires one shot opposite
   assert.equal(m.type, 'Slingshot');
   near(m.anchor, { x: 940, y: 500 }, 'anchor');
   near(m.pouch, { x: 940, y: 750 }, 'pouch');
-  assert.equal(m.team, 'B', 'the fork is nearer the rose station: it can steal the item armed by cyan');
+  assert.equal(m.team, 'A', 'the fork is nearer the cyan station: it can steal the item armed by rose');
 });
 
 await test('three resting fingers are no instant strike (no message after the settle delay)', async () => {
@@ -180,14 +182,32 @@ await test('two fingers 100–400 px apart still open a boost gate with a boost 
 
 await test('only the copilot POWER button emits activation, the former pilot item zone is inert', async () => {
   const { localToWorld, panelOf, POWER_BTN_LOCAL } = await import('../server/layout.js');
-  const r = rig();
-  const at = localToWorld(panelOf('A', 'copilot'), POWER_BTN_LOCAL.x, POWER_BTN_LOCAL.y);
-  r.down(1, at.x, at.y); r.up(1, at.x, at.y);
-  assert.deepEqual(r.sent, [{ type: 'Power', team: 'A', role: 'copilot' }]);
-  r.sent.length = 0;
-  const former = localToWorld(panelOf('A', 'pilot'), -20, 45);
-  r.down(2, former.x, former.y); r.up(2, former.x, former.y);
-  assert.deepEqual(r.sent, []);
+  for (const team of ['A', 'B'] as const) {
+    const r = rig();
+    const at = localToWorld(panelOf(team, 'copilot'), POWER_BTN_LOCAL.x, POWER_BTN_LOCAL.y);
+    r.down(1, at.x, at.y); r.up(1, at.x, at.y);
+    assert.deepEqual(r.sent, [{ type: 'Power', team, role: 'copilot' }]);
+    r.sent.length = 0;
+    const former = localToWorld(panelOf(team, 'pilot'), -20, 45);
+    r.down(2, former.x, former.y); r.up(2, former.x, former.y);
+    assert.deepEqual(r.sent, []);
+  }
+});
+
+await test('two repair contacts in opposite corners belong to the same team', async () => {
+  const { localToWorld, panelOf, padLocal } = await import('../server/layout.js');
+  for (const team of ['A', 'B'] as const) {
+    const r = rig(null);
+    for (const [id, role] of [[1, 'pilot'], [2, 'copilot']] as const) {
+      const pad = padLocal(role), at = localToWorld(panelOf(team, role), pad.x, pad.y);
+      r.down(id, at.x, at.y);
+    }
+    assert.deepEqual(r.sent, [
+      { type: 'PadHold', team, role: 'pilot', on: true },
+      { type: 'PadHold', team, role: 'copilot', on: true },
+    ]);
+    r.recognizer.releaseAll();
+  }
 });
 
 await test('the shared control adapter preserves held-pedal throttle across steering and releases', async () => {
@@ -205,6 +225,16 @@ await test('the shared control adapter preserves held-pedal throttle across stee
   assert.equal(r.sent.at(-1)!.steer, -1); assert.equal(r.sent.at(-1)!.throttle, 0);
   r.up(2, steer.x, steer.y);
   assert.equal(r.sent.at(-1)!.steer, 0); assert.equal(r.sent.at(-1)!.throttle, 0);
+});
+
+await test('the central resume icon works only while paused, and consumes the touch', async () => {
+  const r = rig(null);
+  r.down(1, 960, 540); r.up(1, 960, 540);
+  assert.deepEqual(r.sent, [], 'the same location is ordinary track during the race');
+  r.view.state!.phase = 'PAUSED';
+  r.down(2, 960, 540); r.up(2, 960, 540);
+  assert.deepEqual(r.sent, [{ type: 'Pause' }]);
+  assert.equal(r.view.sling, null);
 });
 
 let failed = 0;
