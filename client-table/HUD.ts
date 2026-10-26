@@ -126,11 +126,13 @@ export class HUD {
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.font = '12px monospace';
     ctx.textAlign = 'center';
-    if (state.driveMode === 'auto') {
+    const isPedal = typeof state.driveMode === 'string'
+      ? (state.driveMode as unknown as string) === 'pedal'
+      : state.driveMode[team] === 'pedal';
+    if (!isPedal) {
       ctx.fillText('CONDUITE', -20, 34);
       ctx.fillText('POWER AU COPILOTE', -20, 54);
-    }
-    if (state.driveMode === 'pedal') {
+    } else {
       const p = PEDAL_LOCAL;
       const active = view.localPedals[team];
       ctx.fillStyle = active ? `${color}66` : 'rgba(255,255,255,0.08)';

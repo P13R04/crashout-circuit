@@ -117,7 +117,7 @@ export class GameServer {
         if (fromTable) this.rules.togglePause();
         break;
       case 'ToggleDriveMode':
-        if (fromTable) this.rules.toggleDriveMode();
+        if (fromTable) this.rules.toggleDriveMode(msg.team);
         break;
       case 'StrokeDraw':
         if (fromTable) this.rules.onStrokeDraw(msg);

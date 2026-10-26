@@ -554,11 +554,42 @@ test('tactile and keyboard steering receive the same configured small turn gain'
   assert.equal(r.rules.inputs.A.steer, config.steerGain);
   assert.equal(r.rules.inputs.B.steer, config.steerGain);
 });
+test('drive mode can be chosen before the race and toggled during the race per team', () => {
+  const r = rig();
+  assert.equal(r.state.phase, 'LOBBY');
+  assert.equal(r.state.driveMode.A, 'auto');
+  assert.equal(r.state.driveMode.B, 'auto');
+
+  // Change mode before the race on the READY screen (Team A chooses pedal, Team B stays auto)
+  r.state.phase = 'READY';
+  r.rules.toggleDriveMode('A');
+  assert.equal(r.state.driveMode.A, 'pedal');
+  assert.equal(r.state.driveMode.B, 'auto');
+
+  // Launch race and verify the chosen modes are preserved at start
+  r.state.phase = 'RACE';
+  r.rules.startRace(generatePreset());
+  assert.equal(r.state.driveMode.A, 'pedal');
+  assert.equal(r.state.driveMode.B, 'auto');
+  assert.equal(r.rules.inputs.A.throttle, 0);
+  assert.equal(r.rules.inputs.B.throttle, 1);
+
+  // Toggle in race: Team B switches to pedal, Team A switches back to auto
+  r.rules.toggleDriveMode('B');
+  assert.equal(r.state.driveMode.A, 'pedal');
+  assert.equal(r.state.driveMode.B, 'pedal');
+
+  r.rules.toggleDriveMode('A');
+  assert.equal(r.state.driveMode.A, 'auto');
+  assert.equal(r.state.driveMode.B, 'pedal');
+});
+
 test('central drive mode switches all cars to a held-pedal acceleration model', () => {
   const r = raceRig();
   const car = r.state.cars.A;
   r.rules.toggleDriveMode();
-  assert.equal(r.state.driveMode, 'pedal');
+  assert.equal(r.state.driveMode.A, 'pedal');
+  assert.equal(r.state.driveMode.B, 'pedal');
   car.speed = 100;
   r.rules.onPilotInput('A', msg({ type: 'PilotInput' as const, team: 'A' as Team, throttle: 0, steer: 0 }));
   r.physics.step(r.clock.now += 100, 0.1);

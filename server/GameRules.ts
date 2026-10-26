@@ -74,7 +74,7 @@ export function makeCar(team: Team): Car {
 export function createInitialState(): GameState {
   return {
     phase: 'LOBBY',
-    driveMode: 'auto',
+    driveMode: { A: 'auto', B: 'auto' },
     tick: 0,
     cars: { A: makeCar('A'), B: makeCar('B') },
     walls: [],
@@ -303,7 +303,7 @@ export class GameRules {
       car.pos = { x: sp.x, y: sp.y };
       car.angle = Math.atan2(tan.y, tan.x);
       s.cars[team] = car;
-      this.inputs[team] = { throttle: 1, steer: 0 };
+      this.inputs[team] = { throttle: this.state.driveMode[team] === 'pedal' ? 0 : 1, steer: 0 };
       this.lastPilotInputAt[team] = this.now;
       s.repairProgress[team] = 0;
       s.cooldowns[team] = { ghost: 0, destroy: 0, borderPull: 0 };
@@ -423,10 +423,18 @@ export class GameRules {
   }
 
   /** Shared central control: cars either drive continuously or require a held pedal. */
-  toggleDriveMode(): void {
-    if (this.state.phase !== 'RACE') return;
-    this.state.driveMode = this.state.driveMode === 'auto' ? 'pedal' : 'auto';
-    for (const team of TEAMS) this.inputs[team].throttle = 0;
+  toggleDriveMode(team?: Team): void {
+    if (this.state.phase === 'RESULT') return;
+    if (team) {
+      this.state.driveMode[team] = this.state.driveMode[team] === 'auto' ? 'pedal' : 'auto';
+      this.inputs[team].throttle = 0;
+    } else {
+      for (const t of TEAMS) {
+        this.state.driveMode[t] = this.state.driveMode[t] === 'auto' ? 'pedal' : 'auto';
+        this.inputs[t].throttle = 0;
+      }
+    }
+
     this.host.broadcastFull();
   }
 

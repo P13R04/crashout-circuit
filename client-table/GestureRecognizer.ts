@@ -26,7 +26,7 @@ import {
   insidePanel, nearestStationTeam, checkDivider, inPlayArea, type Role,
 } from '../server/layout.js';
 import { nearestOnTrack, slingshotShot } from '../server/geometry.js';
-import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
+import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, DRIVE_MODE_BUTTONS, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
 import { showDividerRefusal, showMapError, showMapNotice, type View } from './view.js';
 import { activeMapTeam, inMapAnchor, mapEndpointError } from '../server/mapCreation.js';
 
@@ -162,6 +162,18 @@ export class GestureRecognizer {
       return;
     }
 
+    // Drive mode buttons (accessible in all phases except RESULT)
+    if (state.phase === 'READY' || state.phase === 'RACE' || state.phase === 'PAUSED') {
+      for (const t of ['A', 'B'] as const) {
+        const mode = DRIVE_MODE_BUTTONS[t];
+        if (hit(mode)) {
+          c.zone = 'mode';
+          this.send({ type: 'ToggleDriveMode', team: t });
+          return;
+        }
+      }
+    }
+
     // 0 — lobby: start button
     if (state.phase === 'LOBBY') {
       if (hit(START_TABLE_BUTTON) || hit(START_PC_BUTTON)) {
@@ -213,10 +225,7 @@ export class GestureRecognizer {
       if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
         c.zone = 'pause'; this.send({ type: 'Pause' }); return;
       }
-      const mode = DRIVE_MODE_BUTTON;
-      if (state.phase === 'RACE' && p.x >= mode.x && p.x <= mode.x + mode.w && p.y >= mode.y && p.y <= mode.y + mode.h) {
-        c.zone = 'mode'; this.send({ type: 'ToggleDriveMode' }); return;
-      }
+
     }
     if (state.phase !== 'RACE') { c.zone = 'rejected'; return; }
 
@@ -233,7 +242,10 @@ export class GestureRecognizer {
           this.updateSteer(c);
           return;
         }
-        if (state.driveMode === 'pedal' && Math.abs(l.x - PEDAL_LOCAL.x) <= PEDAL_LOCAL.w / 2 && Math.abs(l.y - PEDAL_LOCAL.y) <= PEDAL_LOCAL.h / 2) {
+        const isPedal = typeof state.driveMode === 'string'
+          ? (state.driveMode as unknown as string) === 'pedal'
+          : state.driveMode[panel.team] === 'pedal';
+        if (isPedal && Math.abs(l.x - PEDAL_LOCAL.x) <= PEDAL_LOCAL.w / 2 && Math.abs(l.y - PEDAL_LOCAL.y) <= PEDAL_LOCAL.h / 2) {
           if (this.pedals.has(panel.team)) { c.zone = 'rejected'; return; }
           c.zone = 'pedal';
           c.panel = panel;
@@ -397,7 +409,10 @@ export class GestureRecognizer {
   }
 
   private currentThrottle(team: Team): number {
-    return this.state?.driveMode === 'pedal' ? (this.pedals.has(team) ? 1 : 0) : 1;
+    const isPedal = typeof this.state?.driveMode === 'string'
+      ? (this.state.driveMode as unknown as string) === 'pedal'
+      : this.state?.driveMode[team] === 'pedal';
+    return isPedal ? (this.pedals.has(team) ? 1 : 0) : 1;
   }
 
   private sendCurrentInput(team: Team, force = false): void {
