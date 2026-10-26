@@ -278,16 +278,207 @@ export class Renderer {
   private drawGates(ctx: Ctx, state: GameState, now: number): void {
     for (const g of state.boostGates) {
       const left = g.expiresAt - now;
-      if (left < 1500 && Math.floor(now / 150) % 2 === 0) continue; // blink before expiry
+      if (left <= 0) continue;
+      const createdAt = g.createdAt ?? (g.expiresAt - 8000);
+      const age = now - createdAt;
+
+      // Spawn animation (first 450 ms)
+      const spawnK = Math.min(1, Math.max(0, age / 450));
+      // Expiration warning (last 2500 ms)
+      const isExpiring = left < 2500;
+      const urgency = isExpiring ? 1 - Math.max(0, left) / 2500 : 0;
+      const blink = isExpiring ? (0.5 + 0.5 * Math.sin(now * (0.012 + 0.038 * urgency))) : 1;
+
+      // In the final 200 ms, collapse fade
+      const collapseK = left < 200 ? left / 200 : 1;
+
+      const mid = { x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 };
+      const ownAlpha = this.ownerAlpha(state, g.team, mid);
+      const globalAlpha = ownAlpha * collapseK * (isExpiring ? (0.4 + 0.6 * blink) : 1);
+      if (globalAlpha <= 0.01) continue;
+
+      const dx = g.b.x - g.a.x, dy = g.b.y - g.a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len;
+      const nx = g.dir ? g.dir.x : -uy;
+      const ny = g.dir ? g.dir.y : ux;
+
+      const fullDepth = g.depth ?? 60;
+      const depth = fullDepth * (age < 450 ? (0.2 + 0.8 * spawnK) : 1);
+      const backDepth = 12 * (age < 450 ? (0.2 + 0.8 * spawnK) : 1);
+
+      // Jitter displacement in the last 1500 ms (crackling instability)
+      const jitter = isExpiring && left < 1500 && Math.random() < 0.35 ? (Math.random() - 0.5) * 3 : 0;
+
+      // Four corners of the oriented runway
+      const p1 = { x: g.a.x - (backDepth + jitter) * nx, y: g.a.y - (backDepth + jitter) * ny };
+      const p2 = { x: g.b.x - (backDepth + jitter) * nx, y: g.b.y - (backDepth + jitter) * ny };
+      const p3 = { x: g.b.x + (depth + jitter) * nx, y: g.b.y + (depth + jitter) * ny };
+      const p4 = { x: g.a.x + (depth + jitter) * nx, y: g.a.y + (depth + jitter) * ny };
+
       ctx.save();
-      ctx.globalAlpha = 0.65;
-      ctx.strokeStyle = '#ffd400';
-      ctx.shadowColor = '#ffd400';
-      ctx.shadowBlur = 14;
-      ctx.lineWidth = 6;
-      ctx.beginPath(); ctx.moveTo(g.a.x, g.a.y); ctx.lineTo(g.b.x, g.b.y); ctx.stroke();
-      ctx.lineWidth = 4;
-      for (const e of [g.a, g.b]) { ctx.beginPath(); ctx.arc(e.x, e.y, 12, 0, Math.PI * 2); ctx.stroke(); }
+      ctx.globalAlpha = globalAlpha;
+
+      // 1. Runway Energy Floor
+      const grad = ctx.createLinearGradient(
+        (p1.x + p2.x) / 2, (p1.y + p2.y) / 2,
+        (p4.x + p3.x) / 2, (p4.y + p3.y) / 2
+      );
+      if (isExpiring && urgency > 0.5) {
+        grad.addColorStop(0, 'rgba(255, 140, 0, 0.05)');
+        grad.addColorStop(0.35, 'rgba(255, 180, 20, 0.22)');
+        grad.addColorStop(0.75, 'rgba(255, 140, 0, 0.38)');
+        grad.addColorStop(1, 'rgba(255, 120, 0, 0.05)');
+      } else {
+        grad.addColorStop(0, 'rgba(255, 212, 0, 0.05)');
+        grad.addColorStop(0.35, 'rgba(255, 230, 60, 0.22)');
+        grad.addColorStop(0.75, 'rgba(255, 212, 0, 0.38)');
+        grad.addColorStop(1, 'rgba(255, 212, 0, 0.05)');
+      }
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p3.x, p3.y);
+      ctx.lineTo(p4.x, p4.y);
+      ctx.closePath();
+      ctx.fill();
+
+      // Team tint on runway floor
+      ctx.fillStyle = TEAM_COLOR[g.team];
+      ctx.globalAlpha = globalAlpha * 0.12;
+      ctx.fill();
+      ctx.globalAlpha = globalAlpha;
+
+      // 2. Lateral Containment Rails
+      ctx.strokeStyle = isExpiring && urgency > 0.5 ? '#ff9500' : '#ffd400';
+      ctx.shadowColor = ctx.strokeStyle;
+      ctx.shadowBlur = 12;
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y); ctx.lineTo(p4.x, p4.y);
+      ctx.moveTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
+      ctx.stroke();
+
+      // Lateral rail sliding energy pulses
+      const railPulse = (now * 0.12) % (depth + backDepth);
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowBlur = 8;
+      for (const side of [g.a, g.b]) {
+        const px = side.x + (-backDepth + railPulse) * nx;
+        const py = side.y + (-backDepth + railPulse) * ny;
+        ctx.beginPath();
+        ctx.arc(px, py, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 3. Emitter Threshold Bar (connecting a and b)
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(g.a.x, g.a.y);
+      ctx.lineTo(g.b.x, g.b.y);
+      ctx.stroke();
+
+      // 4. Directional Flow Chevrons (>>> / ^^^)
+      const chevronCols = Math.max(3, Math.min(8, Math.round(len / 42)));
+      const chevronSpacing = 22;
+      const chevronSpeed = isExpiring ? 0.14 : 0.09;
+      const flowOffset = (now * chevronSpeed) % chevronSpacing;
+      const chevronStroke = isExpiring && urgency > 0.6 ? '#ffa030' : '#ffe840';
+
+      ctx.strokeStyle = chevronStroke;
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.shadowBlur = 6;
+
+      for (let ci = 0; ci < chevronCols; ci++) {
+        const tc = (ci + 0.5) / chevronCols;
+        const baseColX = g.a.x + tc * dx;
+        const baseColY = g.a.y + tc * dy;
+
+        for (let d = -backDepth + flowOffset; d < depth; d += chevronSpacing) {
+          const frac = (d + backDepth) / (depth + backDepth);
+          const alphaFade = Math.sin(Math.PI * Math.max(0, Math.min(1, frac)));
+          ctx.globalAlpha = globalAlpha * Math.pow(alphaFade, 0.7);
+
+          const tipX = baseColX + (d + 6) * nx;
+          const tipY = baseColY + (d + 6) * ny;
+          const leftX = baseColX + (d - 4) * nx - 8 * ux;
+          const leftY = baseColY + (d - 4) * ny - 8 * uy;
+          const rightX = baseColX + (d - 4) * nx + 8 * ux;
+          const rightY = baseColY + (d - 4) * ny + 8 * uy;
+
+          ctx.beginPath();
+          ctx.moveTo(leftX, leftY);
+          ctx.lineTo(tipX, tipY);
+          ctx.lineTo(rightX, rightY);
+          ctx.stroke();
+        }
+      }
+
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = globalAlpha;
+
+      // 5. Fast Speed Spark Streaks
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      for (let sIdx = 0; sIdx < 4; sIdx++) {
+        const stc = (sIdx + 0.5) / 4;
+        const sProg = ((now * 0.22 + sIdx * 73) % (depth + backDepth));
+        const sX = g.a.x + stc * dx + (-backDepth + sProg) * nx;
+        const sY = g.a.y + stc * dy + (-backDepth + sProg) * ny;
+        ctx.beginPath();
+        ctx.moveTo(sX, sY);
+        ctx.lineTo(sX + 12 * nx, sY + 12 * ny);
+        ctx.stroke();
+      }
+
+      // 6. Anchor Emitters at g.a and g.b
+      for (const e of [g.a, g.b]) {
+        // Outer glow halo
+        ctx.strokeStyle = isExpiring && urgency > 0.5 ? '#ff9500' : '#ffd400';
+        ctx.shadowColor = ctx.strokeStyle;
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, 14, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Team-colored core
+        ctx.fillStyle = TEAM_COLOR[g.team];
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, 7, 0, Math.PI * 2);
+        ctx.fill();
+
+        // White emitter center
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Expanding radial pulse ring
+        const ringT = (now % 1000) / 1000;
+        ctx.strokeStyle = '#ffe14a';
+        ctx.lineWidth = 2 * (1 - ringT);
+        ctx.globalAlpha = globalAlpha * (1 - ringT) * 0.7;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, 10 + 16 * ringT, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = globalAlpha;
+      }
+
+      // 7. Initial Spawn Shockwave (first 450 ms)
+      if (age < 450) {
+        ctx.strokeStyle = '#ffe14a';
+        ctx.lineWidth = 4 * (1 - spawnK);
+        ctx.globalAlpha = globalAlpha * (1 - spawnK);
+        ctx.beginPath();
+        ctx.arc(mid.x, mid.y, (len / 2) * spawnK, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
       ctx.restore();
     }
   }
@@ -520,10 +711,63 @@ export class Renderer {
     ctx.fillRect(-18, 18, 36 * hpFrac, 5);
 
     ctx.rotate(car.angle);
-    if (now < car.boostUntil) { // speed streak
-      ctx.strokeStyle = 'rgba(255,212,0,0.7)';
-      ctx.lineWidth = 3;
-      for (const o of [-6, 0, 6]) { ctx.beginPath(); ctx.moveTo(-14, o); ctx.lineTo(-34 - Math.random() * 10, o); ctx.stroke(); }
+    if (now < car.boostUntil) {
+      // Supersonic boost propulsion animation
+      const k = car.boostK || 0.6;
+      const boostPower = 0.6 + 0.6 * k;
+
+      ctx.save();
+      // 1. Supersonic Shock Cone at the front
+      ctx.strokeStyle = 'rgba(255, 235, 80, 0.45)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(22, 0);
+      ctx.lineTo(2, -14);
+      ctx.moveTo(22, 0);
+      ctx.lineTo(2, 14);
+      ctx.stroke();
+
+      // 2. High-speed plasma flame exhaust (dual exhausts at y = -5 and y = +5)
+      for (const ey of [-5, 5]) {
+        const flameLen = (36 + Math.random() * 24) * boostPower;
+        const flameWidth = 4 + Math.random() * 2;
+
+        // Outer fiery plasma
+        const flameGrad = ctx.createLinearGradient(-12, ey, -12 - flameLen, ey);
+        flameGrad.addColorStop(0, '#ffffff');
+        flameGrad.addColorStop(0.25, '#ffe14a');
+        flameGrad.addColorStop(0.65, '#ff6a00');
+        flameGrad.addColorStop(1, 'rgba(255, 40, 0, 0)');
+        ctx.fillStyle = flameGrad;
+        ctx.beginPath();
+        ctx.moveTo(-12, ey - flameWidth);
+        ctx.lineTo(-12 - flameLen, ey);
+        ctx.lineTo(-12, ey + flameWidth);
+        ctx.closePath();
+        ctx.fill();
+
+        // Inner white-hot core
+        const coreLen = (18 + Math.random() * 10) * boostPower;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(-12, ey - 2);
+        ctx.lineTo(-12 - coreLen, ey);
+        ctx.lineTo(-12, ey + 2);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // 3. Speed streaks streaming backwards
+      ctx.strokeStyle = 'rgba(255, 220, 40, 0.65)';
+      ctx.lineWidth = 2;
+      for (const o of [-9, -4, 4, 9]) {
+        const streakLen = (28 + Math.random() * 32) * boostPower;
+        ctx.beginPath();
+        ctx.moveTo(-10, o);
+        ctx.lineTo(-10 - streakLen, o);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
     ctx.globalAlpha = car.disabled ? 0.45 : ghost ? 0.4 : invuln && Math.floor(now / 90) % 2 === 0 ? 0.35 : 1;
     ctx.shadowColor = ghost ? '#b06cff' : stunned ? '#ffe14a' : color;
@@ -590,7 +834,24 @@ export class Renderer {
           ctx.beginPath(); ctx.arc(0, 0, 20 + 70 * k, 0, Math.PI * 2); ctx.stroke();
           break;
         }
-        case 'boostHit': case 'boostGate': {
+        case 'boostHit': {
+          ctx.strokeStyle = '#ffd400'; ctx.shadowColor = '#ffe14a'; ctx.shadowBlur = 18;
+          ctx.lineWidth = 5 * (1 - k);
+          ctx.beginPath(); ctx.arc(0, 0, 16 + 80 * k, 0, Math.PI * 2); ctx.stroke();
+          // Radiating sonic burst lines
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2 * (1 - k);
+          for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2;
+            const d1 = 15 + 20 * k;
+            const d2 = 30 + 70 * k;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(angle) * d1, Math.sin(angle) * d1);
+            ctx.lineTo(Math.cos(angle) * d2, Math.sin(angle) * d2);
+            ctx.stroke();
+          }
+          break;
+        }
+        case 'boostGate': {
           ctx.strokeStyle = '#ffd400'; ctx.lineWidth = 4;
           ctx.beginPath(); ctx.arc(0, 0, 15 + 50 * k, 0, Math.PI * 2); ctx.stroke();
           break;

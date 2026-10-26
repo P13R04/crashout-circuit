@@ -65,6 +65,9 @@ export interface BoostGate {
   a: Vec2;
   b: Vec2;
   expiresAt: number;
+  createdAt?: number;
+  dir?: Vec2;
+  depth?: number;
 }
 
 export interface Stone {
