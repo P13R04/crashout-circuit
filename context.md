@@ -205,10 +205,15 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 - Effet: la pierre est **visible en vol** pendant **0,8 s**, puis frappe le point d'atterrissage. Un cercle rouge d'avertissement y est affiché pendant le vol, orienté vers le joueur adverse le plus proche (l'adversaire peut esquiver).
 - Rayon d'impact 60 px [EST]. Touche uniquement la voiture adverse. Dégâts: voir R-08.
 
-**C-02 Boost (portail de vitesse)**
-- Geste: **2 doigts** posés sur la piste, écartés de 100 à 400 px. Un segment jaune à extrémités en anneau relie les deux doigts.
-- Effet (fonction continue): intensité `k = clamp(longueur / 400, 0,3 ; 1,0)`. Une voiture alliée qui franchit le segment gagne **+80 % × k** de vitesse pendant 2 s [EST].
-- Durée de vie du portail: 8 s [EST]. Représente la « ligne d'énergie » de la maquette.
+**C-02 Boost (zone d'accélération / portail de vitesse)**
+- Geste: **2 doigts** posés sur la piste, écartés de 100 à 400 px. Le segment entre les deux doigts forme le seuil d'entrée d'une zone rectangulaire d'accélération (largeur 100–400 px, profondeur 60 px orientée dans le sens de la piste).
+- Effet (fonction continue): intensité `k = clamp(longueur / 400, 0,3 ; 1,0)`. Une voiture alliée qui franchit le seuil ou pénètre dans la zone gagne **+80 % × k** de vitesse pendant 2 s [EST]. Détection volumétrique continue (franchissement du seuil ou présence dans le corridor orienté). Ne touche que la voiture alliée (l'adversaire l'ignore).
+- Durée de vie de la zone: 8 s [EST].
+- Animations IHM (lisibilité complète sans aucun texte):
+  - *Apparition (0–450 ms)* : onde de choc radiale depuis le centre, déploiement progressif des rails de confinement latéraux et des bornes émettrices aux doigts.
+  - *Flux directionnel actif* : chevrons néon animés en défilement continu (`>>>`) indiquant la direction de propulsion, rails lasers latéraux avec impulsions lumineuses, gradient d'énergie au sol teinté de la couleur de l'équipe et particules de vitesse.
+  - *Expiration (dernières 2,5 s)* : clignotement à fréquence croissante, instabilité/crépitements électriques sur les bords et rétractation/dissipation finale.
+  - *Traversée du véhicule* : déflagration sonique à l'impact (onde de choc radiale et cône d'expansion), puis traînée de propulsion supersonique (flammes de plasma double échappement à l'arrière, cône de Mach à l'avant et sillons de distorsion de vitesse) proportionnelle à l'intensité `k`.
 
 **C-03 Fantôme**
 - Activation: bouton du panneau Copilote. Aucun besoin du Pilote.

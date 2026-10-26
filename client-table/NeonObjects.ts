@@ -32,18 +32,23 @@ export class NeonObjects {
 
   drawGates(ctx: Ctx, state: GameState, now: number, time: number, reduced: boolean): void {
     for (const g of state.boostGates) {
-      const length = Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y);
-      ctx.save(); ctx.translate(g.a.x, g.a.y); ctx.rotate(Math.atan2(g.b.y - g.a.y, g.b.x - g.a.x));
-      ctx.globalAlpha = Math.min(1, Math.max(0, (g.expiresAt - now) / 900));
-      plate(ctx, 0, -12, length, 24, 5, '#ffce6610');
-      ctx.strokeStyle = '#ffce6635'; ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(length, 0); ctx.stroke();
-      ctx.strokeStyle = NEON.gold; ctx.lineWidth = 2; ctx.stroke();
-      ctx.setLineDash([6, 15]); ctx.strokeStyle = '#fff1c8'; ctx.lineDashOffset = reduced ? 0 : -time * .04; ctx.lineWidth = 1.2; ctx.stroke(); ctx.setLineDash([]);
-      const phase = reduced ? .5 : (time / 1000) % 1;
-      ctx.strokeStyle = '#ffce6655'; ctx.lineWidth = 1.5;
-      for (let x = 20; x < length - 10; x += 30) {
-        const d = 6 + phase * 14; ctx.beginPath(); ctx.moveTo(x - 4, -d - 3); ctx.lineTo(x, -d); ctx.lineTo(x + 4, -d - 3);
-        ctx.moveTo(x - 4, d + 3); ctx.lineTo(x, d); ctx.lineTo(x + 4, d + 3); ctx.stroke();
+      const dx = g.b.x - g.a.x, dy = g.b.y - g.a.y, length = Math.hypot(dx, dy) || 1;
+      const sign = g.dir && (-dy * g.dir.x + dx * g.dir.y) < 0 ? -1 : 1, depth = g.depth ?? 60;
+      const birth = Math.min(1, Math.max(.3, (now - (g.createdAt ?? now - 400)) / 300));
+      ctx.save(); ctx.translate(g.a.x, g.a.y); ctx.rotate(Math.atan2(dy, dx));
+      ctx.globalAlpha = birth * Math.min(1, Math.max(0, (g.expiresAt - now) / 900));
+      const wash = ctx.createLinearGradient(0, 0, 0, sign * depth);
+      wash.addColorStop(0, '#ffce6635'); wash.addColorStop(.65, '#ffce6616'); wash.addColorStop(1, '#ffce6605');
+      ctx.fillStyle = wash; ctx.fillRect(0, Math.min(0, sign * depth), length, depth);
+      ctx.strokeStyle = '#ffce664a'; ctx.lineWidth = 1; ctx.strokeRect(0, Math.min(0, sign * depth), length, depth);
+      ctx.strokeStyle = NEON.gold; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(length, 0); ctx.stroke();
+      const flow = reduced ? .45 : (time / 900) % 1;
+      ctx.strokeStyle = '#ffe8af'; ctx.lineWidth = 1.6;
+      for (let x = 16; x < length - 8; x += 28) for (let row = 0; row < 2; row++) {
+        const f = (flow + row * .5) % 1, y = sign * (7 + f * (depth - 14));
+        ctx.globalAlpha *= 1 - f * .35;
+        ctx.beginPath(); ctx.moveTo(x - 4, y - sign * 4); ctx.lineTo(x, y + sign * 2); ctx.lineTo(x + 4, y - sign * 4); ctx.stroke();
+        ctx.globalAlpha /= 1 - f * .35;
       }
       for (const x of [0, length]) {
         glow(ctx, x, 0, 30, NEON.gold, .5);

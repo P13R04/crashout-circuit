@@ -854,7 +854,7 @@ test('slingshot: the landing point is clamped to the table', () => {
   const t = r.state.stones[0].target;
   assert.ok(t.y >= 0 && t.x >= 0 && t.x <= config.logicalWidth);
 });
-test('T-07 longer boost gate → stronger boost', () => {
+test('T-07 longer boost gate → stronger boost and acceleration zone properties', () => {
   const crossWith = (len: number) => {
     const r = raceRig();
     const car = r.state.cars.A;
@@ -863,13 +863,49 @@ test('T-07 longer boost gate → stronger boost', () => {
     const c = { x: car.pos.x + 60, y: car.pos.y };
     r.rules.onBoostGate(msg({ type: 'BoostGate' as const, team: 'A' as Team, a: { x: c.x, y: c.y - len / 2 }, b: { x: c.x, y: c.y + len / 2 } }));
     assert.equal(r.state.boostGates.length, 1);
+    const gate = r.state.boostGates[0];
+    assert.ok(gate.dir && typeof gate.dir.x === 'number' && typeof gate.dir.y === 'number', 'gate has propulsion direction');
+    assert.equal(gate.depth, 60, 'gate has 60px depth acceleration zone');
+    assert.equal(gate.createdAt, r.clock.now, 'gate has createdAt timestamp');
     car.speed = 200;
     const prev = { ...car.pos };
     car.pos = { x: c.x + 5, y: c.y };
     r.rules.afterMove('A', prev, r.clock.now);
+    assert.equal(car.boostUntil, r.clock.now + config.boostDurationS * 1000, 'boost duration is 2s');
     return car.speed;
   };
   assert.ok(crossWith(400) > crossWith(120), 'k grows with the length');
+});
+test('T-07 boost zone triggers when entering the 2D acceleration corridor', () => {
+  const r = raceRig();
+  const car = r.state.cars.A;
+  car.heldItem = 'boost';
+  r.rules.onPower('A');
+  const c = { x: car.pos.x + 100, y: car.pos.y };
+  r.rules.onBoostGate(msg({ type: 'BoostGate' as const, team: 'A' as Team, a: { x: c.x, y: c.y - 80 }, b: { x: c.x, y: c.y + 80 } }));
+  const gate = r.state.boostGates[0];
+  // Car moves into the corridor ahead of AB
+  car.speed = 200;
+  const prev = { ...car.pos };
+  car.pos = { x: c.x + gate.depth! / 2, y: c.y };
+  r.rules.afterMove('A', prev, r.clock.now);
+  assert.ok(car.boostUntil > r.clock.now, 'car triggered boost by entering the zone');
+  assert.ok(car.speed > 200, 'speed increased');
+  assert.ok(r.feedback.includes('boostHit'));
+});
+test('T-07 boost zone affects allied car only, opponent ignores it', () => {
+  const r = raceRig();
+  r.state.cars.A.heldItem = 'boost';
+  r.rules.onPower('A');
+  const c = { x: 500, y: 500 };
+  r.rules.onBoostGate(msg({ type: 'BoostGate' as const, team: 'A' as Team, a: { x: c.x, y: c.y - 80 }, b: { x: c.x, y: c.y + 80 } }));
+  const carB = r.state.cars.B;
+  carB.speed = 200;
+  const prevB = { x: c.x - 10, y: c.y };
+  carB.pos = { x: c.x + 10, y: c.y };
+  r.rules.afterMove('B', prevB, r.clock.now);
+  assert.equal(carB.boostUntil, 0, 'opponent car does not receive allied boost');
+  assert.equal(carB.speed, 200);
 });
 test('boost gate rejects lengths outside 100–400 px and expires after 8 s', () => {
   const r = raceRig();

@@ -9,7 +9,7 @@
  */
 import type {
   GameState, Team, Vec2, Phase, ItemKind, Car, Wall, MapTargets, TrackGeometry,
-  StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGateMsg, AbilityMsg, BorderPullMsg,
+  StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg,
   PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg,
 } from './types.js';
 import { config } from './config.js';
@@ -365,7 +365,7 @@ export class GameRules {
       for (const wall of s.walls) { wall.disabledUntil = shift(wall.disabledUntil); if (wall.expiresAt) wall.expiresAt = shift(wall.expiresAt); }
       for (const arc of s.arcs) arc.disabledUntil = shift(arc.disabledUntil);
       for (const pickup of s.pickups) pickup.respawnAt = shift(pickup.respawnAt);
-      for (const gate of s.boostGates) gate.expiresAt = shift(gate.expiresAt);
+      for (const gate of s.boostGates) { gate.expiresAt = shift(gate.expiresAt); if (gate.createdAt !== undefined) gate.createdAt += delta; }
       for (const stone of s.stones) { stone.launchedAt += delta; stone.impactAt = shift(stone.impactAt); }
       for (const d of s.deformations) { d.createdAt += delta; if (d.releaseAt !== null) d.releaseAt += delta; }
       this.pausedAt = 0;
@@ -545,10 +545,63 @@ export class GameRules {
   }
 
   private addBoostGate(team: Team, a: Vec2, b: Vec2): void {
+    const track = this.state.track;
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    let nx = -dy / len, ny = dx / len;
+    if (track && track.centerline && track.centerline.length > 2) {
+      const hit = nearestOnTrack(mid, track);
+      const n = track.centerline.length;
+      const next = track.centerline[(hit.index + 1) % n];
+      const prev = track.centerline[(hit.index - 1 + n) % n];
+      const tx = next.x - prev.x, ty = next.y - prev.y;
+      if (nx * tx + ny * ty < 0) {
+        nx = -nx;
+        ny = -ny;
+      }
+    }
     this.state.boostGates.push({
-      id: this.nextId('gate'), team, a, b, expiresAt: this.now + config.boostGateLifeS * 1000,
+      id: this.nextId('gate'),
+      team,
+      a,
+      b,
+      expiresAt: this.now + config.boostGateLifeS * 1000,
+      createdAt: this.now,
+      dir: { x: nx, y: ny },
+      depth: 60,
     });
-    this.host.feedback('boostGate', (a.x + b.x) / 2, (a.y + b.y) / 2, team);
+    this.host.feedback('boostGate', mid.x, mid.y, team);
+  }
+
+  carHitsBoostGate(prev: Vec2, pos: Vec2, g: BoostGate): boolean {
+    if (segmentsIntersect(prev, pos, g.a, g.b)) return true;
+    const dx = g.b.x - g.a.x, dy = g.b.y - g.a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const nx = g.dir ? g.dir.x : -uy;
+    const ny = g.dir ? g.dir.y : ux;
+    const depth = g.depth ?? 60;
+    const mid = { x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 };
+
+    const inBox = (p: Vec2) => {
+      const relX = p.x - mid.x, relY = p.y - mid.y;
+      const projU = relX * ux + relY * uy;
+      const projN = relX * nx + relY * ny;
+      return Math.abs(projU) <= len / 2 + 15 && projN >= -15 && projN <= depth + 15;
+    };
+
+    if (inBox(pos) || inBox(prev)) return true;
+
+    const entryA = { x: g.a.x - 10 * nx, y: g.a.y - 10 * ny };
+    const entryB = { x: g.b.x - 10 * nx, y: g.b.y - 10 * ny };
+    if (segmentsIntersect(prev, pos, entryA, entryB)) return true;
+
+    const frontA = { x: g.a.x + depth * nx, y: g.a.y + depth * ny };
+    const frontB = { x: g.b.x + depth * nx, y: g.b.y + depth * ny };
+    if (segmentsIntersect(prev, pos, frontA, frontB)) return true;
+
+    return false;
   }
 
   /** k = clamp(length / boostLenMaxPx, 0.3, 1) (REQ-4.3.2) */
@@ -938,7 +991,7 @@ export class GameRules {
     if (car.boostUntil <= now) {
       for (const g of s.boostGates) {
         if (g.team !== team) continue;
-        if (segmentsIntersect(prev, car.pos, g.a, g.b)) {
+        if (this.carHitsBoostGate(prev, car.pos, g)) {
           const k = this.boostFactor(g.a, g.b);
           car.boostK = k;
           car.boostUntil = now + config.boostDurationS * 1000;
