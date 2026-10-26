@@ -38,6 +38,29 @@ Les partenaires d’une équipe sont en diagonale : pilote cyan en bas à gauche
 5. Le copilote utilise **POWER** pour son objet ramassé, réalise les gestes et répare avec le pilote. Oz gère seul l’activation des tangibles.
 6. Une sortie de piste immobilise la voiture. Maintenir les deux pads de réparation pour la remettre en jeu. La pause fige la course et les durées des effets.
 
+## Tester les tangibles avec deux personnes
+
+**TEST TANGIBLES** est un mode distinct de TABLE, PC et TUTORIEL. Il prépare le circuit prédéfini ; **▶** démarre les deux voitures avec deux secondes de décalage. La session n’a ni limite de temps ni victoire : pause avec **⏸ / Espace**, retour à l’accueil avec la maison.
+
+Les pilotes suivent le centre de la piste en envoyant des commandes de direction et d’accélération à la physique normale. Ils ne voient pas les obstacles et ne les évitent pas. Les murs provoquent de vrais rebonds, les piliers et arcs infligent leurs dégâts et leur ralentissement. Après une déviation, la voiture cherche progressivement le centre sans repositionnement artificiel. Un choc peut provoquer une sortie de piste et une panne.
+
+Le copilote garde **POWER, les gestes, les bonus ramassés, les déformations et la réparation**. Oz conserve uniquement la charge, la pose et l’activation des tangibles neutres. Les aides PC d’invincibilité et d’objets libres sont désactivées dans cette session.
+
+Lorsqu’une réparation est nécessaire (voiture détruite ou moins de 60 HP), le pilote maintient automatiquement son pad. **Le copilote doit toujours maintenir le sien pendant 2 secondes** ; relâcher interrompt la réparation. La voiture repart ensuite toute seule. Une personne peut ainsi réparer les deux voitures à tour de rôle depuis leurs postes copilote respectifs.
+
+### Parcours conseillé sur la table
+
+1. Relancer la version à jour avec `npm run build` puis `npm start`. Ouvrir la table et la console Oz sur le même réseau.
+2. Sur la table : **Paramètres → Plein écran**, puis **TEST TANGIBLES → ▶**. Les panneaux pilotes indiquent **PILOTE AUTO**.
+3. Faire quelques tours sans obstacle, puis charger et poser un mur diagonal depuis Oz. Observer le rebond, les HP et le retour vers le centre. Si une voiture tombe, désactiver le mur pour isoler la réparation, puis maintenir seulement son pad copilote.
+4. Charger et poser un pilier, puis le second à portée : vérifier les champs électriques, la liaison, les dégâts et le ralentissement sur chaque voiture. Le circuit de recharge reste obligatoire avant toute nouvelle pose.
+5. Tester aussi POWER et les gestes du copilote. Le mode ne donne pas de bonus gratuits : les voitures les ramassent normalement.
+6. La maison permet de retrouver TABLE, PC et TUTORIEL avec leurs règles habituelles.
+
+### Plein écran
+
+**Paramètres → Plein écran** utilise le plein écran du navigateur pour toute la table. **Échap** en sort sans mettre la course en pause ; **Espace / ⏸** gère la pause. La commande est disponible dans tous les modes. Les contacts en cours sont relâchés lors du changement de taille, et le canvas conserve ses proportions 16:9. Pour l’échelle physique des LEGO, utiliser toute la dalle en plein écran.
+
 ## Tutoriel guidé
 
 Le bouton **TUTORIEL** du lobby lance une course sur le circuit prédéfini, sans tours ni victoire et sans dégâts (les chutes remettent la voiture sur la piste). Chaque équipe suit **sa propre progression**, avec un bandeau orienté vers elle, un contour qui pulse sur la commande à utiliser et un bouton **PASSER**. Chaque étape est validée par l'événement réel du jeu, jamais par un minuteur :
@@ -159,6 +182,7 @@ npm run test:gestures
 npm run test:network
 npm run test:visuals
 npm run test:tangibles
+npm run test:autopilot
 npm run build
 ```
 

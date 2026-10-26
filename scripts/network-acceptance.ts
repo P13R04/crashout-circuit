@@ -170,7 +170,27 @@ try {
   assert.equal(game.getState().tutorial!.teams.B.step, 0, 'lessons are independent per team');
   table.send({ type: 'NewGame' });
   await ozAgain.until(s => s.phase === 'LOBBY' && s.tutorial === null);
-  console.log('✓ Network: role boundaries, copilot POWER, Oz restricted to tangibles, autonomous pickups, theft, reconnect, reset and tutorial');
+  // Only the table can start the full-physics autonomous session, which survives reconnect.
+  ozAgain.send({type:'StartTangibleTest'});await ozAgain.flush();assert.equal(game.getState().phase,'LOBBY');
+  table.send({type:'StartTangibleTest'});
+  const automated=await ozAgain.until(s=>s.phase==='READY'&&s.sessionMode==='tangibles-test');
+  assert.ok(automated.track?.preset);assert.deepEqual(automated.testMode,{invincible:false,allItems:false});
+  const testReconnect=await client('table');
+  await testReconnect.until(s=>s.sessionMode==='tangibles-test'&&!!s.track);
+  table.send({type:'BeginRace'});await ozAgain.until(s=>s.phase==='RACE');
+  game.rules.damage(game.getState().cars.A,100,Date.now());
+  // Finish the countdown in the fixture; repair itself still uses the server physics loop.
+  game.getState().sessionStartAt=Date.now()-10_000;
+  await ozAgain.until(s=>s.repairPads['A-pilot'].held&&s.cars.A.disabled);
+  ozAgain.send({type:'PadHold',team:'A',role:'copilot',on:true});await ozAgain.flush();
+  assert.equal(game.getState().repairPads['A-copilot'].held,false,'Oz cannot repair for a player');
+  table.send({type:'PadHold',team:'A',role:'copilot',on:true});
+  await ozAgain.until(s=>s.repairProgress.A>.05&&s.repairPads['A-pilot'].held);
+  table.send({type:'PadHold',team:'A',role:'copilot',on:false});
+  await ozAgain.until(s=>s.repairProgress.A===0);
+  assert.equal(game.getState().cars.A.disabled,true,'partial copilot input is not an automatic repair');
+  table.send({type:'NewGame'});await ozAgain.until(s=>s.phase==='LOBBY'&&s.sessionMode==='race');
+  console.log('✓ Network: role boundaries, copilot POWER, Oz restricted to tangibles, autonomous pickups, theft, reconnect, reset, tutorial and automatic tangible test');
 } finally {
   game.physics.stop();
   for (const ws of clients) ws.terminate();

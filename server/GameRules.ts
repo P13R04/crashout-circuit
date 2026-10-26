@@ -13,6 +13,7 @@ import type {
   StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg,
   PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg,
 } from './types.js';
+import { AutomaticPilot } from './AutomaticPilot.js';
 import { config } from './config.js';
 import { dist, distToSegment, nearestOnTrack, segmentsIntersect, slingshotShot, wrapAngle } from './geometry.js';
 import { generate, generatePreset, validateStroke, rebuildEdges } from './MapGenerator.js';
@@ -79,6 +80,7 @@ export function makeCar(team: Team): Car {
 export function createInitialState(): GameState {
   return {
     phase: 'LOBBY',
+    sessionMode: 'race',
     driveMode: { A: 'auto', B: 'auto' },
     tick: 0,
     cars: { A: makeCar('A'), B: makeCar('B') },
@@ -167,6 +169,7 @@ export class GameRules {
   private deformCounter = 0;
   private rng: () => number;
   private tutorial: Tutorial | null = null;
+  private automaticPilot = new AutomaticPilot();
 
   constructor(
     private state: GameState,
@@ -320,6 +323,7 @@ export class GameRules {
   startRace(track = generatePreset(), waitForPlayers = false): void {
     const s = this.state;
     this.generating = true;
+    this.automaticPilot.reset();
     s.track = track;
     s.pausedAt = 0;
     this.pausedAt = 0;
@@ -355,6 +359,25 @@ export class GameRules {
     this.state.sessionStartAt = this.now + COUNTDOWN_MS;
     this.host.transition('RACE', { startsAt: this.state.sessionStartAt });
     this.host.broadcastFull();
+  }
+
+  /** One operator and one copilot can exercise real tangible rules without drivers. */
+  startTangibleTest(): void {
+    const s = this.state;
+    if (s.phase !== 'LOBBY') return;
+    s.sessionMode = 'tangibles-test';
+    s.mapMode = 'table';
+    s.testMode = { invincible: false, allItems: false };
+    this.startRace(generatePreset(), true);
+  }
+
+  updateAutomaticPilots(now: number): void {
+    const s = this.state;
+    if (s.sessionMode !== 'tangibles-test' || !s.track || s.phase !== 'RACE') return;
+    for (const team of TEAMS) {
+      this.inputs[team] = now < s.sessionStartAt + (team === 'B' ? 2000 : 0)
+        ? { throttle: 0, steer: 0 } : this.automaticPilot.command(s.cars[team], s.track, s.trackVersion);
+    }
   }
 
   /**
@@ -457,6 +480,8 @@ export class GameRules {
     s.mapDivider = null;
     s.mapStrokes = { A: false, B: false };
     s.mapMode = null;
+    s.sessionMode = 'race';
+    this.automaticPilot.reset();
     s.testMode = { invincible: false, allItems: false };
     s.tutorial = null;
     this.tutorial = null;
@@ -483,6 +508,7 @@ export class GameRules {
   // ─── Pilot input & items (task 5, 7) ───────────────────────────────────────
 
   onPilotInput(team: Team, msg: PilotInputMsg): void {
+    if (this.state.sessionMode === 'tangibles-test') return;
     if (!Number.isFinite(msg.throttle) || !Number.isFinite(msg.steer)) return;
     const steer = clamp(msg.steer, -1, 1);
     this.inputs[team] = {
@@ -493,9 +519,9 @@ export class GameRules {
     if (this.now >= this.state.sessionStartAt) this.tutorial?.onPilotInput(team, steer, this.inputs[team].throttle);
   }
 
-  /** Shared central control: cars either drive continuously or require a held pedal. */
+  /** Each pilot chooses continuous acceleration or a held pedal. */
   toggleDriveMode(team?: Team): void {
-    if (this.state.phase === 'RESULT') return;
+    if (this.state.phase === 'RESULT' || this.state.sessionMode === 'tangibles-test') return;
     if (team) {
       this.state.driveMode[team] = this.state.driveMode[team] === 'auto' ? 'pedal' : 'auto';
       this.inputs[team].throttle = 0;
@@ -512,6 +538,7 @@ export class GameRules {
 
   /** Safety net for a lost pointer-up, a crashed client or a dropped WebSocket. */
   expirePilotInputs(now: number): void {
+    if (this.state.sessionMode === 'tangibles-test') return;
     for (const team of TEAMS) {
       if (now - this.lastPilotInputAt[team] > config.pilotInputTimeoutMs) this.inputs[team].steer = 0;
     }
@@ -712,6 +739,7 @@ export class GameRules {
   // ─── Synchronous repair (C-06) ─────────────────────────────────────────────
 
   onPadHold(msg: PadHoldMsg): void {
+    if (this.state.sessionMode === 'tangibles-test' && msg.role === 'pilot') return;
     const pad = this.state.repairPads[`${msg.team}-${msg.role}`];
     if (!pad) return;
     pad.held = !!msg.on;
@@ -726,9 +754,13 @@ export class GameRules {
   updateRepair(dt: number, now: number): void {
     const s = this.state;
     for (const team of TEAMS) {
-      const both = s.repairPads[`${team}-pilot`].held && s.repairPads[`${team}-copilot`].held;
       const car = s.cars[team];
       const needsRepair = car.disabled || car.hp < config.repairHpRestore;
+      if (s.sessionMode === 'tangibles-test') {
+        const pilot = s.repairPads[`${team}-pilot`];
+        if (pilot.held !== needsRepair) { pilot.held = needsRepair; pilot.startedAt = needsRepair ? now : 0; }
+      }
+      const both = s.repairPads[`${team}-pilot`].held && s.repairPads[`${team}-copilot`].held;
       if (!both || !needsRepair) { s.repairProgress[team] = 0; continue; }
       s.repairProgress[team] = Math.min(1, s.repairProgress[team] + dt / config.repairHoldS);
       if (s.repairProgress[team] >= 1) this.completeRepair(team, now);
@@ -743,8 +775,15 @@ export class GameRules {
     car.disabled = false;
     car.stunUntil = 0;
     car.invulnUntil = now + config.invulnAfterHitS * 1000;
-    if (wasDisabled && s.track) this.respawnAtCheckpoint(car);
+    if (wasDisabled && s.track) {
+      this.respawnAtCheckpoint(car);
+      this.automaticPilot.forget(team);
+    }
     s.repairProgress[team] = 0;
+    if (s.sessionMode === 'tangibles-test') {
+      const pilot = s.repairPads[`${team}-pilot`];
+      pilot.held = false; pilot.startedAt = 0;
+    }
     this.host.feedback('repairDone', car.pos.x, car.pos.y, team);
   }
 
@@ -1136,7 +1175,7 @@ export class GameRules {
 
   checkEnd(now: number): void {
     const s = this.state;
-    if (s.phase !== 'RACE' || s.tutorial || now < s.sessionStartAt) return;
+    if (s.phase !== 'RACE' || s.tutorial || s.sessionMode === 'tangibles-test' || now < s.sessionStartAt) return;
     const progress = (c: Car) => c.lap * 8 + c.checkpointIndex;
     let winner: Team | 'draw' | null = null;
     for (const t of TEAMS) if (s.cars[t].lap >= config.lapsToWin) { winner = t; break; }

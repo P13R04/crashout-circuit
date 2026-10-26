@@ -159,6 +159,15 @@ test('every phase, both motion preferences and all feedback effects render witho
   }
   assert.ok((calls.get('drawImage') ?? 0) > 0);
 });
+test('automatic-pilot HUD and repair feedback render in both themes without changing physics', () => {
+  const {view,state,renderer}=scene();state.sessionMode='tangibles-test';
+  state.cars.A.disabled=true;state.cars.A.hp=0;
+  state.repairPads['A-pilot'].held=true;state.repairProgress.A=.45;
+  for(const theme of THEMES)for(const phase of ['READY','RACE','PAUSED'] as const){
+    view.theme=theme.id;state.phase=phase;
+    const before=JSON.stringify(state);renderer.render(view);assert.equal(JSON.stringify(state),before);
+  }
+});
 for (const theme of THEMES) test(`${theme.name}: static / paused frames reuse the deck, deformed geometry updates it and resize invalidates it`, () => {
   const { view, state, renderer, surface } = scene(); view.theme = theme.id; state.phase = 'RACE'; renderer.render(view);
   assert.equal(renderer.stats.trackBuilds, 1);

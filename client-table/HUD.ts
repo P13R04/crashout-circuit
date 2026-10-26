@@ -124,31 +124,42 @@ export class HUD {
     ctx.textAlign = 'left';
     ctx.fillText(`${Math.round(car.hp)}`, bx + 8, by + 15);
 
-    // Full-turn left/right strip: crossing its centre changes direction without lifting.
-    const stick = view.sticks[team];
-    const area = STEER_AREA_LOCAL;
-    ctx.fillStyle = stick.active ? `${color}19` : '#081323';
-    ctx.strokeStyle = stick.active ? color : '#3e6177';
-    ctx.lineWidth = stick.active ? 4 : 2;
-    ctx.beginPath(); ctx.roundRect(area.x - area.w / 2, area.y - area.h / 2, area.w, area.h, 14); ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(area.x, area.y - area.h / 2 + 12); ctx.lineTo(area.x, area.y + area.h / 2 - 12); ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 28px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('◀', area.x - area.w / 2 + 24, area.y + 10);
-    ctx.fillText('▶', area.x + area.w / 2 - 24, area.y + 10);
-    if (stick.active) {
-      const knobX = area.x + stick.x * (area.w / 2 - 18);
-      glow(ctx, knobX, area.y, 30, color, .6);
-      ctx.fillStyle = '#e8fcff';
-      ctx.beginPath(); ctx.arc(knobX, area.y, 12, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+    const automatic = state.sessionMode === 'tangibles-test';
+    if (automatic) {
+      const area = STEER_AREA_LOCAL;
+      ctx.fillStyle = '#081323'; ctx.strokeStyle = color+'66'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(area.x-area.w/2,area.y-area.h/2,area.w,area.h,14);ctx.fill();ctx.stroke();
+      icon(ctx,'track',area.x,area.y-12,54,color);
+      ctx.fillStyle = color; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
+      ctx.fillText('PILOTE AUTO',area.x,area.y+39);
+    } else {
+      // Full-turn left/right strip: crossing its centre changes direction without lifting.
+      const stick = view.sticks[team];
+      const area = STEER_AREA_LOCAL;
+      ctx.fillStyle = stick.active ? `${color}19` : '#081323';
+      ctx.strokeStyle = stick.active ? color : '#3e6177';
+      ctx.lineWidth = stick.active ? 4 : 2;
+      ctx.beginPath(); ctx.roundRect(area.x - area.w / 2, area.y - area.h / 2, area.w, area.h, 14); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(area.x, area.y - area.h / 2 + 12); ctx.lineTo(area.x, area.y + area.h / 2 - 12); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 28px monospace'; ctx.textAlign = 'center';
+      ctx.fillText('◀', area.x - area.w / 2 + 24, area.y + 10);
+      ctx.fillText('▶', area.x + area.w / 2 - 24, area.y + 10);
+      if (stick.active) {
+        const knobX = area.x + stick.x * (area.w / 2 - 18);
+        glow(ctx, knobX, area.y, 30, color, .6);
+        ctx.fillStyle = '#e8fcff';
+        ctx.beginPath(); ctx.arc(knobX, area.y, 12, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+      }
+      icon(ctx, 'wheel', area.x, area.y, 36, stick.active ? '#ffffff33' : color);
+
     }
-    icon(ctx, 'wheel', area.x, area.y, 36, stick.active ? '#ffffff33' : color);
 
     // Each team keeps its own lap counter, facing its players.
     icon(ctx, 'flag', -60, 28, 24, color);
     ctx.fillStyle = '#fff'; ctx.font = 'bold 24px monospace'; ctx.textAlign = 'left';
-    ctx.fillText(`${Math.min(state.params.lapsToWin, car.lap + 1)}/${state.params.lapsToWin}`, -36, 36);
-    if (state.driveMode[team] === 'pedal') {
+    ctx.fillText(automatic ? `${car.lap+1}` : `${Math.min(state.params.lapsToWin, car.lap + 1)}/${state.params.lapsToWin}`, -36, 36);
+    if (!automatic && state.driveMode[team] === 'pedal') {
       const p = PEDAL_LOCAL;
       const active = view.localPedals[team];
       ctx.fillStyle = active ? `${color}66` : 'rgba(255,255,255,0.08)';

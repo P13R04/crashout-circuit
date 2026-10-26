@@ -19,7 +19,8 @@
     "test:gestures": "tsx scripts/gestures.ts",
     "test:network": "tsx scripts/network-acceptance.ts",
     "test:visuals": "tsx scripts/visuals.ts",
-    "test:tangibles": "tsx scripts/test-tangible-anims.ts"
+    "test:tangibles": "tsx scripts/test-tangible-anims.ts",
+    "test:autopilot": "tsx scripts/autopilot.ts"
   },
   "dependencies": {
     "ws": "^8.18.0"

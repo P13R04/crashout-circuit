@@ -262,6 +262,28 @@ await test('tapping a pilot drive mode button toggles the drive mode for that te
   assert.deepEqual(r.sent.at(-1), { type: 'ToggleDriveMode', team: 'B' });
 });
 
+await test('the tangible-test lobby entry starts its own mode without changing the other entries', async () => {
+  const { START_TANGIBLE_TEST_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON } = await import('../client-table/Renderer.js');
+  for (const [button, expected] of [[START_TANGIBLE_TEST_BUTTON,'StartTangibleTest'],[START_TABLE_BUTTON,'StartGame'],[START_PC_BUTTON,'StartGame'],[START_TUTORIAL_BUTTON,'StartTutorial']] as const) {
+    const r=rig(null);r.view.state!.phase='LOBBY';
+    const x=button.x+button.w/2,y=button.y+button.h/2;
+    r.down(1,x,y);r.up(1,x,y);assert.equal(r.sent.length,1);assert.equal(r.sent[0].type,expected);
+  }
+});
+await test('automatic test consumes pilot touches while copilot POWER and repair remain available', async () => {
+  const r=rig();r.view.state!.sessionMode='tangibles-test';
+  // Pilot A steering strip, repair pad, and former drive-mode selector.
+  for(const [x,y] of [[155,970],[620,970],[370,829]]){r.down(1,x,y);r.up(1,x,y);}
+  assert.equal(r.sent.length,0);
+  const { panelOf,localToWorld,POWER_BTN_LOCAL,padLocal }=await import('../server/layout.js');
+  const panel=panelOf('A','copilot'),power=localToWorld(panel,POWER_BTN_LOCAL.x,POWER_BTN_LOCAL.y);
+  r.down(3,power.x,power.y);r.up(3,power.x,power.y);
+  assert.equal(r.sent.at(-1)?.type,'Power');
+  const pad=padLocal('copilot'),at=localToWorld(panel,pad.x,pad.y);
+  r.down(4,at.x,at.y);r.up(4,at.x,at.y);
+  assert.deepEqual(r.sent.filter(m=>m.type==='PadHold').map(m=>[m.role,m.on]),[['copilot',true],['copilot',false]]);
+});
+
 let failed = 0;
 for (const [name, ok, err] of results) {
   console.log(`${ok ? '  ✓' : '  ✗'} ${name}`);

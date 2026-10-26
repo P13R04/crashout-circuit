@@ -42,3 +42,9 @@ Les critères T-01 à T-11 doivent encore être rejoués avec au moins deux joue
 ## 3. Échelle des LEGO (à confirmer sur dalle)
 
 Le serveur calcule les empreintes depuis `tableDiagonalInches` (55 par défaut) : mur 80 × 32 mm avec frange de 10 mm, piliers 32 × 32 mm avec champ de diamètre 84 mm. Le test doit se faire en plein écran sur toute l’image 16:9. Comparer aux bases physiques, puis mesurer la crédibilité à 5 et 10 mm de décalage. Les stations ont été agrandies pour accueillir le mur quelle que soit son orientation. Le protocole complet et les limites sont dans le [README](README.md#échelle-lego-et-tolérance-de-placement).
+
+## 4. Session avec pilotes automatiques
+
+Le mode **TEST TANGIBLES** permet de répéter les essais avec un opérateur Oz et un seul copilote, sans IA d’évitement. `npm run test:autopilot` vérifie la conduite continue au centre (six minutes simulées), les rebonds sur un mur diagonal, les effets électriques sur les deux voitures, le retour progressif après déviation, la réparation avec le seul contact humain du copilote, la pause et le retour aux modes normaux. Un circuit en huit et une déformation locale sont également couverts.
+
+En navigateur, vérifier séparément : entrée par le nouveau bouton, départ par ▶, pleine fenêtre avec **Paramètres → Plein écran**, sortie par **Échap** sans pause, panne après choc et réparation de chaque voiture depuis son seul poste copilote. La validation des contacts multiples et des dimensions physiques reste à effectuer sur la dalle réelle.

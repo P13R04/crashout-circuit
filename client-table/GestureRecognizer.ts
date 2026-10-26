@@ -26,7 +26,7 @@ import {
   insidePanel, nearestStationTeam, checkDivider, inPlayArea, type Role,
 } from '../server/layout.js';
 import { nearestOnTrack, slingshotShot } from '../server/geometry.js';
-import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, DRIVE_MODE_BUTTONS, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
+import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, DRIVE_MODE_BUTTONS, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
 import { tutorialButtonAt } from './TutorialOverlay.js';
 import { showDividerRefusal, showMapError, showMapNotice, type View } from './view.js';
 import { activeMapTeam, inMapAnchor, mapEndpointError } from '../server/mapCreation.js';
@@ -169,7 +169,7 @@ export class GestureRecognizer {
         const mode = DRIVE_MODE_BUTTONS[t];
         if (hit(mode)) {
           c.zone = 'mode';
-          this.send({ type: 'ToggleDriveMode', team: t });
+          if (state.sessionMode !== 'tangibles-test') this.send({ type: 'ToggleDriveMode', team: t });
           return;
         }
       }
@@ -180,6 +180,8 @@ export class GestureRecognizer {
       if (hit(START_TABLE_BUTTON) || hit(START_PC_BUTTON)) {
         c.zone = 'result';
         this.send({ type: 'StartGame', mode: hit(START_PC_BUTTON) ? 'pc' : 'table' });
+      } else if (hit(START_TANGIBLE_TEST_BUTTON)) {
+        c.zone = 'result'; this.send({ type: 'StartTangibleTest' });
       } else if (hit(START_TUTORIAL_BUTTON)) {
         // A mouse means a PC session (keyboard + click stand-ins), anything else the table
         c.zone = 'result';
@@ -248,6 +250,9 @@ export class GestureRecognizer {
     for (const panel of PANELS) {
       const l = worldToLocal(panel, p.x, p.y);
       if (panel.role === 'pilot') {
+        if (state.sessionMode === 'tangibles-test' && Math.abs(l.x) <= panelWidth('pilot') / 2 && Math.abs(l.y) <= PANEL_H / 2) {
+          c.zone = 'rejected'; return;
+        }
         const steerArea = STEER_AREA_LOCAL;
         if (Math.abs(l.x - steerArea.x) <= steerArea.w / 2 && Math.abs(l.y - steerArea.y) <= steerArea.h / 2) {
           if (this.sticks.has(panel.team)) { c.zone = 'rejected'; return; }

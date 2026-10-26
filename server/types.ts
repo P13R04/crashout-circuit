@@ -198,7 +198,9 @@ export interface GameParams {
 
 export interface GameState {
   phase: Phase;
-  /** Shared driving scheme selected from the central race control. */
+  /** Test sessions use the same physics with automated pilot controls. */
+  sessionMode: 'race' | 'tangibles-test';
+  /** Driving scheme selected independently by each pilot. */
   driveMode: Record<Team, DriveMode>;
   tick: number;
   cars: Record<Team, Car>;
@@ -330,6 +332,9 @@ export interface StartGameMsg extends BaseMsg {
   mode?: 'table' | 'pc';
 }
 
+/** Start an endless tangible test with automatic pilots and a preset circuit. */
+export interface StartTangibleTestMsg extends BaseMsg { type: 'StartTangibleTest' }
+
 /** Start the guided tutorial on the predefined circuit (from the lobby). */
 export interface StartTutorialMsg extends BaseMsg {
   type: 'StartTutorial';
@@ -436,6 +441,7 @@ export type ClientMessage =
   | PilotInputMsg
   | PowerMsg
   | StartGameMsg
+  | StartTangibleTestMsg
   | StartTutorialMsg
   | TutorialSkipMsg
   | PauseMsg

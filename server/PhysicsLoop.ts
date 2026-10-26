@@ -58,6 +58,7 @@ export class PhysicsLoop {
       this.rules.expirePilotInputs(now);
       this.rules.updateTrackDeformations(now);
       if (now >= s.sessionStartAt) {
+        this.rules.updateAutomaticPilots(now);
         for (const team of TEAMS) {
           const car = s.cars[team];
           const prev = { x: car.pos.x, y: car.pos.y };
@@ -83,8 +84,9 @@ export class PhysicsLoop {
       return;
     }
     // Auto mode drives continuously; pedal mode accelerates only while held.
-    const isPedal = this.state.driveMode[car.team] === 'pedal';
-    const throttle = stunned ? 0 : isPedal ? input.throttle : 1;
+    const automatic = this.state.sessionMode === 'tangibles-test';
+    const isPedal = !automatic && this.state.driveMode[car.team] === 'pedal';
+    const throttle = stunned ? 0 : (automatic || isPedal) ? input.throttle : 1;
     const steer = stunned ? 0 : input.steer;
 
     const boost = now < car.boostUntil ? 1 + config.boostGain * car.boostK : 1;

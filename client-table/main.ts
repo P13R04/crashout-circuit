@@ -130,9 +130,7 @@ function sendSteer(team: 'A' | 'B'): void {
   const steer = team === 'A'
     ? (down.has('q') ? -1 : down.has('d') ? 1 : 0)
     : (down.has('ArrowLeft') ? -1 : down.has('ArrowRight') ? 1 : 0);
-  const isPedal = typeof view.state?.driveMode === 'string'
-    ? (view.state.driveMode as unknown as string) === 'pedal'
-    : view.state?.driveMode[team] === 'pedal';
+  const isPedal = view.state?.driveMode[team] === 'pedal';
   const throttle = isPedal
     ? (team === 'A' ? Number(down.has('z')) : Number(down.has('ArrowUp')))
     : 1;
@@ -162,7 +160,7 @@ window.addEventListener('keydown', (e) => {
   if (key === 'ArrowLeft' || key === 'ArrowRight') { e.preventDefault(); sendSteer('B'); }
   if (key === 'z') sendSteer('A');
   if (key === 'ArrowUp') { e.preventDefault(); sendSteer('B'); }
-  if (key === 'Escape' || key === ' ') { e.preventDefault(); conn.send({ type: 'Pause' }); }
+  if (key === ' ') { e.preventDefault(); conn.send({ type: 'Pause' }); }
   if (key === 'a' || key === 'p') updateKeyboardRepair('A');
   if (key === 'm' || key === 'c') updateKeyboardRepair('B');
   // A/M alone press the copilot's POWER button. Waiting briefly lets the
@@ -185,6 +183,39 @@ window.addEventListener('keyup', (e) => {
   if (key === 'a' || key === 'p') updateKeyboardRepair('A');
   if (key === 'm' || key === 'c') updateKeyboardRepair('B');
 });
+// Fullscreen is local to this screen; native Escape exits it without pausing the session.
+const fullscreen = document.getElementById('fullscreen') as HTMLButtonElement;
+const fullscreenNotice = document.getElementById('fullscreen-notice')!;
+function releaseInputs(): void {
+  gestures.releaseAll(); down.clear();
+  sendSteer('A'); sendSteer('B'); updateKeyboardRepair('A'); updateKeyboardRepair('B');
+}
+function syncFullscreen(): void {
+  const active = !!document.fullscreenElement;
+  fullscreen.setAttribute('aria-pressed', String(active));
+  fullscreen.querySelector('span')!.textContent = active ? 'Quitter le plein écran' : 'Plein écran';
+  releaseInputs();
+}
+fullscreen.addEventListener('click', async () => {
+  fullscreenNotice.hidden = true;
+  releaseInputs();
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+    pcTools.open = false;
+  } catch {
+    fullscreenNotice.textContent = 'Plein écran indisponible dans ce navigateur.';
+    fullscreenNotice.hidden = false;
+  }
+});
+document.addEventListener('fullscreenchange', syncFullscreen);
+window.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  pcTools.open = false;
+  if (document.fullscreenElement) void document.exitFullscreen().catch(() => { /* Native Escape may already have exited. */ });
+  // Keep the browser's default Escape behaviour and reserve Space for the game pause.
+}, true);
+
 document.addEventListener('visibilitychange', () => { if (document.hidden) gestures.releaseAll(); });
 
 // Round-trip time (server echo), used by the debug overlay (task 18)
