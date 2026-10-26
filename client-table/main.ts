@@ -130,7 +130,10 @@ function sendSteer(team: 'A' | 'B'): void {
   const steer = team === 'A'
     ? (down.has('q') ? -1 : down.has('d') ? 1 : 0)
     : (down.has('ArrowLeft') ? -1 : down.has('ArrowRight') ? 1 : 0);
-  const throttle = view.state?.driveMode === 'pedal'
+  const isPedal = typeof view.state?.driveMode === 'string'
+    ? (view.state.driveMode as unknown as string) === 'pedal'
+    : view.state?.driveMode[team] === 'pedal';
+  const throttle = isPedal
     ? (team === 'A' ? Number(down.has('z')) : Number(down.has('ArrowUp')))
     : 1;
   controls.steer(team, steer, throttle);

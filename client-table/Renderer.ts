@@ -27,7 +27,8 @@ export const START_TABLE_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 8
 export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 20, w: 520, h: 72 };
 export const RESULT_BUTTON = { x: LOGICAL_W / 2 - 200, y: LOGICAL_H / 2 - 45, w: 400, h: 90 };
 export const PAUSE_BUTTON = { x: LOGICAL_W / 2 - 58, y: 14, w: 116, h: 38 };
-export const DRIVE_MODE_BUTTON = { x: LOGICAL_W / 2 - 120, y: 58, w: 240, h: 38 };
+export const DRIVE_MODE_BUTTONS = { A: { x: 240, y: 810, w: 260, h: 38 }, B: { x: 240, y: 232, w: 260, h: 38 } };
+export const DRIVE_MODE_BUTTON = DRIVE_MODE_BUTTONS.A;
 export const MAP_GENERATE_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 export const RACE_START_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 /** Reset button located in the vertical middle on the far right edge of the screen. */
@@ -88,9 +89,9 @@ export class Renderer {
     this.drawSling(ctx, state, view.sling);
     this.hud.draw(ctx, state, view);
     this.drawDisabledAlerts(ctx, state);
-    if (state.phase === 'READY') this.drawRaceReady(ctx, state);
-    if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); this.drawDriveModeButton(ctx, state); }
-    if (state.phase === 'PAUSED') { this.drawPaused(ctx); this.drawPauseButton(ctx, 'REPRENDRE'); }
+    if (state.phase === 'READY') { this.drawRaceReady(ctx, state); this.drawDriveModeButtons(ctx, state); }
+    if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); this.drawDriveModeButtons(ctx, state); }
+    if (state.phase === 'PAUSED') { this.drawPaused(ctx); this.drawPauseButton(ctx, 'REPRENDRE'); this.drawDriveModeButtons(ctx, state); }
     if (state.phase === 'RESULT') this.drawResult(ctx, state);
     this.drawResetButton(ctx);
   }
@@ -314,14 +315,15 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawDriveModeButton(ctx: Ctx, state: GameState): void {
-    const b = DRIVE_MODE_BUTTON;
-    const pedal = state.driveMode === 'pedal';
-    ctx.save(); ctx.fillStyle = '#080f26ee'; ctx.strokeStyle = pedal ? '#ffbe37' : '#8795af'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10); ctx.fill(); ctx.stroke();
-    icon(ctx, pedal ? 'pedal' : 'wheel', b.x + 30, b.y + b.h / 2, 24, pedal ? '#ffbe37' : '#fff');
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
-    ctx.fillText(pedal ? 'PÉDALE' : 'AUTO', b.x + b.w / 2 + 10, b.y + 24); ctx.restore();
+  private drawDriveModeButtons(ctx: Ctx, state: GameState): void {
+    for (const team of ['A', 'B'] as const) {
+      const b = DRIVE_MODE_BUTTONS[team], pedal = state.driveMode[team] === 'pedal', color = TEAM_COLOR[team];
+      ctx.save(); ctx.translate(b.x + b.w / 2, b.y + b.h / 2); if (team === 'B') ctx.rotate(Math.PI);
+      plate(ctx, -b.w / 2, -b.h / 2, b.w, b.h, 10, '#080f26ee', color);
+      icon(ctx, pedal ? 'pedal' : 'wheel', -76, 0, 24, color);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(pedal ? 'PÉDALE' : 'AUTO', 10, 5); ctx.restore();
+    }
   }
 
   private drawAction(ctx: Ctx, b: { x: number; y: number; w: number; h: number }, glyph: Icon, color = '#00e5ff'): void {

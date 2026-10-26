@@ -162,7 +162,7 @@ export interface GameParams {
 export interface GameState {
   phase: Phase;
   /** Shared driving scheme selected from the central race control. */
-  driveMode: DriveMode;
+  driveMode: Record<Team, DriveMode>;
   tick: number;
   cars: Record<Team, Car>;
   walls: Wall[];
@@ -297,6 +297,7 @@ export interface PauseMsg extends BaseMsg {
 
 export interface ToggleDriveModeMsg extends BaseMsg {
   type: 'ToggleDriveMode';
+  team?: Team;
 }
 
 // Console Oz → Server

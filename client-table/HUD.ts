@@ -148,7 +148,7 @@ export class HUD {
     icon(ctx, 'flag', -60, 28, 24, color);
     ctx.fillStyle = '#fff'; ctx.font = 'bold 24px monospace'; ctx.textAlign = 'left';
     ctx.fillText(`${Math.min(state.params.lapsToWin, car.lap + 1)}/${state.params.lapsToWin}`, -36, 36);
-    if (state.driveMode === 'pedal') {
+    if (state.driveMode[team] === 'pedal') {
       const p = PEDAL_LOCAL;
       const active = view.localPedals[team];
       ctx.fillStyle = active ? `${color}66` : 'rgba(255,255,255,0.08)';

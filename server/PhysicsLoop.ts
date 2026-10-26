@@ -83,12 +83,13 @@ export class PhysicsLoop {
       return;
     }
     // Auto mode drives continuously; pedal mode accelerates only while held.
-    const throttle = stunned ? 0 : this.state.driveMode === 'pedal' ? input.throttle : 1;
+    const isPedal = this.state.driveMode[car.team] === 'pedal';
+    const throttle = stunned ? 0 : isPedal ? input.throttle : 1;
     const steer = stunned ? 0 : input.steer;
 
     const boost = now < car.boostUntil ? 1 + config.boostGain * car.boostK : 1;
     const slow = now < car.slowUntil ? config.arcSlowFactor : 1;
-    const baseMaxFwd = this.state.driveMode === 'pedal' ? config.vMaxPedal : config.vMaxFwd;
+    const baseMaxFwd = isPedal ? config.vMaxPedal : config.vMaxFwd;
     const maxFwd = baseMaxFwd * boost * slow;
 
     const target = throttle * maxFwd;

@@ -29,7 +29,7 @@ function rig(held: Held = 'slingshot') {
   });
   // Only the fields the recognizer reads; no track, so no contact is on a track edge.
   view.state = {
-    phase: 'RACE', mapMode: 'table', track: null,
+    phase: 'RACE', mapMode: 'table', track: null, driveMode: { A: 'auto', B: 'auto' },
     cars: { A: car('A', true), B: car('B', false) },
     cooldowns: { A: { ghost: 0, destroy: 0 }, B: { ghost: 0, destroy: 0 } },
     testMode: { invincible: false, allItems: false },
@@ -212,7 +212,7 @@ await test('two repair contacts in opposite corners belong to the same team', as
 
 await test('the shared control adapter preserves held-pedal throttle across steering and releases', async () => {
   const { localToWorld, panelOf, PEDAL_LOCAL, STEER_AREA_LOCAL } = await import('../server/layout.js');
-  const r = rig(); r.view.state!.driveMode = 'pedal';
+  const r = rig(); r.view.state!.driveMode.A = 'pedal';
   const pedal = localToWorld(panelOf('A', 'pilot'), PEDAL_LOCAL.x, PEDAL_LOCAL.y);
   const steer = localToWorld(panelOf('A', 'pilot'), STEER_AREA_LOCAL.x - 30, STEER_AREA_LOCAL.y);
   r.down(1, pedal.x, pedal.y);
@@ -235,6 +235,31 @@ await test('the central resume icon works only while paused, and consumes the to
   r.down(2, 960, 540); r.up(2, 960, 540);
   assert.deepEqual(r.sent, [{ type: 'Pause' }]);
   assert.equal(r.view.sling, null);
+});
+
+await test('tapping a pilot drive mode button toggles the drive mode for that team', async () => {
+  const { DRIVE_MODE_BUTTONS } = await import('../client-table/Renderer.js');
+  const r = rig();
+  const btnA = DRIVE_MODE_BUTTONS.A;
+
+  // In LOBBY (title screen), buttons are inert
+  r.view.state!.phase = 'LOBBY';
+  r.down(1, btnA.x + btnA.w / 2, btnA.y + btnA.h / 2);
+  r.up(1, btnA.x + btnA.w / 2, btnA.y + btnA.h / 2);
+  assert.equal(r.sent.length, 0);
+
+  // In READY, Pilot A button toggles
+  r.view.state!.phase = 'READY';
+  r.down(1, btnA.x + btnA.w / 2, btnA.y + btnA.h / 2);
+  r.up(1, btnA.x + btnA.w / 2, btnA.y + btnA.h / 2);
+  assert.deepEqual(r.sent.at(-1), { type: 'ToggleDriveMode', team: 'A' });
+
+  // In RACE, Pilot B button toggles
+  r.view.state!.phase = 'RACE';
+  const btnB = DRIVE_MODE_BUTTONS.B;
+  r.down(2, btnB.x + btnB.w / 2, btnB.y + btnB.h / 2);
+  r.up(2, btnB.x + btnB.w / 2, btnB.y + btnB.h / 2);
+  assert.deepEqual(r.sent.at(-1), { type: 'ToggleDriveMode', team: 'B' });
 });
 
 let failed = 0;

@@ -284,9 +284,9 @@ Chaque panneau est orienté (rotation Canvas) vers son bord de table.
 
 ```
 Coin bas-gauche  → Pilote A    (rotation 0°)
-Coin bas-droite  → Copilote A  (rotation 0°)
+Coin bas-droite  → Copilote B  (rotation 0°)
 Coin haut-gauche → Pilote B    (rotation 180°)
-Coin haut-droite → Copilote B  (rotation 180°)
+Coin haut-droite → Copilote A  (rotation 180°)
 
 Panneau Pilote :
   ┌─────────────────────────────┐
