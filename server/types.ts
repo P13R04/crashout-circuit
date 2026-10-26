@@ -134,6 +134,28 @@ export interface MapTargets {
   B: [Vec2, Vec2];
 }
 
+/** Each lesson is done by one real game event (see `server/Tutorial.ts`). */
+export type TutorialStepId =
+  | 'steer' | 'pedal'
+  | 'pickup' | 'power' | 'sling'
+  | 'boostPickup' | 'boostPower' | 'boost' | 'boostCross'
+  | 'borderPull' | 'repair' | 'wall' | 'arc' | 'pylon';
+
+export interface TutorialTeam {
+  /** Index in `TutorialState.steps`; equal to its length once the team is done. */
+  step: number;
+  /** Progress inside the step (bit field for `steer`, 0..2 for `pedal`). */
+  sub: number;
+}
+
+/** Guided session: the race phase without scoring, one independent progression per team. */
+export interface TutorialState {
+  steps: TutorialStepId[];
+  teams: Record<Team, TutorialTeam>;
+  /** Both teams went through (or skipped) every step. */
+  finished: boolean;
+}
+
 /** Subset of config.json the clients need to draw rings, timers and thresholds. */
 export interface GameParams {
   hpMax: number;
@@ -199,6 +221,8 @@ export interface GameState {
   params: GameParams;
   /** PC test switches (only honoured in the PC mode, see `TestToggleMsg`). */
   testMode: { invincible: boolean; allItems: boolean };
+  /** Non-null during the guided tutorial (phase RACE, no laps, no damage). */
+  tutorial: TutorialState | null;
 }
 
 // ─── WebSocket message types ──────────────────────────────────────────────────
@@ -294,6 +318,18 @@ export interface StartGameMsg extends BaseMsg {
   mode?: 'table' | 'pc';
 }
 
+/** Start the guided tutorial on the predefined circuit (from the lobby). */
+export interface StartTutorialMsg extends BaseMsg {
+  type: 'StartTutorial';
+  mode?: 'table' | 'pc';
+}
+
+/** A team gives up its current tutorial step. */
+export interface TutorialSkipMsg extends BaseMsg {
+  type: 'TutorialSkip';
+  team: Team;
+}
+
 export interface PauseMsg extends BaseMsg {
   type: 'Pause';
 }
@@ -386,6 +422,8 @@ export type ClientMessage =
   | PilotInputMsg
   | PowerMsg
   | StartGameMsg
+  | StartTutorialMsg
+  | TutorialSkipMsg
   | PauseMsg
   | ToggleDriveModeMsg
   | TangibleMovedMsg

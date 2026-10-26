@@ -38,6 +38,19 @@ Les partenaires d’une équipe sont en diagonale : pilote cyan en bas à gauche
 5. Le copilote utilise **POWER** pour son objet ramassé, réalise les gestes et répare avec le pilote. Oz gère seul l’activation des tangibles.
 6. Une sortie de piste immobilise la voiture. Maintenir les deux pads de réparation pour la remettre en jeu. La pause fige la course et les durées des effets.
 
+## Tutoriel guidé
+
+Le bouton **TUTORIEL** du lobby lance une course sur le circuit prédéfini, sans tours ni victoire et sans dégâts (les chutes remettent la voiture sur la piste). Chaque équipe suit **sa propre progression**, avec un bandeau orienté vers elle, un contour qui pulse sur la commande à utiliser et un bouton **PASSER**. Chaque étape est validée par l'événement réel du jeu, jamais par un minuteur :
+
+1. direction à gauche puis à droite ; mode de conduite (pédale, puis retour en auto : le bouton central est partagé, l'autre équipe le subit aussi) ;
+2. ramasser un objet (le serveur impose le lance-pierre), POWER, tir ; ramasser un boost, POWER, portail, le traverser ;
+3. déformer un bord de piste (deux doigts ; absente en mode PC, une souris n'a qu'un contact) ;
+4. réparation à deux : le serveur met la voiture en panne à cette étape ;
+5. un mur puis un arc adverses posés sur la route par le serveur ;
+6. un arc de deux piliers activés par l'opérateur Oz (facultative : à passer si Oz est absent).
+
+Si l'objet armé expire ou si le portail n'est pas traversé, l'équipe revient à POWER avec l'objet rendu ; la fenêtre d'armement est de 12 s au lieu de 5 s. Le mode (table ou PC) est déduit du pointeur qui touche le bouton ; les interrupteurs de test PC sont désactivés. À la fin des deux équipes, un écran renvoie à l'accueil. La logique est dans `server/Tutorial.ts`, l'affichage dans `client-table/TutorialOverlay.ts`.
+
 ## POWER et objets ramassés
 
 Les boutons nommés **FANTÔME** et **DÉTRUIRE** ont été retirés de la zone copilote. Le copilote possède un seul bouton d’action, **POWER**, plus la zone tangible et le pad de réparation.
@@ -122,7 +135,7 @@ Les tests couvrent génération, conduite, collisions, réparation, armement, vo
 L’audit graphique, les trois directions proposées et la liste de sons à chercher sont dans [docs/direction-artistique.md](docs/direction-artistique.md). Deux thèmes sont disponibles dans **Paramètres → Ambiance** : **Néon** et **Ferraille**, une ambiance de récupération industrielle froide avec énergie cyan. Le choix est mémorisé localement et peut changer pendant la partie. Voir [les thèmes et leur parcours de vérification](docs/themes.md) et [les détails du rendu néon](docs/rendu-neon.md). L’[audit des textes et de l’orientation](docs/lisibilite.md) documente les choix de lisibilité des issues #26 et #35.
 
 ```text
-server/          état autoritaire, règles, physique, génération, WebSocket
+server/          état autoritaire, règles, physique, génération, tutoriel, WebSocket
 client-table/    rendu Canvas, HUD, adaptateur tactile et clavier
 client-oz/       console du magicien et simulation des tangibles
 client-shared/   interface d’actions, connexion et synchronisation

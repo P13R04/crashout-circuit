@@ -10,6 +10,7 @@ import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PLAY_AREA } from '../server/
 import { HUD, drawItemIcon } from './HUD.js';
 import { TEAM_COLOR, type View, type SlingPreview } from './view.js';
 import { icon, type Icon } from './icons.js';
+import { drawTutorial } from './TutorialOverlay.js';
 import { TangibleTransitions } from './TangibleTransitions.js';
 import { playFeedback } from './Sound.js';
 import { ScrapBackdrop } from './ScrapBackdrop.js';
@@ -25,8 +26,9 @@ import { activeMapTeam, inMapAnchor, MAP_ANCHOR_RADIUS } from '../server/mapCrea
 
 type Ctx = CanvasRenderingContext2D;
 
-export const START_TABLE_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 82, w: 520, h: 72 };
-export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 20, w: 520, h: 72 };
+export const START_TABLE_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 132, w: 520, h: 72 };
+export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 42, w: 520, h: 72 };
+export const START_TUTORIAL_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 48, w: 520, h: 72 };
 export const RESULT_BUTTON = { x: LOGICAL_W / 2 - 200, y: LOGICAL_H / 2 - 45, w: 400, h: 90 };
 export const PAUSE_BUTTON = { x: LOGICAL_W / 2 - 58, y: 14, w: 116, h: 38 };
 export const DRIVE_MODE_BUTTONS = { A: { x: 240, y: 810, w: 260, h: 38 }, B: { x: 240, y: 232, w: 260, h: 38 } };
@@ -98,6 +100,7 @@ export class Renderer {
     if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); this.drawDriveModeButtons(ctx, state); }
     if (state.phase === 'PAUSED') { this.drawPaused(ctx); this.drawPauseButton(ctx, 'REPRENDRE'); this.drawDriveModeButtons(ctx, state); }
     if (state.phase === 'RESULT') this.drawResult(ctx, state);
+    drawTutorial(ctx, state, this.reducedMotion ? 0 : this.time, DRIVE_MODE_BUTTONS);
     this.drawResetButton(ctx);
   }
 
@@ -122,6 +125,7 @@ export class Renderer {
     for (const [button, glyph, label, color] of [
       [START_TABLE_BUTTON, 'touch', 'TABLE', '#00e5ff'],
       [START_PC_BUTTON, 'mouse', 'PC', '#ff4081'],
+      [START_TUTORIAL_BUTTON, 'draw', 'TUTORIEL', '#ffce66'],
     ] as const) {
       ctx.fillStyle = `${color}18`; ctx.strokeStyle = color; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.roundRect(button.x, button.y, button.w, button.h, 18); ctx.fill(); ctx.stroke();
@@ -299,6 +303,7 @@ export class Renderer {
       }
       ctx.restore(); return;
     }
+    if (state.tutorial) return;
     // Team laps live in their pilot panels. Only the shared clock is repeated.
     const remaining = Math.max(0, state.params.sessionMaxSeconds - (now - state.sessionStartAt) / 1000);
     const mm = Math.floor(remaining / 60), ss = String(Math.floor(remaining % 60)).padStart(2, '0');

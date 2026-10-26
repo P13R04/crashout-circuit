@@ -109,8 +109,8 @@ testItems.addEventListener('click', () =>
 function syncTestBar(): void {
   const st = view.state;
   const racing = st?.phase === 'RACE' || st?.phase === 'PAUSED';
-  // Settings remain available in table mode and during map creation, including on touch screens.
-  testBar.classList.toggle('on', st?.mapMode === 'pc' && racing);
+  // The tutorial needs the real item rules: no free items, no invincibility switch
+  testBar.classList.toggle('on', st?.mapMode === 'pc' && racing && !st.tutorial);
   simBar.classList.toggle('on', showSimulation && racing);
   if (!racing && simKind) setSim(null);
   testInvincible.classList.toggle('active', !!st?.testMode.invincible);

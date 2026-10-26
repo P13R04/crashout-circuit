@@ -111,6 +111,12 @@ export class GameServer {
       case 'StartGame':
         if (fromTable && this.state.phase === 'LOBBY') this.rules.enterMap(msg.mode);
         break;
+      case 'StartTutorial':
+        if (fromTable && this.state.phase === 'LOBBY') this.rules.startTutorial(msg.mode === 'pc' ? 'pc' : 'table');
+        break;
+      case 'TutorialSkip':
+        if (fromTable) this.rules.tutorialSkip(msg.team);
+        break;
       case 'TestToggle':
         if (fromTable) this.rules.onTestToggle(msg);
         break;

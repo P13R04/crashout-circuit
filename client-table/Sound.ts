@@ -58,6 +58,7 @@ export function playFeedback(kind: string): void {
     case 'wallDestroyed': noise(0.2, 0.25); tone(200, 0.2, 'square', 0.1, 60); break;
     case 'hit': tone(180, 0.15, 'square', 0.12, 80); break;
     case 'pickup': tone(660, 0.1, 'sine', 0.12); tone(990, 0.1, 'sine', 0.12, undefined, 0.08); break;
+    case 'tutorialStep': tone(523, 0.1, 'sine', 0.14); tone(784, 0.2, 'sine', 0.14, undefined, 0.1); break;
     case 'carDisabled': tone(400, 0.6, 'sawtooth', 0.15, 60); break;
     case 'mapError': case 'dividerTooShort': case 'dividerOutOfZone': tone(200, 0.2, 'square', 0.1); break;
     case 'wallPlaced': tone(320, 0.22, 'triangle', 0.16, 680); break;
