@@ -9,6 +9,7 @@
 import type { GameState, Car, Team, Vec2, TrackGeometry } from '../server/types.js';
 import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PANELS, PLAY_AREA } from '../server/layout.js';
 import { HUD, drawItemIcon } from './HUD.js';
+import { playFeedback } from './Sound.js';
 import { TEAM_COLOR, TEAM_NAME, type View, type SlingPreview } from './view.js';
 import { activeMapTeam, inMapAnchor, MAP_ANCHOR_RADIUS } from '../server/mapCreation.js';
 
@@ -35,10 +36,43 @@ function wallEnds(pos: Vec2, angleDeg: number, len: number): [Vec2, Vec2] {
   return [{ x: pos.x - hx, y: pos.y - hy }, { x: pos.x + hx, y: pos.y + hy }];
 }
 
+interface TrackedTangibleItem {
+  id: string;
+  team: Team;
+  pos: Vec2;
+  angle?: number;
+  lengthPx?: number;
+  birth: number;
+}
+
+interface TrackedArcItem {
+  id: string;
+  team: Team;
+  pylon1: Vec2;
+  pylon2: Vec2;
+  birth: number;
+}
+
+interface DissolvingItem {
+  kind: 'wall' | 'pylon' | 'arc';
+  team: Team;
+  pos?: Vec2;
+  angle?: number;
+  lengthPx?: number;
+  pylon1?: Vec2;
+  pylon2?: Vec2;
+  start: number;
+  dur: number;
+}
+
 export class Renderer {
   private hud = new HUD();
   private trackLayer: HTMLCanvasElement | null = null;
   private trackLayerKey = '';
+  private trackedWalls = new Map<string, TrackedTangibleItem>();
+  private trackedPylons = new Map<string, TrackedTangibleItem>();
+  private trackedArcs = new Map<string, TrackedArcItem>();
+  private dissolvingItems: DissolvingItem[] = [];
 
   constructor(private ctx: Ctx) {}
 
@@ -54,11 +88,15 @@ export class Renderer {
     const now = state.phase === 'PAUSED' ? state.pausedAt : view.now();
 
     if (state.track) this.drawTrack(ctx, state.track, state.trackVersion, state.deformations.length > 0);
+    this.updateTangibleTracking(state, now);
     this.drawPickups(ctx, state, now);
     this.drawGates(ctx, state, now);
+    this.drawDissolvingWalls(ctx, now);
+    this.drawDissolvingArcs(ctx, now);
+    this.drawDissolvingPylons(ctx, now);
     this.drawWalls(ctx, state, now);
     this.drawArcs(ctx, state, now);
-    this.drawPylons(ctx, state);
+    this.drawPylons(ctx, state, now);
     this.drawStones(ctx, state, now);
     for (const t of ['A', 'B'] as Team[]) this.drawCar(ctx, state.cars[t], now);
     this.drawEffects(ctx, view);
@@ -298,27 +336,296 @@ export class Renderer {
     return Math.hypot(own.x - p.x, own.y - p.y) < 90 ? 0.35 : 1;
   }
 
+  private updateTangibleTracking(state: GameState, now: number): void {
+    if (state.phase === 'LOBBY' || state.phase === 'MAP') {
+      this.trackedWalls.clear();
+      this.trackedPylons.clear();
+      this.trackedArcs.clear();
+      this.dissolvingItems.length = 0;
+      return;
+    }
+
+    // 1 — Walls
+    const currentWallIds = new Set<string>();
+    for (const w of state.walls) {
+      currentWallIds.add(w.id);
+      const existing = this.trackedWalls.get(w.id);
+      if (!existing) {
+        this.trackedWalls.set(w.id, {
+          id: w.id,
+          team: w.team,
+          pos: { ...w.pos },
+          angle: w.angle,
+          lengthPx: w.lengthPx,
+          birth: now,
+        });
+        playFeedback('wallPlaced');
+      } else {
+        const d = Math.hypot(existing.pos.x - w.pos.x, existing.pos.y - w.pos.y);
+        const aDiff = Math.abs((existing.angle ?? 0) - w.angle);
+        if (d > 12 || aDiff > 6) {
+          this.dissolvingItems.push({
+            kind: 'wall',
+            team: existing.team,
+            pos: { ...existing.pos },
+            angle: existing.angle,
+            lengthPx: existing.lengthPx,
+            start: now,
+            dur: 500,
+          });
+          existing.pos = { ...w.pos };
+          existing.angle = w.angle;
+          existing.birth = now;
+          playFeedback('wallPlaced');
+        }
+      }
+    }
+    for (const [id, existing] of this.trackedWalls) {
+      if (!currentWallIds.has(id)) {
+        this.dissolvingItems.push({
+          kind: 'wall',
+          team: existing.team,
+          pos: { ...existing.pos },
+          angle: existing.angle,
+          lengthPx: existing.lengthPx,
+          start: now,
+          dur: 500,
+        });
+        this.trackedWalls.delete(id);
+        playFeedback('wallRemoved');
+      }
+    }
+
+    // 2 — Pylons
+    const currentPylonIds = new Set<string>();
+    for (const [id, t] of Object.entries(state.tangibles)) {
+      if (t.status !== 'placed' || !t.active || t.kind !== 'pylon') continue;
+      currentPylonIds.add(id);
+      const pos = { x: t.x * state.params.logicalWidth, y: t.y * state.params.logicalHeight };
+      const existing = this.trackedPylons.get(id);
+      if (!existing) {
+        this.trackedPylons.set(id, {
+          id,
+          team: t.team,
+          pos,
+          birth: now,
+        });
+        playFeedback('pylonPlaced');
+      } else {
+        const d = Math.hypot(existing.pos.x - pos.x, existing.pos.y - pos.y);
+        if (d > 12) {
+          this.dissolvingItems.push({
+            kind: 'pylon',
+            team: existing.team,
+            pos: { ...existing.pos },
+            start: now,
+            dur: 450,
+          });
+          existing.pos = pos;
+          existing.birth = now;
+          playFeedback('pylonPlaced');
+        }
+      }
+    }
+    for (const [id, existing] of this.trackedPylons) {
+      if (!currentPylonIds.has(id)) {
+        this.dissolvingItems.push({
+          kind: 'pylon',
+          team: existing.team,
+          pos: { ...existing.pos },
+          start: now,
+          dur: 450,
+        });
+        this.trackedPylons.delete(id);
+        playFeedback('pylonRemoved');
+      }
+    }
+
+    // 3 — Arcs
+    const currentArcIds = new Set<string>();
+    for (const arc of state.arcs) {
+      currentArcIds.add(arc.id);
+      const existing = this.trackedArcs.get(arc.id);
+      if (!existing) {
+        this.trackedArcs.set(arc.id, {
+          id: arc.id,
+          team: arc.team,
+          pylon1: { ...arc.pylon1 },
+          pylon2: { ...arc.pylon2 },
+          birth: now,
+        });
+        playFeedback('arcFormed');
+      } else {
+        const d1 = Math.hypot(existing.pylon1.x - arc.pylon1.x, existing.pylon1.y - arc.pylon1.y);
+        const d2 = Math.hypot(existing.pylon2.x - arc.pylon2.x, existing.pylon2.y - arc.pylon2.y);
+        if (d1 > 12 || d2 > 12) {
+          this.dissolvingItems.push({
+            kind: 'arc',
+            team: existing.team,
+            pylon1: { ...existing.pylon1 },
+            pylon2: { ...existing.pylon2 },
+            start: now,
+            dur: 500,
+          });
+          existing.pylon1 = { ...arc.pylon1 };
+          existing.pylon2 = { ...arc.pylon2 };
+          existing.birth = now;
+          playFeedback('arcFormed');
+        }
+      }
+    }
+    for (const [id, existing] of this.trackedArcs) {
+      if (!currentArcIds.has(id)) {
+        this.dissolvingItems.push({
+          kind: 'arc',
+          team: existing.team,
+          pylon1: { ...existing.pylon1 },
+          pylon2: { ...existing.pylon2 },
+          start: now,
+          dur: 500,
+        });
+        this.trackedArcs.delete(id);
+        playFeedback('arcBroken');
+      }
+    }
+
+    // 4 — Cleanup finished dissolving items
+    this.dissolvingItems = this.dissolvingItems.filter(item => now - item.start < item.dur);
+  }
+
+  private drawLightningSegment(
+    ctx: Ctx,
+    from: Vec2,
+    to: Vec2,
+    nx: number,
+    ny: number,
+    now: number,
+    width: number,
+    alpha = 1
+  ): void {
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const segLen = Math.hypot(dx, dy);
+    if (segLen < 4) return;
+    const segs = Math.max(3, Math.round(segLen / 16));
+    const seed = Math.floor(now / 50);
+
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.strokeStyle = ARC_YELLOW;
+    ctx.shadowColor = ARC_YELLOW;
+    ctx.shadowBlur = 18;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    for (let i = 1; i < segs; i++) {
+      const t = i / segs;
+      const jitter = ((Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453) % 1) * 22 - 11;
+      ctx.lineTo(from.x + dx * t + nx * jitter, from.y + dy * t + ny * jitter);
+    }
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
   private drawWalls(ctx: Ctx, state: GameState, now: number): void {
     for (const w of state.walls) {
-      const [a, b] = wallEnds(w.pos, w.angle, w.lengthPx);
+      const tracked = this.trackedWalls.get(w.id);
+      const age = tracked ? now - tracked.birth : 1000;
+      const isAppearing = age < 600;
+      const kAppear = Math.min(1, Math.max(0, age / 600));
+
+      const deployK = isAppearing ? Math.min(1, kAppear / 0.5) : 1;
+      const ease = isAppearing ? (1 - Math.pow(1 - deployK, 3)) : 1;
+      const curLen = w.lengthPx * ease;
+      const [a, b] = wallEnds(w.pos, w.angle, curLen);
       const disabled = w.disabledUntil > now;
+
       ctx.save();
       ctx.globalAlpha = this.ownerAlpha(state, w.team, w.pos);
+
+      if (isAppearing) {
+        // Expanding shockwave ring at wall center
+        const shockR = 12 + 65 * kAppear;
+        ctx.save();
+        ctx.strokeStyle = TEAM_COLOR[w.team];
+        ctx.shadowColor = TEAM_COLOR[w.team];
+        ctx.shadowBlur = 18;
+        ctx.lineWidth = 3.5 * (1 - kAppear);
+        ctx.globalAlpha = (1 - kAppear) * this.ownerAlpha(state, w.team, w.pos);
+        ctx.beginPath(); ctx.arc(w.pos.x, w.pos.y, shockR, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+
       if (disabled) {
         ctx.strokeStyle = 'rgba(160,160,170,0.7)';
         ctx.setLineDash([8, 8]);
         ctx.lineWidth = 4;
       } else {
+        const surgeWidth = isAppearing ? 8 + 10 * Math.sin(kAppear * Math.PI) : 8;
+        const surgeBlur = isAppearing ? 14 + 18 * Math.sin(kAppear * Math.PI) : 12;
         ctx.strokeStyle = WALL_RED;
         ctx.shadowColor = WALL_RED;
-        ctx.shadowBlur = 12;
-        ctx.lineWidth = 8;
+        ctx.shadowBlur = surgeBlur;
+        ctx.lineWidth = surgeWidth;
       }
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       ctx.setLineDash([]);
       ctx.shadowBlur = 0;
+
+      // Endpoints
       ctx.fillStyle = TEAM_COLOR[w.team];
-      for (const e of [a, b]) { ctx.beginPath(); ctx.arc(e.x, e.y, 7, 0, Math.PI * 2); ctx.fill(); }
+      const endR = 7 * ease;
+      for (const e of [a, b]) { ctx.beginPath(); ctx.arc(e.x, e.y, endR, 0, Math.PI * 2); ctx.fill(); }
+
+      if (isAppearing && deployK < 1) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2 * (1 - deployK);
+        for (const e of [a, b]) { ctx.beginPath(); ctx.arc(e.x, e.y, 8 + 16 * deployK, 0, Math.PI * 2); ctx.stroke(); }
+      }
+
+      ctx.restore();
+    }
+  }
+
+  private drawDissolvingWalls(ctx: Ctx, now: number): void {
+    for (const item of this.dissolvingItems) {
+      if (item.kind !== 'wall' || !item.pos) continue;
+      const k = (now - item.start) / item.dur;
+      if (k >= 1) continue;
+      const alpha = (1 - k) * (1 - k);
+      const shrink = 1 - 0.45 * k * k;
+      const len = (item.lengthPx ?? 120) * shrink;
+      const [a, b] = wallEnds(item.pos, item.angle ?? 0, len);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // Fractured dashed line collapsing
+      ctx.strokeStyle = WALL_RED;
+      ctx.shadowColor = WALL_RED;
+      ctx.shadowBlur = 14 * (1 - k);
+      ctx.setLineDash([8 * (1 - k) + 2, 8 * k + 4]);
+      ctx.lineWidth = 6 * (1 - k);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Dissolving energy particles dispersing outwards perpendicularly
+      const angRad = ((item.angle ?? 0) * Math.PI) / 180;
+      const perpX = -Math.sin(angRad), perpY = Math.cos(angRad);
+      ctx.fillStyle = TEAM_COLOR[item.team];
+      for (let i = 0; i < 8; i++) {
+        const tLine = (i / 7) - 0.5;
+        const side = (i % 2 === 0 ? 1 : -1);
+        const px = item.pos.x + Math.cos(angRad) * (tLine * len) + perpX * (side * 28 * k);
+        const py = item.pos.y + Math.sin(angRad) * (tLine * len) + perpY * (side * 28 * k);
+        ctx.fillRect(px - 2, py - 2, 4 * (1 - k), 4 * (1 - k));
+      }
+
+      // Center collapse burst
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2 * (1 - k);
+      ctx.beginPath(); ctx.arc(item.pos.x, item.pos.y, 8 + 28 * k, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
   }
@@ -332,6 +639,7 @@ export class Renderer {
       const dx = arc.pylon2.x - arc.pylon1.x, dy = arc.pylon2.y - arc.pylon1.y;
       const len = Math.hypot(dx, dy) || 1;
       const nx = -dy / len, ny = dx / len;
+
       if (disabled) {
         ctx.strokeStyle = 'rgba(160,160,170,0.7)';
         ctx.setLineDash([8, 8]);
@@ -339,38 +647,186 @@ export class Renderer {
         ctx.beginPath(); ctx.moveTo(arc.pylon1.x, arc.pylon1.y); ctx.lineTo(arc.pylon2.x, arc.pylon2.y); ctx.stroke();
         ctx.setLineDash([]);
       } else {
-        // animated lightning: jagged polyline re-rolled ~20 times a second
-        const seed = Math.floor(now / 50);
-        ctx.strokeStyle = ARC_YELLOW;
-        ctx.shadowColor = ARC_YELLOW;
-        ctx.shadowBlur = 16;
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(arc.pylon1.x, arc.pylon1.y);
-        const segs = Math.max(6, Math.round(len / 18));
-        for (let i = 1; i < segs; i++) {
-          const t = i / segs;
-          const jitter = (Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453 % 1) * 22 - 11;
-          ctx.lineTo(arc.pylon1.x + dx * t + nx * jitter, arc.pylon1.y + dy * t + ny * jitter);
+        const tracked = this.trackedArcs.get(arc.id);
+        const age = tracked ? now - tracked.birth : 1000;
+        const isForming = age < 650;
+        const kForm = Math.min(1, Math.max(0, age / 650));
+
+        if (isForming && kForm < 0.45) {
+          // Phase 1: Convergence of two crackling lightning bolts surging from each pylon towards the midpoint
+          const tAdv = kForm / 0.45;
+          const bolt1End = { x: arc.pylon1.x + (mid.x - arc.pylon1.x) * tAdv, y: arc.pylon1.y + (mid.y - arc.pylon1.y) * tAdv };
+          const bolt2End = { x: arc.pylon2.x + (mid.x - arc.pylon2.x) * tAdv, y: arc.pylon2.y + (mid.y - arc.pylon2.y) * tAdv };
+
+          this.drawLightningSegment(ctx, arc.pylon1, bolt1End, nx, ny, now, 5);
+          this.drawLightningSegment(ctx, arc.pylon2, bolt2End, nx, ny, now, 5);
+
+          // Ionization spark tips
+          ctx.save();
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = ARC_YELLOW;
+          ctx.shadowBlur = 18;
+          ctx.beginPath(); ctx.arc(bolt1End.x, bolt1End.y, 6, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(bolt2End.x, bolt2End.y, 6, 0, Math.PI * 2); ctx.fill();
+
+          // Pylon base electrical pulse rings
+          for (const pt of [arc.pylon1, arc.pylon2]) {
+            ctx.strokeStyle = ARC_YELLOW;
+            ctx.lineWidth = 3 * (1 - tAdv);
+            ctx.beginPath(); ctx.arc(pt.x, pt.y, 14 + 26 * tAdv, 0, Math.PI * 2); ctx.stroke();
+          }
+          ctx.restore();
+        } else if (isForming && kForm < 0.7) {
+          // Phase 2: Contact discharge & electric burst at midpoint
+          this.drawLightningSegment(ctx, arc.pylon1, arc.pylon2, nx, ny, now, 7);
+
+          const kFlash = (kForm - 0.45) / 0.25;
+          ctx.save();
+          ctx.strokeStyle = '#ffffff';
+          ctx.shadowColor = ARC_YELLOW;
+          ctx.shadowBlur = 28;
+          ctx.lineWidth = 4 * (1 - kFlash);
+          ctx.beginPath(); ctx.arc(mid.x, mid.y, 10 + 55 * kFlash, 0, Math.PI * 2); ctx.stroke();
+
+          // Radial electric discharge sparks
+          ctx.fillStyle = ARC_YELLOW;
+          for (let i = 0; i < 10; i++) {
+            const ang = (i / 10) * Math.PI * 2 + (i % 2) * 0.3;
+            const spDist = 8 + 44 * kFlash;
+            ctx.fillRect(mid.x + Math.cos(ang) * spDist - 2, mid.y + Math.sin(ang) * spDist - 2, 4 * (1 - kFlash), 4 * (1 - kFlash));
+          }
+          ctx.restore();
+        } else if (isForming) {
+          // Phase 3: Settling voltage
+          const settleW = 4 + 3 * (1 - (kForm - 0.7) / 0.3);
+          this.drawLightningSegment(ctx, arc.pylon1, arc.pylon2, nx, ny, now, settleW);
+        } else {
+          // Continuous live arc
+          this.drawLightningSegment(ctx, arc.pylon1, arc.pylon2, nx, ny, now, 4);
         }
-        ctx.lineTo(arc.pylon2.x, arc.pylon2.y);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
       }
+
       ctx.fillStyle = TEAM_COLOR[arc.team];
       for (const e of [arc.pylon1, arc.pylon2]) { ctx.beginPath(); ctx.arc(e.x, e.y, 9, 0, Math.PI * 2); ctx.fill(); }
       ctx.restore();
     }
   }
 
-  private drawPylons(ctx: Ctx, state: GameState): void {
+  private drawDissolvingArcs(ctx: Ctx, now: number): void {
+    for (const item of this.dissolvingItems) {
+      if (item.kind !== 'arc' || !item.pylon1 || !item.pylon2) continue;
+      const k = (now - item.start) / item.dur;
+      if (k >= 1) continue;
+      const p1 = item.pylon1, p2 = item.pylon2;
+      const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+      const dx = p2.x - p1.x, dy = p2.y - p1.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      const alpha = (1 - k) * (1 - k);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // Two collapsing lightning segments pulling back to each pylon
+      const tRetract = 1 - k;
+      const bolt1End = { x: p1.x + (mid.x - p1.x) * tRetract, y: p1.y + (mid.y - p1.y) * tRetract };
+      const bolt2End = { x: p2.x + (mid.x - p2.x) * tRetract, y: p2.y + (mid.y - p2.y) * tRetract };
+
+      this.drawLightningSegment(ctx, p1, bolt1End, nx, ny, now, 3.5 * (1 - k), alpha);
+      this.drawLightningSegment(ctx, p2, bolt2End, nx, ny, now, 3.5 * (1 - k), alpha);
+
+      // Snapping electrical rupture burst at mid
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = ARC_YELLOW;
+      ctx.shadowBlur = 22 * (1 - k);
+      ctx.beginPath(); ctx.arc(mid.x, mid.y, 14 * (1 - k) + 2, 0, Math.PI * 2); ctx.fill();
+
+      // Spark particles scattering from the rupture
+      ctx.fillStyle = ARC_YELLOW;
+      for (let i = 0; i < 12; i++) {
+        const ang = (i / 12) * Math.PI * 2 + (i % 3);
+        const spDist = 8 + 50 * k * (0.6 + (i % 4) / 4);
+        ctx.fillRect(mid.x + Math.cos(ang) * spDist - 2, mid.y + Math.sin(ang) * spDist - 2, 4 * (1 - k), 4 * (1 - k));
+      }
+      ctx.restore();
+    }
+  }
+
+  private drawPylons(ctx: Ctx, state: GameState, now: number): void {
     for (const [id, t] of Object.entries(state.tangibles)) {
       if (t.status !== 'placed' || !t.active || t.kind !== 'pylon') continue;
       const x = t.x * state.params.logicalWidth, y = t.y * state.params.logicalHeight;
-      ctx.save(); ctx.strokeStyle = TEAM_COLOR[t.team]; ctx.fillStyle = '#101a30'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
-      ctx.fillText(id, x, y + 4); ctx.restore();
+      const tracked = this.trackedPylons.get(id);
+      const age = tracked ? now - tracked.birth : 1000;
+      const isAppearing = age < 600;
+      const k = Math.min(1, Math.max(0, age / 600));
+
+      if (isAppearing) {
+        // Holographic expanding rings
+        ctx.save();
+        ctx.strokeStyle = TEAM_COLOR[t.team];
+        ctx.shadowColor = TEAM_COLOR[t.team];
+        ctx.shadowBlur = 16;
+        ctx.lineWidth = 3 * (1 - k);
+        ctx.globalAlpha = 1 - k;
+        ctx.beginPath(); ctx.arc(x, y, 16 + 36 * k, 0, Math.PI * 2); ctx.stroke();
+        if (k > 0.15) {
+          const k2 = (k - 0.15) / 0.85;
+          ctx.lineWidth = 2 * (1 - k2);
+          ctx.globalAlpha = 1 - k2;
+          ctx.beginPath(); ctx.arc(x, y, 16 + 22 * k2, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      const scale = isAppearing ? (k < 0.6 ? (k / 0.6) * 1.2 : 1.2 - ((k - 0.6) / 0.4) * 0.2) : 1;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(scale, scale);
+      ctx.strokeStyle = TEAM_COLOR[t.team];
+      ctx.fillStyle = '#101a30';
+      ctx.lineWidth = isAppearing ? 4 : 3;
+      ctx.shadowColor = TEAM_COLOR[t.team];
+      ctx.shadowBlur = isAppearing ? 16 : 8;
+      ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+      // Energetic core
+      ctx.fillStyle = isAppearing ? '#ffffff' : TEAM_COLOR[t.team];
+      ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
+
+      // Pylon id badge
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(id, 0, 3.5);
+      ctx.restore();
+    }
+  }
+
+  private drawDissolvingPylons(ctx: Ctx, now: number): void {
+    for (const item of this.dissolvingItems) {
+      if (item.kind !== 'pylon' || !item.pos) continue;
+      const k = (now - item.start) / item.dur;
+      if (k >= 1) continue;
+      const alpha = 1 - k;
+
+      ctx.save();
+      ctx.translate(item.pos.x, item.pos.y);
+      ctx.globalAlpha = alpha;
+
+      // Inward contracting ring
+      ctx.strokeStyle = TEAM_COLOR[item.team];
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, 24 * (1 - k) + 4, 0, Math.PI * 2); ctx.stroke();
+
+      // Scattering sparks
+      ctx.fillStyle = TEAM_COLOR[item.team];
+      for (let i = 0; i < 6; i++) {
+        const ang = (i / 6) * Math.PI * 2;
+        const d = 14 + 30 * k;
+        ctx.fillRect(Math.cos(ang) * d - 2, Math.sin(ang) * d - 2, 4 * (1 - k), 4 * (1 - k));
+      }
+      ctx.restore();
     }
   }
 

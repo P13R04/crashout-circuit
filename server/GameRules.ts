@@ -751,6 +751,7 @@ export class GameRules {
         s.arcs.push({ id, team, pylon1: px(p1), pylon2: px(p2), disabledUntil: oldDisabled.get(id) ?? 0 });
       }
     }
+    this.host.broadcastFull();
   }
 
   /** Wall as a segment: centre ± direction·length/2 (angle in degrees). */
