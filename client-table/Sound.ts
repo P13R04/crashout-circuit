@@ -60,5 +60,11 @@ export function playFeedback(kind: string): void {
     case 'pickup': tone(660, 0.1, 'sine', 0.12); tone(990, 0.1, 'sine', 0.12, undefined, 0.08); break;
     case 'carDisabled': tone(400, 0.6, 'sawtooth', 0.15, 60); break;
     case 'mapError': case 'dividerTooShort': case 'dividerOutOfZone': tone(200, 0.2, 'square', 0.1); break;
+    case 'wallPlaced': tone(320, 0.22, 'triangle', 0.16, 680); break;
+    case 'wallRemoved': tone(520, 0.22, 'triangle', 0.14, 160); break;
+    case 'pylonPlaced': tone(440, 0.16, 'sine', 0.15, 880); break;
+    case 'pylonRemoved': tone(880, 0.16, 'sine', 0.12, 440); break;
+    case 'arcFormed': noise(0.22, 0.2); tone(620, 0.24, 'sawtooth', 0.18, 1280); break;
+    case 'arcBroken': tone(960, 0.16, 'sawtooth', 0.16, 220); noise(0.12, 0.18); break;
   }
 }

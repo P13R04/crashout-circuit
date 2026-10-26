@@ -10,6 +10,8 @@ import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PLAY_AREA } from '../server/
 import { HUD, drawItemIcon } from './HUD.js';
 import { TEAM_COLOR, type View, type SlingPreview } from './view.js';
 import { icon, type Icon } from './icons.js';
+import { TangibleTransitions } from './TangibleTransitions.js';
+import { playFeedback } from './Sound.js';
 import { ScrapBackdrop } from './ScrapBackdrop.js';
 import { ScrapTrack } from './ScrapTrack.js';
 import type { ThemeId } from './themes.js';
@@ -36,6 +38,7 @@ export const RESET_BUTTON = { x: LOGICAL_W - 134, y: LOGICAL_H / 2 - 32, w: 118,
 
 export class Renderer {
   private hud = new HUD();
+  private transitions = new TangibleTransitions(playFeedback);
   private backdrop = new VoidBackdrop();
   private track = new NeonTrack();
   private scrapTrack = new ScrapTrack();
@@ -66,6 +69,7 @@ export class Renderer {
     const vehicles = industrial ? this.scrapVehicles : this.vehicles;
     const objects = industrial ? this.scrapObjects : this.objects;
     const track = industrial ? this.scrapTrack : this.track;
+    if (state) this.transitions.update(state, view.visualTime);
     this.reducedMotion = view.reducedMotion;
     this.time = view.visualTime;
     (industrial ? this.scrapBackdrop : this.backdrop).draw(ctx, this.time, view.reducedMotion, state?.phase === 'MAP');
@@ -80,6 +84,7 @@ export class Renderer {
     vehicles.drawTrails(ctx, state, this.time, now, this.reducedMotion);
     objects.drawPickups(ctx, state, this.time, this.reducedMotion);
     objects.drawGates(ctx, state, now, this.time, this.reducedMotion);
+    this.transitions.draw(ctx, this.time, this.reducedMotion, industrial ? '#79e3ef' : '#ffce66');
     objects.drawWalls(ctx, state, now, this.time, this.reducedMotion);
     objects.drawArcs(ctx, state, now, this.time, this.reducedMotion);
     objects.drawPylons(ctx, state, this.time, this.reducedMotion);

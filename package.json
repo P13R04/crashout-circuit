@@ -18,7 +18,8 @@
     "test:acceptance": "tsx scripts/acceptance.ts",
     "test:gestures": "tsx scripts/gestures.ts",
     "test:network": "tsx scripts/network-acceptance.ts",
-    "test:visuals": "tsx scripts/visuals.ts"
+    "test:visuals": "tsx scripts/visuals.ts",
+    "test:tangibles": "tsx scripts/test-tangible-anims.ts"
   },
   "dependencies": {
     "ws": "^8.18.0"
