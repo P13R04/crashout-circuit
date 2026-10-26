@@ -131,6 +131,8 @@ Le module nominal est documenté par LEGO : brique 2 × 4 d’environ 32 × 16 m
 
 Les travaux #41 (postes et conduite par équipe), #30 (corridor de boost), #31 (retours des tangibles), #32 (tutoriel) et #34 (console Oz) sont réunis avec leur historique. L’inversion des copilotes n’est appliquée qu’une fois. Les deux thèmes, les animations, les commandes sémantiques et les bonus autonomes sont conservés. Le tutoriel utilise les commandes de conduite par équipe et les piliers neutres ; il peut être parcouru sans Oz en passant son étape dédiée.
 
+La branche expérimentale `baptiste` a également été examinée. Elle change le sens de tracé et son ajustement à la surface ; elle reste séparée des branches d’issues pour conserver le parcours de création guidé actuellement validé.
+
 ## Commandes et extensions futures
 
 Le jeu reçoit des **actions de jeu**, indépendantes des périphériques. `client-shared/controls.ts` est l’interface commune aux adaptateurs clavier et tactile : direction, POWER et gestes. Les types de messages sont dans `server/types.ts` ; les objets fixes et la validation partagée sont dans `server/tangibles.ts` ; les règles et la consommation des stocks restent validées dans `server/GameRules.ts`.

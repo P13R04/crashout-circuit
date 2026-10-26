@@ -25,6 +25,15 @@ assert.equal(rAny.trackedWalls.get('wall-1')!.birth, 1000);
 assert.equal(rAny.dissolvingItems.length, 0);
 console.log('✓ Wall placement tracked with birth timestamp');
 
+// A correction through north must not look like a full turn / another placement.
+state.walls[0].angle = 359;
+rAny.update(state, 1050);
+state.walls[0].angle = 0;
+rAny.update(state, 1100);
+assert.equal(rAny.dissolvingItems.length, 0);
+assert.equal(rAny.trackedWalls.get('wall-1')!.birth, 1000);
+console.log('✓ Rotation through 0° keeps a continuous wall without a false placement effect');
+
 // 2. Moving the wall
 state.walls[0] = { id: 'wall-1', team: 'A', pos: { x: 600, y: 500 }, angle: 0, lengthPx: 120, disabledUntil: 0 };
 rAny.update(state, 1200);

@@ -25,4 +25,3 @@ export function visibleTrackEdges(track: TrackGeometry): boolean[][] {
     return true;
   }));
 }
-
