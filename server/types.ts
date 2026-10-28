@@ -32,6 +32,7 @@ export interface Car {
   velocity: Vec2;
   hp: number;           // 0–100
   disabled: boolean;    // hp === 0
+  respawnUntil: number; // repaired, waiting for the local restart lights
   invulnUntil: number;  // timestamp ms
   stunUntil: number;
   ghostUntil: number;
@@ -39,6 +40,7 @@ export interface Car {
   checkpointIndex: number;
   heldItem: ItemKind | null;
   itemArmed: boolean;
+  itemArmVersion: number;
   itemArmExpiry: number; // legacy wire field; 0, armed stock has no deadline
   speed: number;         // signed forward speed, px/s (server-internal, broadcast for HUD)
   slowUntil: number;     // arc slow-down expiry
@@ -318,6 +320,7 @@ export interface AbilityMsg extends BaseMsg {
 
 export interface BorderPullMsg extends BaseMsg {
   type: 'BorderPull';
+  index?: number;
   gestureId?: string;
   end?: boolean;
   x: number;

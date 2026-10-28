@@ -19,13 +19,14 @@
  * of the closest copilot station; the armed stock can belong to either team.
  * No finger is ever tracked back to a person (REQ-5.1).
  */
+import { armedPickup } from '../server/armedPickup.js';
 import { createControls } from '../client-shared/controls.js';
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import {
   LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, worldToLocal, steerArea as steerAreaForState, inTangibleDepot, inNeutralUi, type PanelLayout,
   insidePanel, nearestStationTeam, checkDivider, inPlayArea, type Role,
 } from '../server/layout.js';
-import { nearestOnTrack, slingshotShot, trackTangent } from '../server/geometry.js';
+import { slingshotShot, trackTangent, nearestTrackEdge } from '../server/geometry.js';
 import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON} from './Renderer.js';
 import { tutorialButtonAt } from './TutorialOverlay.js';
 import { showDividerRefusal, showMapError, showMapNotice, type View } from './view.js';
@@ -35,17 +36,16 @@ import { tangibleDefinition } from '../server/tangibles.js';
 
 export const MAX_CONTACTS = 10;
 const SETTLE_MS = 180;          // wait for all fingers to land before judging a gesture
-const SLING_CLUSTER_PX = 150;   // the three fingers must land together...
+const SLING_CLUSTER_PX = 190;   // the three fingers must land together...
 const SLING_ROLE_MIN_PX = 14;   // ...then the one that moves this far is the pouch...
 const SLING_DOMINANCE = 1.5;    // ...provided it moved this many times more than each other finger
 const SIM_FORK_HALF_PX = 38;    // mouse stand-in: virtual anchors either side of the pull axis
 const BOOST_MIN_PX = 100;
 const BOOST_MAX_PX = 400;
-const EDGE_GRAB_PX = 50;
 const PULL_MIN_PX = 20;
 const PULL_MAX_PX = 220;
-const PULL_PAIR_MAX_PX = 220;
-const PULL_EDGE_INDEX_GAP = 18;
+const PULL_PAIR_MAX_PX = 260;
+const PULL_EDGE_INDEX_GAP = 32;
 const PALM_MAX_PX = 140;        // contacts wider than this (logical px) are palms/arms
 
 type Zone = 'tangible' | 'simsling' | 'steer' | 'pedal' | 'item' | 'pad' | 'stroke' | 'target' | 'result' | 'pause' | 'mode' | 'free' | 'rejected';
@@ -64,6 +64,7 @@ interface Contact {
   outward?: Vec2; // border candidate: unit vector away from the centerline
   edgeIndex?: number;
   edgeSide?: number;
+  edgeBank?: 'outer'|'inner';
   releasedAt?: number;
 }
 
@@ -83,7 +84,7 @@ export class GestureRecognizer {
   };
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
   private pullSequence = 0;
-  private borderPull: { ids:number[]; gestureId:string; start:Vec2; outward:Vec2; team:Team; lastSent:number } | null = null;
+  private borderPull: { ids:number[]; gestureId:string; start:Vec2; outward:Vec2; team:Team; lastSent:number; index:number } | null = null;
   private placementRecent: Contact[] = [];
   private placementRejected = false;
   private placementSent = false;
@@ -102,6 +103,11 @@ export class GestureRecognizer {
   private sim: { kind: 'slingshot' | 'boost'; first?: Vec2 } | null = null;
   /** Active touch slingshot: its three contacts and, once decided, the pulling one. */
   private slingIds: number[] | null = null;
+  private slingContacts: Contact[] | null = null;
+  private slingReleaseTimer: ReturnType<typeof setTimeout> | null = null;
+  private bonusKey: string | null = null;
+  private bonusRecent: Contact[] = [];
+  private bonusCommitted = false;
   private slingPuller: number | null = null;
   /** Mouse stand-in: the press (fork) point and the dragging pointer. */
   private simSling: { id: number; anchor: Vec2 } | null = null;
@@ -146,6 +152,26 @@ export class GestureRecognizer {
 
   private get state(): GameState | null { return this.view.state; }
 
+  private get expectedBonus(){
+    return this.state?.phase==='RACE'&&!this.pendingPlacement?armedPickup(this.state):null;
+  }
+
+  private rememberBonusContact(c:Contact):void {
+    if(!this.expectedBonus||this.bonusCommitted)return;
+    const now=performance.now();
+    this.bonusRecent=this.bonusRecent.filter(old=>!old.consumed&&(old.releasedAt===undefined||now-old.releasedAt<=TANGIBLE_CONTACT_GRACE_MS));
+    const replacement=this.bonusRecent.find(old=>old.releasedAt!==undefined&&old.id!==this.slingPuller&&Math.hypot(old.x-c.x,old.y-c.y)<40);
+    if(replacement){
+      c.sx=replacement.sx;c.sy=replacement.sy;
+      this.bonusRecent[this.bonusRecent.indexOf(replacement)]=c;
+      if(this.slingContacts?.includes(replacement)){
+        this.slingContacts[this.slingContacts.indexOf(replacement)]=c;this.slingIds=this.slingContacts.map(v=>v.id);
+        if(this.slingReleaseTimer){clearTimeout(this.slingReleaseTimer);this.slingReleaseTimer=null;}
+      }
+    }else this.bonusRecent.push(c);
+    this.bonusRecent=this.bonusRecent.slice(-6);
+  }
+
   private get pendingPlacement() {
     const s=this.state, p=s?.tangiblePlacement;
     return s?.tangiblePlacementMode==='touch' && p && ['READY','RACE'].includes(s.phase) && p.expiresAt>this.view.now() ? p : null;
@@ -153,6 +179,12 @@ export class GestureRecognizer {
 
   /** A fresh Oz announcement never captures fingers already used by another gesture. */
   syncState(): void {
+    const expected=this.expectedBonus,key=expected?`${expected.team}-${expected.kind}-${expected.version}`:null;
+    if(key!==this.bonusKey){
+      this.bonusKey=key;this.bonusRecent=[];this.bonusCommitted=false;this.cancelSling();
+      if(this.settleTimer)clearTimeout(this.settleTimer);this.settleTimer=null;
+      for(const c of this.contacts.values())if(c.zone==='free'&&!this.borderPull?.ids.includes(c.id)){c.zone='rejected';c.consumed=true;}
+    }
     const token=this.pendingPlacement?.token??null;
     if(token===this.placementToken)return;
     this.placementToken=token;
@@ -164,7 +196,7 @@ export class GestureRecognizer {
     if(token!==null){
       if(this.settleTimer)clearTimeout(this.settleTimer);
       this.settleTimer=null;
-      this.slingIds=null;this.slingPuller=null;this.simSling=null;this.view.sling=null;
+      this.cancelSling();this.simSling=null;this.view.sling=null;
       this.simulate(null);
     }
     for(const c of this.contacts.values())if(['free','tangible','simsling'].includes(c.zone)){
@@ -395,14 +427,14 @@ export class GestureRecognizer {
     // Free contact: multi-finger gestures and border pull.
     c.zone = 'free';
     if (state.track) {
-      const hit = nearestOnTrack(p, state.track);
-      if (Math.abs(hit.distance - hit.halfWidth) < EDGE_GRAB_PX && hit.distance > 1e-6) {
-        const tangent=trackTangent(state.track,hit.index),normal={x:-tangent.y,y:tangent.x};
-        c.edgeSide=(p.x-hit.closest.x)*normal.x+(p.y-hit.closest.y)*normal.y<0?-1:1;
-        c.outward={x:normal.x*c.edgeSide,y:normal.y*c.edgeSide};
-        c.edgeIndex = hit.index;
+      const edge=nearestTrackEdge(p,state.track);
+      if(edge){
+        const tangent=trackTangent(state.track,edge.index),normal={x:-tangent.y,y:tangent.x},centre=state.track.centerline[edge.index];
+        c.edgeSide=(edge.point.x-centre.x)*normal.x+(edge.point.y-centre.y)*normal.y<0?-1:1;
+        c.outward={x:normal.x*c.edgeSide,y:normal.y*c.edgeSide};c.edgeIndex=edge.index;c.edgeBank=edge.bank;
       }
     }
+    this.rememberBonusContact(c);
     this.updateSling();
     this.scheduleEvaluation();
   }
@@ -430,7 +462,7 @@ export class GestureRecognizer {
     } else if (c.zone === 'free' && !c.consumed) {
       this.updateSling();
       // the fingers of a slingshot are never a border pull
-      if (!this.slingIds && c.outward && !c.consumed) this.tryBorderPull(c);
+      if (c.outward && !c.consumed && (!this.slingContacts||this.view.sling?.idle)) this.tryBorderPull(c);
     }
   }
 
@@ -438,6 +470,8 @@ export class GestureRecognizer {
     this.syncState();
     const c = this.contacts.get(e.pointerId);
     if (!c) return;
+    if(c.zone==='free'&&e.type==='pointerup'){const p=this.toLogical(e);c.x=p.x;c.y=p.y;this.updateSling();}
+    if(c.zone==='free')c.releasedAt=performance.now();
     if(c.zone==='tangible'&&e.type==='pointerup'){const p=this.toLogical(e);c.x=p.x;c.y=p.y;}
     if(this.borderPull?.ids.includes(c.id)){if(e.type==='pointerup'){const at=this.toLogical(e);c.x=at.x;c.y=at.y;}this.streamBorderPull(true);this.borderPull=null;}
     this.contacts.delete(c.id);
@@ -480,7 +514,15 @@ export class GestureRecognizer {
       }
     }
     if (c.zone === 'simsling') this.releaseSimSling(c);
-    if (this.slingIds?.includes(c.id)) this.releaseSling(e.type === 'pointercancel');
+    if (this.slingContacts?.includes(c)){
+      if(e.type!=='pointerup')this.releaseSling(true);
+      else if(this.slingPuller===c.id)this.releaseSling(false);
+      else{
+        if(this.slingReleaseTimer)clearTimeout(this.slingReleaseTimer);
+        const delay=this.view.sling?.shot.valid?250:TANGIBLE_CONTACT_GRACE_MS;
+        this.slingReleaseTimer=setTimeout(()=>{this.slingReleaseTimer=null;this.releaseSling(!this.view.sling?.shot.valid);},delay);
+      }
+    }else if(e.type!=='pointerup')this.bonusRecent=this.bonusRecent.filter(v=>v!==c);
     if (c.zone === 'free') this.scheduleEvaluation();
   }
 
@@ -577,6 +619,7 @@ export class GestureRecognizer {
 
   /** Release everything (WebSocket lost, tab hidden) so no pad stays "held" on the server. */
   releaseAll(): void {
+    this.bonusRecent=[];this.cancelSling();
     this.placementRecent=[];this.placementRejected=false;
     if(this.placementLatchTimer)clearTimeout(this.placementLatchTimer);this.placementLatchTimer=null;
     if(this.borderPull){this.streamBorderPull(true);this.borderPull=null;}
@@ -584,7 +627,7 @@ export class GestureRecognizer {
     this.placementTimer=null;this.placementMousePoint=null;this.view.tangibleTouch=null;
     if(this.settleTimer)clearTimeout(this.settleTimer);
     this.settleTimer=null;
-    this.slingIds=null;this.slingPuller=null;this.simSling=null;this.view.sling=null;
+    this.cancelSling();this.simSling=null;this.view.sling=null;
     this.view.dividerSubmitting = false;
     for (const [key, stroke] of this.view.strokes) {
       if (!this.state?.mapStrokes[stroke.team]) this.view.strokes.delete(key);
@@ -637,28 +680,22 @@ export class GestureRecognizer {
     if (!state || state.phase !== 'RACE' || this.slingIds || this.pendingPlacement) return;
     const free = [...this.contacts.values()].filter(c => c.zone === 'free' && !c.consumed);
 
-    if (free.length === 2 && !this.borderPull && !free.some(c => c.outward && (c.x-c.sx)*c.outward.x+(c.y-c.sy)*c.outward.y>=PULL_MIN_PX)) {
-      const d = Math.hypot(free[0].x - free[1].x, free[0].y - free[1].y);
-      if (d >= BOOST_MIN_PX && d <= BOOST_MAX_PX) {
-        const mid = { x: (free[0].x + free[1].x) / 2, y: (free[0].y + free[1].y) / 2 };
-        const team = this.armedTeam('boost', mid);
-        if (team) {
-          this.send({
-            type: 'BoostGate',
-            a: { x: free[0].x, y: free[0].y },
-            b: { x: free[1].x, y: free[1].y },
-            team,
-          });
-          free.forEach(c => { c.consumed = true; });
-        }
-      }
+    if(this.expectedBonus?.kind!=='boost'||this.bonusCommitted||this.borderPull)return;
+    const now=performance.now(),candidates=this.bonusRecent.filter(c=>!c.consumed&&(c.releasedAt===undefined||now-c.releasedAt<=TANGIBLE_CONTACT_GRACE_MS));
+    for(let i=0;i<candidates.length;i++)for(let j=i+1;j<candidates.length;j++){
+      const a=candidates[i],b=candidates[j],d=Math.hypot(a.x-b.x,a.y-b.y);
+      if(d<BOOST_MIN_PX||d>BOOST_MAX_PX)continue;
+      if([a,b].some(c=>c.outward&&(c.x-c.sx)*c.outward.x+(c.y-c.sy)*c.outward.y>=PULL_MIN_PX))continue;
+      const team=this.armedTeam('boost',{x:(a.x+b.x)/2,y:(a.y+b.y)/2});if(!team)return;
+      this.send({type:'BoostGate',team,a:{x:a.x,y:a.y},b:{x:b.x,y:b.y}});
+      this.bonusRecent.forEach(c=>{c.consumed=true;});this.bonusCommitted=true;return;
     }
   }
 
   // ─── Slingshot ────────────────────────────────────────────────────────────
 
   /**
-   * Three free fingers landing together while a slingshot is armed form the sling.
+   * Three reserved fingers, with a tolerant fork landing window, form the sling.
    * The landing order says nothing about the roles (fingers land within a few ms of
    * each other): the pouch is the finger that has clearly travelled the most, the
    * other two are the fork. The choice is not final — a finger that merely slid while
@@ -667,20 +704,21 @@ export class GestureRecognizer {
    */
   private updateSling(): void {
     const state = this.state;
-    if (!state || state.phase !== 'RACE') { this.cancelSling(); return; }
+    if (!state || state.phase !== 'RACE' || this.pendingPlacement || this.expectedBonus?.kind!=='slingshot' || this.borderPull || this.bonusCommitted) { this.cancelSling(); return; }
 
     if (!this.slingIds) {
-      const free = [...this.contacts.values()].filter(c => c.zone === 'free' && !c.consumed);
+      const free = this.bonusRecent.filter(c=>!c.consumed&&(c.releasedAt===undefined||performance.now()-c.releasedAt<=TANGIBLE_CONTACT_GRACE_MS)).slice(0,3);
       if (free.length !== 3) return;
       const cx = (free[0].sx + free[1].sx + free[2].sx) / 3;
       const cy = (free[0].sy + free[1].sy + free[2].sy) / 3;
       if (!free.every(c => Math.hypot(c.sx - cx, c.sy - cy) <= SLING_CLUSTER_PX)) return;
       if (!this.armedTeam('slingshot', { x: cx, y: cy })) return;
+      this.slingContacts=free;
       this.slingIds = free.map(c => c.id);
       this.slingPuller = null;
     }
 
-    const cs = this.slingIds.map(id => this.contacts.get(id)).filter((c): c is Contact => !!c);
+    const cs = this.slingContacts??[];
     if (cs.length !== 3) { this.cancelSling(); return; }
     const disp = (c: Contact) => Math.hypot(c.x - c.sx, c.y - c.sy);
 
@@ -703,25 +741,22 @@ export class GestureRecognizer {
   }
 
   /**
-   * The first finger to lift releases the sling: fingers rarely leave the glass in a
-   * clean order, so any lift fires the shot as long as the pull is long enough. To
-   * cancel, bring the pouch back near the fork before lifting.
+   * The pouch releases immediately. A lost fork contact has 250 ms to return before
+   * a valid shot releases; a short pull or cancellation keeps the stock armed.
    */
   private releaseSling(cancelled: boolean): void {
     const state = this.state;
     const sling = this.view.sling;
-    for (const id of this.slingIds ?? []) {
-      const o = this.contacts.get(id);
-      if (o) o.consumed = true; // the remaining fingers must not trigger other gestures
-    }
+    for(const c of this.slingContacts??[])c.consumed=true;
     this.cancelSling();
     if (cancelled || !state || !sling || sling.idle || !sling.shot.valid) return;
     const anchor = { x: (sling.anchors[0].x + sling.anchors[1].x) / 2, y: (sling.anchors[0].y + sling.anchors[1].y) / 2 };
     const team = this.armedTeam('slingshot', anchor);
-    if (team) this.controls.gesture('slingshot', team, anchor, { ...sling.pouch });
+    if (team){this.bonusCommitted=true;this.controls.gesture('slingshot', team, anchor, { ...sling.pouch });}
   }
 
   private cancelSling(): void {
+    if(this.slingReleaseTimer)clearTimeout(this.slingReleaseTimer);this.slingReleaseTimer=null;this.slingContacts=null;
     this.slingIds = null;
     this.slingPuller = null;
     if (!this.simSling) this.view.sling = null;
@@ -767,29 +802,27 @@ export class GestureRecognizer {
 
   private tryBorderPull(c: Contact): void {
     const state = this.state;
-    if (!state || state.phase !== 'RACE' || this.slingIds) return;
-    const candidates = [...this.contacts.values()]
-      .filter(c => c.zone === 'free' && !c.consumed && c.outward && c.edgeIndex !== undefined);
-    if (candidates.length !== 2) return;
-    const [a, b] = candidates;
-    if (Math.hypot(a.sx - b.sx, a.sy - b.sy) > PULL_PAIR_MAX_PX) return;
-    const n = state.track?.centerline.length ?? 0;
-    if (n === 0) return;
-    const rawGap = Math.abs(a.edgeIndex! - b.edgeIndex!);
-    if (Math.min(rawGap, n - rawGap) > PULL_EDGE_INDEX_GAP) return;
-    if(a.edgeSide!==b.edgeSide)return; // Same side of the ribbon, even around a tight bend.
-    const signedGap=((b.edgeIndex!-a.edgeIndex!+n*1.5)%n)-n/2;
-    const index=(Math.round(a.edgeIndex!+signedGap/2)+n)%n;
-    const tangent=trackTangent(state.track!,index),side=a.edgeSide??1;
-    const outward={x:-tangent.y*side,y:tangent.x*side};
-    const dx = ((a.x - a.sx) + (b.x - b.sx)) / 2;
-    const dy = ((a.y - a.sy) + (b.y - b.sy)) / 2;
-    if (dx * outward.x + dy * outward.y < PULL_MIN_PX) return;
-    const centre=state.track!.centerline[index],halfWidth=state.track!.widths[index]/2;
-    const start={x:centre.x+outward.x*halfWidth,y:centre.y+outward.y*halfWidth};
-    this.borderPull={ids:[a.id,b.id],gestureId:`${Date.now()}-${++this.pullSequence}`,start,outward,team:nearestStationTeam(start),lastSent:-Infinity};
-    candidates.forEach(c=>{c.consumed=true;});
-    this.streamBorderPull(false);
+    if (!state || state.phase !== 'RACE' || this.pendingPlacement || (this.slingContacts&&!this.view.sling?.idle)) return;
+    const candidates=[...this.contacts.values()].filter(c=>c.zone==='free'&&!c.consumed&&c.outward&&c.edgeIndex!==undefined);
+    const n=state.track?.centerline.length??0;if(!n)return;
+    let best:{a:Contact;b:Contact;index:number;outward:Vec2;score:number}|null=null;
+    for(let i=0;i<candidates.length;i++)for(let j=i+1;j<candidates.length;j++){
+      const a=candidates[i],b=candidates[j];
+      if(a.edgeBank!==b.edgeBank||Math.hypot(a.sx-b.sx,a.sy-b.sy)>PULL_PAIR_MAX_PX)continue;
+      const gap=((b.edgeIndex!-a.edgeIndex!+n*1.5)%n)-n/2;if(Math.abs(gap)>PULL_EDGE_INDEX_GAP)continue;
+      const index=(Math.round(a.edgeIndex!+gap/2)+n)%n,tangent=trackTangent(state.track!,index),side=a.edgeSide??1;
+      const outward={x:-tangent.y*side,y:tangent.x*side};
+      const progressA=(a.x-a.sx)*a.outward!.x+(a.y-a.sy)*a.outward!.y,progressB=(b.x-b.sx)*b.outward!.x+(b.y-b.sy)*b.outward!.y;
+      const score=(progressA+progressB)/2;
+      const reserved=!!this.expectedBonus;
+      if(score<(reserved?24:14)||Math.min(progressA,progressB)<(reserved?4:-12))continue;
+      if(!best||score>best.score)best={a,b,index,outward,score};
+    }
+    if(!best)return;const {a,b,index,outward}=best;
+    const start=(a.edgeBank==='inner'?state.track!.innerEdge:state.track!.outerEdge)[index];
+    this.cancelSling();
+    this.borderPull={ids:[a.id,b.id],gestureId:`${Date.now()}-${++this.pullSequence}`,start:{...start},outward,team:nearestStationTeam(start),lastSent:-Infinity,index};
+    a.consumed=true;b.consumed=true;this.streamBorderPull(false);
   }
 
   private streamBorderPull(end:boolean): void {
@@ -798,7 +831,7 @@ export class GestureRecognizer {
     const now=performance.now();if(!end&&now-pull.lastSent<32)return;
     const dx=pair.reduce((sum,c)=>sum+c!.x-c!.sx,0)/2,dy=pair.reduce((sum,c)=>sum+c!.y-c!.sy,0)/2;
     const amount=Math.max(PULL_MIN_PX,Math.min(s.params.trackDeformMaxShiftPx??PULL_MAX_PX,dx*pull.outward.x+dy*pull.outward.y));
-    this.send({type:'BorderPull',x:pull.start.x,y:pull.start.y,dx:pull.outward.x*amount,dy:pull.outward.y*amount,team:pull.team,gestureId:pull.gestureId,end});
+    this.send({type:'BorderPull',x:pull.start.x,y:pull.start.y,dx:pull.outward.x*amount,dy:pull.outward.y*amount,team:pull.team,gestureId:pull.gestureId,index:pull.index,end});
     pull.lastSent=now;
   }
 

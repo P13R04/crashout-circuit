@@ -118,7 +118,7 @@ test('destruction holds only the pilot pad; the copilot must hold continuously t
   r.rules.onPadHold({type:'PadHold',t:0,team:'A',role:'copilot',on:true});r.advance(2200);
   assert.equal(car.disabled,false);assert.equal(car.hp,config.repairHpRestore);
   assert.equal(r.state.repairPads['A-pilot'].held,false);
-  const repaired={...car.pos};r.advance(1000);assert.ok(dist(repaired,car.pos)>20);
+  const repaired={...car.pos};r.advance(1000);assert.deepEqual(car.pos,repaired);r.advance(3000);assert.ok(dist(repaired,car.pos)>20);
 });
 test('low health can also be repaired by the human copilot; no automatic healing', () => {
   const r=rig(),car=r.state.cars.B;r.rules.damage(car,50,r.clock.now);r.advance(1000);

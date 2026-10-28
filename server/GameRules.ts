@@ -15,6 +15,7 @@ import type {
   TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg,
 } from './types.js';
 import { orientBoostGate, hitsBoostGate } from './boostGeometry.js';
+import { armedPickup, RESPAWN_COUNTDOWN_MS } from './armedPickup.js';
 import { AutomaticPilot } from './AutomaticPilot.js';
 import { config } from './config.js';
 import { dist, distToSegment, nearestOnTrack, trackTangent, segmentsIntersect, slingshotShot, wrapAngle, clampToTrackRibbon } from './geometry.js';
@@ -65,6 +66,7 @@ export function makeCar(team: Team): Car {
     velocity: { x: 0, y: 0 },
     hp: config.hpMax,
     disabled: false,
+    respawnUntil: 0,
     invulnUntil: 0,
     stunUntil: 0,
     ghostUntil: 0,
@@ -72,6 +74,7 @@ export function makeCar(team: Team): Car {
     checkpointIndex: 1,
     heldItem: null,
     itemArmed: false,
+    itemArmVersion: 0,
     itemArmExpiry: 0,
     speed: 0,
     slowUntil: 0,
@@ -401,6 +404,7 @@ export class GameRules {
     s.mapMode = mode;
     s.params.armWindowS = TUTORIAL_ARM_WINDOW_S;
     this.tutorial = new Tutorial(s, {
+      arm:team=>this.onPower(team),
       now: () => this.now,
       breakDown: (team) => {
         const car = s.cars[team];
@@ -413,6 +417,7 @@ export class GameRules {
       restore: (team) => {
         const car = s.cars[team];
         car.disabled = false;
+        car.respawnUntil = 0;
         car.stunUntil = 0;
         car.invulnUntil = this.now + config.invulnAfterHitS * 1000;
         this.respawnAtCheckpoint(car);
@@ -461,7 +466,7 @@ export class GameRules {
       s.sessionStartAt += delta;
       if(s.raceDeadline)s.raceDeadline+=delta;
       for (const car of Object.values(s.cars)) {
-        for (const key of ['invulnUntil', 'stunUntil', 'ghostUntil', 'slowUntil', 'boostUntil'] as const) car[key] = shift(car[key]);
+        for (const key of ['respawnUntil', 'invulnUntil', 'stunUntil', 'ghostUntil', 'slowUntil', 'boostUntil'] as const) car[key] = shift(car[key]);
       }
       for (const cd of Object.values(s.cooldowns)) { cd.ghost = shift(cd.ghost); cd.destroy = shift(cd.destroy); }
       for (const wall of s.walls) { wall.disabledUntil = shift(wall.disabledUntil); if (wall.expiresAt) wall.expiresAt = shift(wall.expiresAt); }
@@ -576,10 +581,11 @@ export class GameRules {
 
   /** POWER only arms the copilot team’s pickup; tangible activation belongs to Oz. */
   onPower(team: Team, _msg?: PowerMsg): void {
-    if (this.state.phase !== 'RACE') return;
+    if (this.state.phase !== 'RACE' || this.state.tangiblePlacement || armedPickup(this.state)) return;
     const car = this.state.cars[team];
     if (car.heldItem !== null && !car.itemArmed) {
       car.itemArmed = true;
+      car.itemArmVersion++;
       car.itemArmExpiry = 0; // Armed until a valid gesture consumes the stock.
       this.host.feedback('itemArmed', car.pos.x, car.pos.y, team);
     }
@@ -589,13 +595,9 @@ export class GameRules {
 
   /** Resolve the armed stock owner; the gesturing team may steal that stock. */
   private resolveArmedTeam(kind: ItemKind, at: Vec2): Team | null {
-    const ok = TEAMS.filter(t => {
-      const c = this.state.cars[t];
-      return c.itemArmed && (this.state.testMode.allItems || c.heldItem === kind);
-    });
-    if (ok.length === 0) return null;
-    if (ok.length === 1) return ok[0];
-    return nearestStationTeam(at);
+    const armed=armedPickup(this.state);
+    void at;
+    return armed && (armed.kind===kind || this.state.testMode.allItems) ? armed.team : null;
   }
 
   private gestureTeam(at: Vec2, reported?: Team): Team {
@@ -644,14 +646,12 @@ export class GameRules {
     const remaining = [];
     for (const stone of s.stones) {
       if (stone.impactAt > now) { remaining.push(stone); continue; }
-      const victim = s.cars[other(stone.team)];
       this.host.feedback('stoneImpact', stone.target.x, stone.target.y, stone.team);
-      if (!victim.disabled && !s.testMode.invincible && dist(victim.pos, stone.target) <= config.stoneRadiusPx) {
-        this.damage(victim, config.dmgStone, now);
-        victim.stunUntil = now + config.stunStoneS * 1000;
-        victim.speed = 0;
-        // Cartoon "POW" on the car that was hit (the impact itself is already announced)
-        this.host.feedback('stoneHit', victim.pos.x, victim.pos.y, victim.team);
+      for(const victim of Object.values(s.cars)){
+        if(victim.disabled||s.testMode.invincible||victim.respawnUntil>now||dist(victim.pos,stone.target)>config.stoneRadiusPx+CAR_RADIUS)continue;
+        this.damage(victim,config.dmgStone,now);
+        victim.stunUntil=now+config.stunStoneS*1000;victim.speed=0;victim.velocity={x:0,y:0};
+        this.host.feedback('stoneHit',victim.pos.x,victim.pos.y,victim.team);
       }
     }
     s.stones = remaining;
@@ -764,7 +764,9 @@ export class GameRules {
     car.hp = Math.max(car.hp, config.repairHpRestore);
     car.disabled = false;
     car.stunUntil = 0;
-    car.invulnUntil = now + config.invulnAfterHitS * 1000;
+    car.respawnUntil=now+RESPAWN_COUNTDOWN_MS;
+    car.speed=0;car.velocity={x:0,y:0};
+    car.invulnUntil = car.respawnUntil + config.invulnAfterHitS * 1000;
     if (wasDisabled && s.track) {
       this.respawnAtCheckpoint(car);
       this.automaticPilot.forget(team);
@@ -953,7 +955,8 @@ export class GameRules {
     if(msg.gestureId!==undefined && (typeof msg.gestureId!=='string'||!/^[-\w]{1,80}$/.test(msg.gestureId)))return;
     if(msg.end!==undefined&&typeof msg.end!=='boolean')return;
     const team = msg.team ?? nearestStationTeam({ x: msg.x, y: msg.y });
-    this.deformTrack({ x: msg.x, y: msg.y }, { x: msg.dx, y: msg.dy }, team,msg.gestureId,msg.end);
+    if(msg.index!==undefined&&(!Number.isInteger(msg.index)||msg.index<0||msg.index>=track.centerline.length))return;
+    this.deformTrack({ x: msg.x, y: msg.y }, { x: msg.dx, y: msg.dy }, team,msg.gestureId,msg.end,msg.index);
   }
 
   /**
@@ -961,17 +964,19 @@ export class GameRules {
    * displacement, so this creates a temporary double chicane rather than a
    * wider road. A new pull starts immediately while the prior one reforms.
    */
-  private deformTrack(at: Vec2, drag: Vec2, team: Team, gestureId?:string, ended=false): void {
+  private deformTrack(at: Vec2, drag: Vec2, team: Team, gestureId?:string, ended=false, indexHint?:number): void {
     const track = this.state.track;
     if (!track) return;
     const id=gestureId?`deform-${team}-${gestureId}`:`deform-${++this.deformCounter}`;
     const existing=this.state.deformations.find(d=>d.id===id);
     if(existing?.gestureEnded || existing?.releaseAt)return;
     const hit=nearestOnTrack(at,track);
-    const index=existing?.index??hit.index;
-    if(!existing&&hit.distance<1e-6)return;
+    const index=existing?.index??indexHint??hit.index;
+    if(!existing&&indexHint!==undefined&&Math.min(dist(at,track.innerEdge[indexHint]),dist(at,track.outerEdge[indexHint]))>80)return;
+    if(!existing&&dist(at,indexHint!==undefined?track.centerline[index]:hit.closest)<1e-6)return;
     const tangent=trackTangent(track,index),normal={x:-tangent.y,y:tangent.x};
-    const side=(at.x-hit.closest.x)*normal.x+(at.y-hit.closest.y)*normal.y<0?-1:1;
+    const origin=indexHint!==undefined?track.centerline[index]:hit.closest;
+    const side=(at.x-origin.x)*normal.x+(at.y-origin.y)*normal.y<0?-1:1;
     const edge=existing?{x:existing.dx,y:existing.dy}:{x:normal.x*side,y:normal.y*side};
     const edgeLen=Math.hypot(edge.x,edge.y);if(edgeLen<1e-6)return;
     const outward={x:edge.x/edgeLen,y:edge.y/edgeLen},projected=drag.x*outward.x+drag.y*outward.y;
@@ -1109,9 +1114,8 @@ export class GameRules {
     for (const team of TEAMS) {
       const car = s.cars[team];
       if (s.testMode.allItems) {
-        // Test mode: no pickup needed, the item is armed again as soon as it is used
+        // Test mode refills stock, but POWER still uses the shared reservation.
         car.heldItem ??= 'slingshot';
-        car.itemArmed = true;
         car.itemArmExpiry = 0;
       }
     }
@@ -1123,7 +1127,7 @@ export class GameRules {
     const s = this.state;
     const car = s.cars[team];
     const track = s.track;
-    if (!track || car.disabled) return;
+    if (!track || car.disabled || car.respawnUntil>now) return;
 
     // Pickups (R-11): picked up only when the stock is empty
     if (car.heldItem === null) {

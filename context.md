@@ -9,6 +9,12 @@ Cette fiche conserve les décisions de conception et leurs identifiants (R-xx, C
 
 ---
 
+## Réservation des gestes et reprise (28 octobre 2026)
+
+Un seul stock peut être armé via POWER sur toute la table ; son propriétaire le conserve jusqu’au geste valide, neutre et volable. La version d’armement distingue les réservations successives, même si le réseau saute l’état intermédiaire. Un tangible annoncé a la priorité absolue et se désélectionne par A ou Échap dans Oz. Sinon le type du bonus armé détermine le geste attendu : boost tolérant aux appuis décalés et au doigt parasite, lance-pierre avec fourche temporellement tolérante et reprise brève d’un appui. La déformation reste possible par traction sur le bord rendu, avec ancrage explicite de la section dans les coudes. Les bonus ne périment pas.
+
+La pierre inflige ses dégâts aux deux couleurs dans son impact, tireur inclus. Une réparation provoque un feu local de 3 s au-dessus du modèle, puis vert et mouvement ; pause, physique et protection respectent ce délai.
+
 ## Ajustements de prise et réglages de course (28 octobre 2026)
 
 Raccourcis Oz : 1 mur, 2 pilier 1, 3 pilier 2 (rangée AZERTY ou pavé numérique). Dépôt neutre vertical à droite entre les copilotes ; engrenage à gauche entre les pilotes ; Accueil uniquement dans ce menu. Deux contacts tangibles peuvent être décalés de 1,6 s avec levée du premier doigt ; un appui isolé est oublié ensuite. La prise de bord tolère 50 px de part et d’autre et se base sur la tangente locale dans les coudes, sans bloquer un boost posé immobile.

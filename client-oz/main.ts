@@ -201,7 +201,8 @@ document.addEventListener('keydown', e => {
   }
   if(shortcut==='wall' && controller.state?.tangiblePlacementMode==='manual' && !e.repeat){e.preventDefault();btnWall.click();return;}
 
-  if (e.key === 'Escape') {
+  if (e.key === 'Escape' || (!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.key.toLowerCase()==='a')) {
+    e.preventDefault();
     if(controller.state?.tangiblePlacementMode==='touch'&&conn?.isOpen())conn.send({type:'TangiblePlacementCancel'});
     map.cancel();
     updateToolUI(null, 0);
@@ -223,7 +224,7 @@ function refresh(): void {
     button.title=`Annoncer la prochaine pose · ${id===1?'1 / &':id===2?'2 / é':'3 / "'}`;
   }
   touchCancel.hidden=!pending;
-  touchCancel.textContent=`Annuler · ${Math.max(0,Math.ceil(((pending?.expiresAt??0)-sync.now())/1000))} s`;
+  touchCancel.textContent=`Annuler (A) · ${Math.max(0,Math.ceil(((pending?.expiresAt??0)-sync.now())/1000))} s`;
   if(touch){
     hint.textContent=pending?'Posez l’objet · deux contacts sur la table':'Choisissez l’objet à poser · cliquez sur la carte pour le retirer';
     if(!wasTouch)canvas.style.cursor='default';

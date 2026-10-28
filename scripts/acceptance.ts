@@ -871,7 +871,7 @@ test('every lesson is completed by its real event, team B keeps its own pace', (
   assert.equal(A.hp, config.hpMax);
 
   // a hostile wall is placed on the road ahead; touching it completes the lesson, then it disappears
-  r.advance(config.invulnAfterHitS * 1000 + 100);
+  r.advance(Math.max(config.invulnAfterHitS*1000,A.invulnUntil-r.clock.now)+100);
   const wall = r.state.walls.find(w => w.id === 'tut-wall-A')!;
   assert.equal(wall.team, 'B', 'hostile to team A');
   driveTo(r, 'A', wall.pos);
@@ -1189,7 +1189,7 @@ test('armed inventory survives indefinite delay until a valid gesture consumes i
   assert.equal(r.feedback.includes('itemLost'),false);
   r.rules.onSlingshot(msg({type:'Slingshot',team:'A',...aim({x:900,y:500},120)}));assert.equal(car.heldItem,null);
 });
-test('T-06 slingshot: 0.8 s telegraph, then a full-HP car is put out of order (+ stun, "stoneHit" feedback), opponent only', () => {
+test('T-06 slingshot: 0.8 s telegraph, then a full-HP car is put out of order (+ stun, "stoneHit" feedback), any car inside the impact', () => {
   const r = raceRig();
   const A = r.state.cars.A, B = r.state.cars.B;
   A.heldItem = 'slingshot';
@@ -1320,14 +1320,13 @@ test('boost gate rejects lengths outside 100–400 px and expires after 8 s', ()
   r.advance(config.boostGateLifeS * 1000 + 100);
   assert.equal(r.state.boostGates.length, 0);
 });
-test('R-03 both teams armed → team of the nearest station wins the gesture', () => {
+test('only the first stock arms globally; either nearby copilot may use it', () => {
   for (const [team, y] of [['A', 350], ['B', 750]] as const) {
     const r = raceRig();
     for (const t of ['A', 'B'] as Team[]) { r.state.cars[t].heldItem = 'slingshot'; r.rules.onPower(t); }
     r.rules.onSlingshot(msg({ type: 'Slingshot', anchor: { x: 1600, y }, pouch: { x: 1600, y: y + 100 } }));
     assert.equal(r.state.stones[0].team, team);
-    assert.equal(r.state.cars[team].heldItem, null);
-    assert.equal(r.state.cars[team === 'A' ? 'B' : 'A'].heldItem, 'slingshot');
+    assert.equal(r.state.cars.A.heldItem,null);assert.equal(r.state.cars.B.heldItem,'slingshot');assert.equal(r.state.cars.B.itemArmed,false);
   }
 });
 
@@ -1462,20 +1461,20 @@ test('invincible: no damage from walls, arcs or stones, and a fall just respawns
   r.rules.damage(A, 10, r.clock.now);
   assert.equal(A.hp, config.hpMax - 10);
 });
-test('allItems: every item is armed and usable without pickup, repeatedly, with no cooldown', () => {
+test('allItems: free stock still needs POWER and respects the shared reservation', () => {
   const r = raceRig();
   r.state.mapMode = 'pc';
   toggle(r, 'allItems', true);
   r.advance(50);
   const A = r.state.cars.A;
-  assert.equal(A.itemArmed, true);
+  assert.equal(A.itemArmed,false);r.rules.onPower('A');assert.equal(A.itemArmed,true);
   // a boost gate works although the stocked item is a "slingshot"
   assert.equal(A.heldItem, 'slingshot');
   const c = { x: A.pos.x + 60, y: A.pos.y };
   r.rules.onBoostGate(msg({ type: 'BoostGate' as const, a: { x: c.x, y: c.y - 100 }, b: { x: c.x, y: c.y + 100 } }));
   assert.equal(r.state.boostGates.length, 1);
   r.advance(50);
-  assert.equal(A.itemArmed, true, 're-armed right after use');
+  assert.equal(A.itemArmed,false,'refill does not auto-arm');r.rules.onPower('A');assert.equal(A.itemArmed,true);
   r.rules.onSlingshot(msg({ type: 'Slingshot' as const, anchor: { x: 900, y: 700 }, pouch: { x: 900, y: 800 } }));
   assert.equal(r.state.stones.length, 1);
   // abilities have no cooldown
@@ -1539,7 +1538,7 @@ test('POWER cannot arm enemy stock, and repeated POWER cannot extend the window'
   r.rules.onPower('A'); const expiry = r.state.cars.A.itemArmExpiry;
   r.clock.now += 1000; r.rules.onPower('A'); assert.equal(r.state.cars.A.itemArmExpiry, expiry);
 });
-test('a stolen slingshot consumes only the owner stock and targets the owner team', () => {
+test('a stolen slingshot consumes only the owner stock and can hit either colour', () => {
   const r = raceRig(); r.state.cars.A.heldItem = 'slingshot'; r.rules.onPower('A');
   r.state.cars.B.heldItem = 'boost';
   r.rules.onSlingshot(msg({ type: 'Slingshot', team: 'B', ...aim(r.state.cars.A.pos, 120) }));
@@ -1547,7 +1546,7 @@ test('a stolen slingshot consumes only the owner stock and targets the owner tea
   assert.equal(r.state.stones[0].team, 'B');
   r.clock.now += 1000; r.rules.updateStones(r.clock.now);
   assert.equal(r.state.cars.A.hp, Math.max(0, config.hpMax - config.dmgStone));
-  assert.equal(r.state.cars.B.hp, config.hpMax);
+  assert.equal(r.state.cars.B.hp,0,'both starting cars are inside this impact');
   r.rules.onSlingshot(msg({ type: 'Slingshot', team: 'A', ...aim({ x: 900, y: 500 }, 120) }));
   assert.equal(r.state.stones.length, 0, 'same stock cannot be consumed twice');
 });
@@ -1652,6 +1651,7 @@ test('moving a wall with pick & drop supports 2-click positioning and orientatio
 section('Fast Oz console');
 function operatorRig() {
   const r = raceRig(), sent: Array<{ type: string } & Record<string, unknown>> = [];
+  r.state.tangibles[1].angle=0; // This console geometry fixture starts horizontally.
   let time = 0;
   const c = new OzController((type, params) => { sent.push({ type, ...params }); return true; }, () => {}, () => time);
   c.setConnected(true); c.applyState(structuredClone(r.state));
@@ -1750,13 +1750,13 @@ test('map placement, body dragging and rotation-handle picking work in all four 
     map.setQuarter(q); rig.ready(1); map.setState(c.state!); c.prepare(1);
     pointer('pointermove', { x: 960, y: 540 }); assert.equal(rig.sent.length, 0);
     pointer('pointerdown', { x: 960, y: 540 }); pointer('pointerup', { x: 960, y: 540 }); map.setState(c.state!);
-    assert.ok(Math.abs(c.state!.tangibles[1].x - .5) < 1e-10);
+    assert.ok(Math.abs(c.state!.tangibles[1].x - .5) < 1e-10,'placement keeps the expected centre');
     pointer('pointerdown', { x: 930, y: 540 }); pointer('pointermove', { x: 945, y: 545 }); pointer('pointerup', { x: 945, y: 545 });
-    assert.ok(Math.abs(c.state!.tangibles[1].x - 975 / 1920) < 1e-10);
+    assert.ok(Math.abs(c.state!.tangibles[1].x - 975 / 1920) < 1e-10,'body drag preserves its offset');
     map.setState(c.state!); const before = { ...c.state!.tangibles[1] };
     pointer('pointerdown', { x: 975+config.wallLengthPx/2, y: 545 }); pointer('pointermove', { x: 975+config.wallLengthPx/2, y: 550 }); pointer('pointerup', { x: 975+config.wallLengthPx/2, y: 550 });
     const [anchor] = wallEndpoints({ x: c.state!.tangibles[1].x * 1920, y: c.state!.tangibles[1].y * 1080 }, c.state!.tangibles[1].angle, config.wallLengthPx);
-    assert.ok(Math.hypot(anchor.x - (before.x * 1920 - config.wallLengthPx/2), anchor.y - before.y * 1080) < 1e-8);
+    assert.ok(Math.hypot(anchor.x - (before.x * 1920 - config.wallLengthPx/2), anchor.y - before.y * 1080) < 1e-8,'rotation preserves the fixed endpoint');
   }
 });
 

@@ -9,7 +9,7 @@ import type { GameState, Team, Vec2 } from '../server/types.js';
 import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PLAY_AREA, TANGIBLE_DEPOT, NEUTRAL_CONTROLS, SETTINGS_BUTTON, inTangibleDepot } from '../server/layout.js';
 import { HUD, drawItemIcon } from './HUD.js';
 import { TEAM_COLOR, type View, type SlingPreview } from './view.js';
-import { icon, type Icon } from './icons.js';
+import { icon, contacts, type Icon } from './icons.js';
 import { drawTutorial } from './TutorialOverlay.js';
 import { TangibleTransitions } from './TangibleTransitions.js';
 import { playFeedback } from './Sound.js';
@@ -21,6 +21,7 @@ import { NeonTrack } from './NeonTrack.js';
 import { NeonVehicles } from './NeonVehicles.js';
 import { NeonObjects } from './NeonObjects.js';
 import { NeonEffects } from './NeonEffects.js';
+import { armedPickup, RESPAWN_COUNTDOWN_MS } from '../server/armedPickup.js';
 import { drawTangibleTouchPreview } from './TangibleTouchPreview.js';
 import { glow, NEON, plate } from './neon.js';
 import { activeMapTeam, inMapAnchor, mapStrokeEndpoints, MAP_ANCHOR_RADIUS } from '../server/mapCreation.js';
@@ -94,9 +95,11 @@ export class Renderer {
     this.transitions.drawActivation(ctx, this.time, this.reducedMotion, industrial ? '#79e3ef' : '#ffce66');
     this.drawStones(ctx, state, now);
     for (const t of ['A', 'B'] as Team[]) vehicles.draw(ctx, state.cars[t], this.time, now, this.reducedMotion, view.effects);
+    this.drawRespawnLights(ctx,state,now);
     this.effects.draw(ctx, view);
     this.drawSling(ctx, state, view.sling);
     drawTangibleTouchPreview(ctx, view);
+    this.drawExpectedBonus(ctx,state);
     this.hud.draw(ctx, state, view);
     this.drawDisabledAlerts(ctx, state);
     this.drawNeutralZones(ctx,state);
@@ -106,6 +109,25 @@ export class Renderer {
     if (state.phase === 'RESULT') this.drawResult(ctx, state);
     drawTutorial(ctx, state, this.reducedMotion ? 0 : this.time, DRIVE_MODE_BUTTONS);
 
+  }
+
+  private drawRespawnLights(ctx: Ctx,state: GameState,now:number):void {
+    for(const car of Object.values(state.cars)){
+      const until=car.respawnUntil;if(!until||car.disabled||now>until+650)continue;
+      const remaining=until-now,green=remaining<=0,lit=Math.max(1,Math.min(3,Math.ceil((RESPAWN_COUNTDOWN_MS-remaining)/1000)));
+      ctx.save();ctx.translate(car.pos.x,car.pos.y-48);
+      ctx.fillStyle='#07121dee';ctx.strokeStyle='#a4becb88';ctx.lineWidth=1.5;ctx.beginPath();ctx.roundRect(-34,-14,68,28,8);ctx.fill();ctx.stroke();
+      for(let i=0;i<3;i++){ctx.fillStyle=green?'#61f4ba':i<lit?'#ff8664':'#273342';ctx.beginPath();ctx.arc((i-1)*20,0,6,0,Math.PI*2);ctx.fill();}
+      ctx.restore();
+    }
+  }
+
+  private drawExpectedBonus(ctx: Ctx,state: GameState):void {
+    if(state.tangiblePlacement||!['RACE','PAUSED'].includes(state.phase))return;
+    const expected=armedPickup(state);if(!expected)return;
+    ctx.save();ctx.translate(960,170);ctx.fillStyle='#101a24ed';ctx.strokeStyle='#ffce6690';ctx.lineWidth=2;
+    ctx.beginPath();ctx.roundRect(-45,-32,90,64,12);ctx.fill();ctx.stroke();
+    drawItemIcon(ctx,expected.kind,0,-8,14,'#ffce66');contacts(ctx,expected.kind==='boost'?2:3,0,18,'#ffce66');ctx.restore();
   }
 
   private drawNeutralZones(ctx: Ctx,state: GameState): void {

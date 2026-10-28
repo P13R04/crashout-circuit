@@ -10,7 +10,7 @@ export function drawTangibleTouchPreview(ctx: CanvasRenderingContext2D,view: Vie
   const points=view.tangibleTouch?.points??[],color=points.length>1&&!view.tangibleTouch?.valid?'#ff8d77':'#a4f4ef';
   ctx.save();ctx.strokeStyle=color;ctx.fillStyle='#081620c9';ctx.lineWidth=2;
   if(points.length===0){
-    ctx.translate(960,125);ctx.beginPath();ctx.roundRect(-58,-34,116,68,14);ctx.fill();ctx.stroke();
+    ctx.translate(960,170);ctx.beginPath();ctx.roundRect(-58,-34,116,68,14);ctx.fill();ctx.stroke();
     if(definition.kind==='wall')ctx.strokeRect(-28,-8,56,16);
     else{ctx.beginPath();ctx.arc(0,0,13,0,Math.PI*2);ctx.stroke();}
     const dots=definition.kind==='wall'?[[0,-23],[0,23]]:[[-35,0],[35,0]];

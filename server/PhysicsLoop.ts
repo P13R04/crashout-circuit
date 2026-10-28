@@ -80,7 +80,7 @@ export class PhysicsLoop {
 
   private integrate(car: Car, input: { throttle: number; steer: number }, now: number, dt: number): void {
     const stunned = now < car.stunUntil;
-    if (car.disabled) {
+    if (car.disabled || car.respawnUntil>now) {
       car.speed = 0;
       car.velocity = { x: 0, y: 0 };
       return;
@@ -116,7 +116,7 @@ export class PhysicsLoop {
   /** The drivable area is the band of local half-width around the centerline. */
   private checkTrackFall(team: Team, car: Car, now: number): void {
     const track = this.state.track;
-    if (!track || car.disabled) return;
+    if (!track || car.disabled || car.respawnUntil>now) return;
     const hit = nearestOnTrack(car.pos, track);
     const limit = hit.halfWidth - CAR_RADIUS;
     const reformGrace = this.rules.isTrackReforming() ? config.trackDeformSafetyPx : 0;

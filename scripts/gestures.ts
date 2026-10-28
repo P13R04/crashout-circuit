@@ -131,11 +131,12 @@ await test('whichever finger is pulled is the pouch (roles do not depend on the 
   near(m.anchor, { x: (F1.x + F3.x) / 2, y: (F1.y + F3.y) / 2 }, 'fork');
 });
 
-await test('lifting a fork finger first still fires the shot', async () => {
+await test('a fork lift has a short recovery grace, then fires the valid shot', async () => {
   const r = rig();
   await land(r);
   await pullDown(r, 3, F3, 150);
   r.up(1, F1.x, F1.y);
+  assert.equal(r.sent.length,0);await sleep(300);
   assert.equal(r.sent.length, 1);
   r.up(2, F2.x, F2.y);
   r.up(3, F3.x, F3.y + 150);
@@ -293,6 +294,32 @@ await test('stationary boost contacts still work on the ribbon edges despite the
   const {generatePreset}=await import('../server/MapGenerator.js');const r=rig('boost'),track=generatePreset();r.view.state!.track=track;
   const i=42,a=track.outerEdge[i],b=track.innerEdge[i];r.down(1,a.x,a.y);r.down(2,b.x,b.y);await sleep(240);
   assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1);r.recognizer.releaseAll();
+});
+
+await test('an expected boost accepts delayed taps and ignores a third finger instead of forming a sling',async()=>{
+  const r=rig('boost');r.down(1,800,500);r.up(1,800,500);await sleep(400);
+  r.down(2,1000,500);r.down(3,812,510);await sleep(240);
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1);assert.equal(r.view.sling,null);r.recognizer.releaseAll();
+});
+await test('a slingshot accepts delayed fork contacts and a brief lost/replaced anchor',async()=>{
+  const r=rig();r.down(1,F1.x,F1.y);await sleep(450);r.down(2,F2.x,F2.y);r.down(3,F3.x,F3.y);
+  await pullDown(r,3,F3,150);r.up(1,F1.x,F1.y);await sleep(80);assert.equal(r.sent.length,0);
+  r.down(4,F1.x+6,F1.y+4);r.up(3,F3.x,F3.y+150);assert.equal(r.sent.filter(m=>m.type==='Slingshot').length,1);r.recognizer.releaseAll();
+});
+await test('a slingshot fork may be tapped before the pulling finger is held',async()=>{
+  const r=rig();r.down(1,F1.x,F1.y);r.up(1,F1.x,F1.y);await sleep(350);
+  r.down(2,F2.x,F2.y);r.down(3,F3.x,F3.y);await pullDown(r,3,F3,150);r.up(3,F3.x,F3.y+150);
+  assert.equal(r.sent.filter(m=>m.type==='Slingshot').length,1);r.recognizer.releaseAll();
+});
+
+await test('two held fingers can grab the folded inner bank of a right-angle elbow',async()=>{
+  const {generatePreset,rebuildEdges}=await import('../server/MapGenerator.js');const r=rig(null),track=generatePreset();
+  const corners=[{x:600,y:400},{x:1200,y:400},{x:1200,y:700},{x:600,y:700}];
+  track.centerline=corners.flatMap((p,i)=>Array.from({length:20},(_,j)=>({x:p.x+(corners[(i+1)%4].x-p.x)*j/20,y:p.y+(corners[(i+1)%4].y-p.y)*j/20})));
+  track.baseCenterline=track.centerline.map(p=>({...p}));track.widths=track.centerline.map(()=>140);rebuildEdges(track);r.view.state!.track=track;
+  const a=track.innerEdge[19],b=track.innerEdge[21];r.down(1,a.x,a.y);r.down(2,b.x,b.y);
+  r.move(1,a.x-70,a.y+70);r.move(2,b.x-70,b.y+70);r.up(1,a.x-70,a.y+70);r.up(2,b.x-70,b.y+70);
+  assert.ok(r.sent.some(m=>m.type==='BorderPull'),'the concave elbow is a grabbable rendered bank');r.recognizer.releaseAll();
 });
 
 let failed = 0;

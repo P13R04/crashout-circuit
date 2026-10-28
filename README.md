@@ -74,6 +74,14 @@ Le bouton **TUTORIEL** du lobby lance une course sur le circuit prédéfini, san
 
 Un objet armé ne périme pas. Si un portail déjà créé n’est pas traversé, l’équipe peut recommencer la leçon avec un nouveau boost. Le mode (table ou PC) est déduit du pointeur qui touche le bouton ; les interrupteurs de test PC sont désactivés. À la fin des deux équipes, un écran renvoie à l'accueil. La logique est dans `server/Tutorial.ts`, l'affichage dans `client-table/TutorialOverlay.ts`.
 
+## Priorité des gestes et reprise après réparation
+
+L’annonce d’un tangible réserve tous les nouveaux contacts sur la carte jusqu’à sa pose ou son annulation (**A / Échap** dans Oz). Le bonus déjà armé reste en stock mais son geste est suspendu. Sans tangible attendu, un seul bonus peut être armé : la table affiche son symbole et reconnaît ce type de geste. Un troisième doigt parasite ne transforme pas un boost en lance-pierre. L’autre copilote peut utiliser ce bonus tout en gardant le sien, puis armer son propre stock après consommation du premier.
+
+Les deux contacts du boost ou de la fourche du lance-pierre peuvent arriver avec jusqu’à 1,6 s d’écart. La fourche tolère une brève levée/reprise d’un appui avant de libérer un tir déjà tendu. La déformation reste disponible sur le bord : une traction cohérente à deux doigts prend le pas sur des appuis immobiles, même avec un bonus armé. La prise utilise les bords effectivement dessinés, notamment dans l’intérieur des coudes.
+
+Une voiture réparée attend **3 secondes** au point de reprise : trois feux rouges au-dessus du modèle, puis vert et départ. Les dégâts et mouvements ne reprennent pas pendant cette attente ; la pause fige aussi ces feux.
+
 ## Réglages de course
 
 Dans l’engrenage **à gauche entre les pilotes** : **Easy** (50 %, par défaut), **Medium** (75 %) ou **Hard** (vitesse de référence), nombre de tours (1–99) et chronomètre facultatif (désactivé par défaut). Le réglage de vitesse s’applique aussi aux pédales et aux pilotes automatiques de test. Les valeurs sont partagées avec les clients et conservées au retour à l’accueil. Activer ou changer un chrono pendant la course démarre la nouvelle durée à cet instant ; la pause le fige. Accueil se trouve uniquement dans les paramètres.
@@ -87,8 +95,8 @@ Les boutons nommés **FANTÔME** et **DÉTRUIRE** ont été retirés de la zone 
 1. La voiture ramasse un objet lorsque son stock est vide. Son icône apparaît comme information dans le poste copilote.
 2. **Seul POWER du copilote de l’équipe propriétaire peut armer ce stock.** POWER adverse ne l’arme pas. L’objet reste armé jusqu’au geste valide.
 3. Sans limite de temps après l’armement, le geste correspondant est disponible sur la surface partagée : **3 doigts rapprochés, tirer l’un d’eux puis relâcher** pour le lance-pierre à élastique, **2 doigts espacés de 100 à 400 px** pour le portail de boost.
-4. L’armement est **neutre et volable** : le premier geste valide consomme l’objet armé du propriétaire, et l’effet appartient à l’équipe qui a exécuté le geste. Un lance-pierre volé peut donc toucher son ancien propriétaire ; un portail volé aide l’équipe qui l’a créé.
-5. L’objet n’est jamais perdu par attente : il reste dans le stock avant armement, puis armé tant que personne ne réalise le geste. Si deux stocks du même type sont armés, celui du poste le plus proche du geste est consommé. Un stock ne peut être consommé qu’une fois.
+4. L’armement est **neutre et volable** : le premier geste valide consomme l’objet armé du propriétaire, et l’effet appartient à l’équipe qui a exécuté le geste. Le lance-pierre touche toute voiture dans sa zone d’impact, tireur compris ; un portail volé aide l’équipe qui l’a créé.
+5. L’objet n’est jamais perdu par attente : il reste dans le stock avant armement, puis armé tant que personne ne réalise le geste. Un seul stock peut être armé sur toute la table : le premier POWER réserve son geste, sans consommer le stock de l’autre copilote. Après son utilisation, un nouveau stock peut être armé immédiatement. Un stock ne peut être consommé qu’une fois.
 
 La table tactile ne reconnaît pas l’identité d’une personne : l’équipe qui fait le geste est celle du poste copilote le plus proche. Les gestes et le vol fonctionnent sans connexion Oz. Le magicien n’attribue plus les gestes et ne peut pas donner, armer ou déclencher de bonus.
 

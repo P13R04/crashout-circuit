@@ -17,7 +17,7 @@ import { nearestOnTrack } from './geometry.js';
 
 /** Ids of the obstacles the tutorial places itself; the pylon rebuild must keep them. */
 export const TUTORIAL_OBSTACLE_PREFIX = 'tut-';
-/** Learners get more time than the real 5 s to read the hint and make the gesture. */
+/** Compatibility: armed items do not expire, including during lessons. */
 export const TUTORIAL_ARM_WINDOW_S = 0;
 /** Taking a pickup must not leave the other team without one for 15 s. */
 export const TUTORIAL_PICKUP_RESPAWN_S = 3;
@@ -61,6 +61,7 @@ const DONE_BY: Partial<Record<TutorialStepId, string>> = {
 
 export interface TutorialContext {
   now(): number;
+  arm(team:Team):void;
   /** Scripted breakdown: the car is out of order until repaired by both players. */
   breakDown(team: Team): void;
   /** Put a car back on the road without the repair event (a skipped repair lesson). */
@@ -190,7 +191,7 @@ export class Tutorial {
         break;
       case 'sling': case 'boost':
         car.heldItem = item!;
-        if (!car.itemArmed) { car.itemArmed = true; car.itemArmExpiry = 0; }
+        if (!car.itemArmed)this.ctx.arm(team);
         break;
       case 'boostCross':
         if (!this.state.boostGates.some(g => g.team === team)) this.complete(team); // skipped portal: nothing to cross

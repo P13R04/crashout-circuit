@@ -11,6 +11,7 @@ import {
 import { TEAM_COLOR, type View } from './view.js';
 import { icon, contacts } from './icons.js';
 import type { ThemeId } from './themes.js';
+import { armedPickup } from '../server/armedPickup.js';
 import { glow, NEON } from './neon.js';
 
 type Ctx = CanvasRenderingContext2D;
@@ -142,7 +143,8 @@ export class HUD {
 
   private drawCopilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
     const car=state.cars[panel.team],color=TEAM_COLOR[panel.team],armed=car.itemArmed&&!!car.heldItem,b=POWER_BTN_LOCAL;
-    const ink=armed?NEON.gold:car.heldItem?color:'#586078';
+    const locked=!!state.tangiblePlacement||!!armedPickup(state)&&!armed;
+    const ink=armed?NEON.gold:car.heldItem&&!locked?color:'#586078';
     if(car.heldItem)glow(ctx,b.x,b.y,52,ink,armed?.25:.12);
     ctx.fillStyle=armed?'#ffce661f':car.heldItem?color+'14':'#050d1c';
     ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();

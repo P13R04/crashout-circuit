@@ -13,7 +13,7 @@ Pendant cette courte pose, l’autre copilote évite de commencer un geste sur l
 3. La table accepte une seule paire neuve et confirme la pose automatiquement. La position reste fixe après le retrait des doigts. Dans le dépôt, l’objet est toujours inactif ; sur la piste, il devient actif. L’effet physique et électrique est celui du jeu normal.
 4. Lorsque l’objet est enlevé, le cliquer sur la carte Oz. Il disparaît et son bouton redevient disponible. Il est immédiatement disponible, sans recharge ni cooldown. Le sélectionner de nouveau prépare aussi un replacement et retire son ancien effet.
 
-**Annuler / Échap** abandonne l’attente sans poser d’objet. Une autre annonce remplace la précédente. L’attente expire après 20 secondes et s’annule en pause, au reset, au changement de mode ou si le dernier Oz/la dernière table se déconnecte. Le retrait des doigts ne retire jamais un objet ; le clic d’Oz constate son retrait physique ; une pose tactile dans le dépôt le désactive aussi.
+**Annuler / A / Échap** abandonne l’attente sans poser d’objet. Une autre annonce remplace la précédente. L’attente expire après 20 secondes et s’annule en pause, au reset, au changement de mode ou si le dernier Oz/la dernière table se déconnecte. Le retrait des doigts ne retire jamais un objet ; le clic d’Oz constate son retrait physique ; une pose tactile dans le dépôt le désactive aussi.
 
 ## Recette sur la dalle
 
@@ -37,3 +37,11 @@ Le pilote a gauche/droite et réparation ; sa vie est au-dessus des directions. 
 - Tirer un bord à deux doigts progressivement, sur toute une longueur de mur : la piste doit continuer à suivre au-delà du premier mouvement. Relâcher, vérifier le maintien temporaire puis le retour sans gonfler la chaussée.
 - Poser un mur en travers du tracé et déformer la piste pour le contourner. Répéter près d’un poste, du dépôt et d’un bord d’écran : la traction reste bornée pour protéger les contrôles.
 - Déposer un pilier au dépôt puis sur la piste, sans attendre ni charger. En y ramenant un pilier d’un arc actif, le champ et l’arc doivent disparaître.
+
+## Gestes attendus et reprise
+
+Un seul bonus est armé sur la table. Le second copilote garde son stock, peut réaliser le geste du bonus adverse, puis armer son propre stock après cette utilisation. Un tangible annoncé suspend les gestes de bonus et les déformations jusqu’à sa pose ou son annulation avec A. Sans tangible annoncé, une traction à deux doigts reste disponible, y compris dans les coudes ; des contacts immobiles correspondent au bonus attendu.
+
+Tester un boost avec deux appuis décalés et un troisième doigt proche ; il doit rester un boost. Pour le lance-pierre, décaler les deux premiers appuis, tendre puis lever/reposer brièvement un appui de fourche : le tir ne doit pas partir pendant la reprise. Tester l’impact sur chacune des deux couleurs, tireur inclus.
+
+Après réparation, vérifier trois secondes d’immobilité avec les feux au-dessus de la voiture, puis le départ au vert. Mettre en pause pendant les feux pour vérifier la reprise du même décompte.
