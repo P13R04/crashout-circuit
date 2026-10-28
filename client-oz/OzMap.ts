@@ -4,7 +4,7 @@ import { tangibleDefinition, validTangiblePose, type TangibleId } from '../serve
 import { distToSegment, nearestOnTrack } from '../server/geometry.js';
 import { visibleTrackEdges } from '../client-shared/trackVisibility.js';
 import { viewTransform, viewToWorld } from './ozView.js';
-import { PANELS, PANEL_H, panelWidth, localToWorld, TANGIBLE_DEPOT, NEUTRAL_RIGHT } from '../server/layout.js';
+import { PANELS, PANEL_H, panelWidth, localToWorld, TANGIBLE_DEPOT, NEUTRAL_CONTROLS } from '../server/layout.js';
 
 export type OzTool = 'arc' | 'wall' | null;
 
@@ -426,7 +426,7 @@ export class OzMap {
     ctx.strokeRect(0, 0, W, H);
 
     ctx.strokeStyle='#78929a66';ctx.lineWidth=unit;
-    for(const r of [TANGIBLE_DEPOT,NEUTRAL_RIGHT])ctx.strokeRect(r.x,r.y,r.w,r.h);
+    for(const r of [TANGIBLE_DEPOT,NEUTRAL_CONTROLS])ctx.strokeRect(r.x,r.y,r.w,r.h);
 
     // Player HUD stations in corners
     for (const panel of PANELS) {

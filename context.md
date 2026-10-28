@@ -9,13 +9,19 @@ Cette fiche conserve les décisions de conception et leurs identifiants (R-xx, C
 
 ---
 
+## Ajustements de prise et réglages de course (28 octobre 2026)
+
+Raccourcis Oz : 1 mur, 2 pilier 1, 3 pilier 2 (rangée AZERTY ou pavé numérique). Dépôt neutre vertical à droite entre les copilotes ; engrenage à gauche entre les pilotes ; Accueil uniquement dans ce menu. Deux contacts tangibles peuvent être décalés de 1,6 s avec levée du premier doigt ; un appui isolé est oublié ensuite. La prise de bord tolère 50 px de part et d’autre et se base sur la tangente locale dans les coudes, sans bloquer un boost posé immobile.
+
+Course : Easy à 50 % par défaut, Medium à 75 %, Hard à 100 %, y compris pour pédales et voitures de test. Tours configurables ; chrono désactivé par défaut. Les paramètres sont partagés et conservés au reset. Le chrono démarre avec le départ, ou à sa nouvelle durée si changé pendant la course, et se fige en pause.
+
 ## Commandes et tangibles — simplification après essais (28 octobre 2026)
 
-Les postes compacts conservent le partenariat en diagonale. Pilote : gauche/droite, vie au-dessus et réparation ; copilote : POWER et réparation. AUTO/PÉDALE se choisit uniquement dans **Paramètres → Conduite** ; AUTO n’affiche ni bouton ni espace d’accélérateur. Le cadre fait 420 × 160 pour le pilote AUTO, 520 × 160 en PÉDALE et 280 × 160 pour le copilote. Les réglages et l’accueil se trouvent dans une zone neutre à droite de Pause ; le dépôt neutre est à gauche. La création de circuit dispose d’une surface élargie.
+Les postes compacts conservent le partenariat en diagonale. Pilote : gauche/droite, vie au-dessus et réparation ; copilote : POWER et réparation. AUTO/PÉDALE se choisit uniquement dans **Paramètres → Conduite** ; AUTO n’affiche ni bouton ni espace d’accélérateur. Le cadre fait 420 × 160 pour le pilote AUTO, 520 × 160 en PÉDALE et 280 × 160 pour le copilote. Les paramètres se trouvent à gauche entre les pilotes, avec Accueil dans le menu ; le dépôt neutre se trouve à droite entre les copilotes. La création de circuit dispose d’une surface élargie.
 
 Aucune expiration du stock, avant ou après armement. POWER appartient au copilote propriétaire ; le geste armé reste neutre et volable. Seul un geste valide consomme le bonus. Le champ `itemArmExpiry` vaut 0 pour compatibilité réseau, sans compte à rebours.
 
-Les trois tangibles sont prêts au dépôt dès le début, sans recharge, délai ou correction bornée. Les anciennes stations copilote sont supprimées. Une pose dans le dépôt est inactive ; une nouvelle annonce permet de la remettre sur la piste immédiatement. Oz annonce via **M / 1 (&) / 2 (é)** ou les boutons, puis deux nouveaux contacts fixent la position ; le mur est orthogonal à leur axe. Cliquer l’objet dans Oz le retire vers le dépôt. Les effets, l’échelle LEGO, les deux thèmes et les voitures automatiques restent conservés. La fenêtre de 20 s d’une annonce Oz est distincte des bonus, qui ne périment pas.
+Les trois tangibles sont prêts au dépôt dès le début, sans recharge, délai ou correction bornée. Les anciennes stations copilote sont supprimées. Une pose dans le dépôt est inactive ; une nouvelle annonce permet de la remettre sur la piste immédiatement. Oz annonce via **1 (&) / 2 (é) / 3 (")** ou les boutons, puis deux nouveaux contacts fixent la position ; le mur est orthogonal à leur axe. Cliquer l’objet dans Oz le retire vers le dépôt. Les effets, l’échelle LEGO, les deux thèmes et les voitures automatiques restent conservés. La fenêtre de 20 s d’une annonce Oz est distincte des bonus, qui ne périment pas.
 
 La déformation suit les deux doigts pendant la traction, jusqu’à 220 px. Le serveur met à jour une seule déformation par geste, sur une transition de 22 échantillons, avec une rampe de 0,18 s. Les interventions se fondent sans dépasser l’amplitude maximale ; les postes, le dépôt et les contrôles sont protégés. Voir [le briefing actuel](docs/pose-tactile.md). Les anciennes règles de recharge, de budget de correction et d’expiration ci-dessous sont historiques.
 

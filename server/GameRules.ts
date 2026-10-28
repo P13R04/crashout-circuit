@@ -12,12 +12,12 @@ import type {
   GameState, Team, Vec2, Phase, ItemKind, Car, Wall, MapTargets, TrackGeometry, Tangible,
   StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg,
   PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg,
-  TangiblePlacementMode, TangibleTouchPlacedMsg,
+  TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg,
 } from './types.js';
 import { orientBoostGate, hitsBoostGate } from './boostGeometry.js';
 import { AutomaticPilot } from './AutomaticPilot.js';
 import { config } from './config.js';
-import { dist, distToSegment, nearestOnTrack, segmentsIntersect, slingshotShot, wrapAngle, clampToTrackRibbon } from './geometry.js';
+import { dist, distToSegment, nearestOnTrack, trackTangent, segmentsIntersect, slingshotShot, wrapAngle, clampToTrackRibbon } from './geometry.js';
 import { generate, generatePreset, validateStroke, rebuildEdges } from './MapGenerator.js';
 import { nearestStationTeam, LOGICAL_W, checkDivider, insidePanel, inTangibleDepot, depotPose, TANGIBLE_DEPOT, rectContains } from './layout.js';
 import { activeMapTeam, mapEndpointError, mapStrokeEndpoints } from './mapCreation.js';
@@ -106,6 +106,7 @@ export function createInitialState(): GameState {
     deformations: [],
     winner: null,
     sessionStartAt: Date.now(),
+    raceDeadline: 0,
     pausedAt: 0,
     mapTargets: null,
     mapDivider: null,
@@ -120,6 +121,7 @@ export function createInitialState(): GameState {
     testMode: { invincible: false, allItems: false },
     tutorial: null,
     params: {
+      difficulty: 'easy',
       hpMax: config.hpMax,
       lapsToWin: config.lapsToWin,
       sessionMaxSeconds: config.sessionMaxSeconds,
@@ -353,6 +355,7 @@ export class GameRules {
     }));
     s.winner = null;
     s.sessionStartAt = waitForPlayers ? 0 : this.now + COUNTDOWN_MS;
+    s.raceDeadline=!waitForPlayers&&s.params.sessionMaxSeconds>0?s.sessionStartAt+s.params.sessionMaxSeconds*1000:0;
     for(const id of [1,2,3])this.state.tangibles[id]=this.parkedTangible(id);
     this.rebuildTangibles();
     this.host.transition(waitForPlayers ? 'READY' : 'RACE', { startsAt: s.sessionStartAt });
@@ -363,6 +366,7 @@ export class GameRules {
   beginRace(): void {
     if (this.state.phase !== 'READY') return;
     this.state.sessionStartAt = this.now + COUNTDOWN_MS;
+    this.state.raceDeadline=this.state.params.sessionMaxSeconds>0?this.state.sessionStartAt+this.state.params.sessionMaxSeconds*1000:0;
     this.host.transition('RACE', { startsAt: this.state.sessionStartAt });
     this.host.broadcastFull();
   }
@@ -455,6 +459,7 @@ export class GameRules {
       const delta = this.now - this.pausedAt;
       const shift = (value: number) => value > this.pausedAt ? value + delta : value;
       s.sessionStartAt += delta;
+      if(s.raceDeadline)s.raceDeadline+=delta;
       for (const car of Object.values(s.cars)) {
         for (const key of ['invulnUntil', 'stunUntil', 'ghostUntil', 'slowUntil', 'boostUntil'] as const) car[key] = shift(car[key]);
       }
@@ -489,6 +494,7 @@ export class GameRules {
     s.mapStrokes = { A: false, B: false };
     s.mapMode = null;
     s.sessionMode = 'race';
+    s.raceDeadline=0;
     this.automaticPilot.reset();
     s.testMode = { invincible: false, allItems: false };
     s.tutorial = null;
@@ -525,6 +531,22 @@ export class GameRules {
     };
     this.lastPilotInputAt[team] = this.now;
     if (this.now >= this.state.sessionStartAt) this.tutorial?.onPilotInput(team, steer, this.inputs[team].throttle);
+  }
+
+  /** Table settings are shared by all clients and persist across races/reset. */
+  updateRaceSettings(msg: RaceSettingsMsg): void {
+    const s=this.state;if(s.tutorial||s.phase==='RESULT')return;
+    if(msg.difficulty!==undefined&&!['easy','medium','hard'].includes(msg.difficulty))return;
+    if(msg.lapsToWin!==undefined&&(!Number.isInteger(msg.lapsToWin)||msg.lapsToWin<1||msg.lapsToWin>99))return;
+    if(msg.sessionMaxSeconds!==undefined&&(!Number.isInteger(msg.sessionMaxSeconds)||msg.sessionMaxSeconds<0||msg.sessionMaxSeconds>7200))return;
+    if(msg.difficulty!==undefined)s.params.difficulty=msg.difficulty;
+    if(msg.lapsToWin!==undefined)s.params.lapsToWin=msg.lapsToWin;
+    if(msg.sessionMaxSeconds!==undefined){
+      s.params.sessionMaxSeconds=msg.sessionMaxSeconds;
+      const now=s.phase==='PAUSED'?s.pausedAt:this.now;
+      s.raceDeadline=msg.sessionMaxSeconds>0&&['RACE','PAUSED'].includes(s.phase)?Math.max(now,s.sessionStartAt)+msg.sessionMaxSeconds*1000:0;
+    }
+    this.host.broadcastFull();
   }
 
   /** Each pilot chooses continuous acceleration or a held pedal. */
@@ -947,7 +969,10 @@ export class GameRules {
     if(existing?.gestureEnded || existing?.releaseAt)return;
     const hit=nearestOnTrack(at,track);
     const index=existing?.index??hit.index;
-    const edge=existing?{x:existing.dx,y:existing.dy}:{x:at.x-hit.closest.x,y:at.y-hit.closest.y};
+    if(!existing&&hit.distance<1e-6)return;
+    const tangent=trackTangent(track,index),normal={x:-tangent.y,y:tangent.x};
+    const side=(at.x-hit.closest.x)*normal.x+(at.y-hit.closest.y)*normal.y<0?-1:1;
+    const edge=existing?{x:existing.dx,y:existing.dy}:{x:normal.x*side,y:normal.y*side};
     const edgeLen=Math.hypot(edge.x,edge.y);if(edgeLen<1e-6)return;
     const outward={x:edge.x/edgeLen,y:edge.y/edgeLen},projected=drag.x*outward.x+drag.y*outward.y;
     if(projected<20)return;
@@ -1222,8 +1247,8 @@ export class GameRules {
     if (s.phase !== 'RACE' || s.tutorial || s.sessionMode === 'tangibles-test' || now < s.sessionStartAt) return;
     const progress = (c: Car) => c.lap * 8 + c.checkpointIndex;
     let winner: Team | 'draw' | null = null;
-    for (const t of TEAMS) if (s.cars[t].lap >= config.lapsToWin) { winner = t; break; }
-    if (!winner && now - s.sessionStartAt >= config.sessionMaxSeconds * 1000) {
+    for (const t of TEAMS) if (s.cars[t].lap >= s.params.lapsToWin) { winner = t; break; }
+    if (!winner && s.raceDeadline>0 && now >= s.raceDeadline) {
       const a = progress(s.cars.A), b = progress(s.cars.B);
       winner = a === b ? 'draw' : a > b ? 'A' : 'B';
     }

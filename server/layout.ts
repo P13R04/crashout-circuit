@@ -53,15 +53,14 @@ export const CHARGE_ZONE_LOCAL = { x: -43, y: 12, w: 144, h: 144 };
 /** Compatibility for old journals: copilot stations no longer contain a charging zone. */
 export function chargeZoneTeam(_p: Vec2): Team | null { return null; }
 
-export const TANGIBLE_DEPOT = { x:590, y:12, w:290, h:140 };
-export const SETTINGS_BUTTON = { x:1050, y:35, w:110, h:76 };
-export const HOME_BUTTON = { x:1200, y:35, w:115, h:76 };
-export const NEUTRAL_RIGHT = { x:1034, y:12, w:310, h:140 };
+export const TANGIBLE_DEPOT = { x:1780, y:345, w:128, h:390 };
+export const SETTINGS_BUTTON = { x:25, y:502, w:90, h:76 };
+export const NEUTRAL_CONTROLS = { x:12, y:480, w:116, h:120 };
 export const rectContains = (r:{x:number;y:number;w:number;h:number},p:Vec2) => p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h;
 export const inTangibleDepot = (p:Vec2) => rectContains(TANGIBLE_DEPOT,p);
-export const inNeutralUi = (p:Vec2) => rectContains(NEUTRAL_RIGHT,p) || (p.x>=900&&p.x<=1020&&p.y>=12&&p.y<=152);
+export const inNeutralUi = (p:Vec2) => rectContains(NEUTRAL_CONTROLS,p) || (p.x>=900&&p.x<=1020&&p.y>=12&&p.y<=152);
 export function depotPose(id:number,W=LOGICAL_W,H=LOGICAL_H){
-  return {x:({1:662,2:770,3:840} as Record<number,number>)[id]/W,y:82/H,angle:0};
+  return {x:1844/W,y:({1:425,2:555,3:660} as Record<number,number>)[id]/H,angle:id===1?90:0};
 }
 
 export function panelOf(team: Team, role: Role): PanelLayout {
@@ -93,7 +92,7 @@ export function nearestStationTeam(p: Vec2): Team {
 
 /** True when a point lies inside any corner HUD panel (plus margin). */
 export function insidePanel(p: Vec2, margin = 0): boolean {
-  if(inNeutralUi(p) || [NEUTRAL_RIGHT,{x:900,y:12,w:120,h:140}].some(r=>rectContains({x:r.x-margin,y:r.y-margin,w:r.w+margin*2,h:r.h+margin*2},p)))return true;
+  if(inNeutralUi(p) || [NEUTRAL_CONTROLS,{x:900,y:12,w:120,h:140}].some(r=>rectContains({x:r.x-margin,y:r.y-margin,w:r.w+margin*2,h:r.h+margin*2},p)))return true;
   for (const panel of PANELS) {
     const l = worldToLocal(panel, p.x, p.y);
     if (Math.abs(l.x) <= panelWidth(panel.role, 'pedal') / 2 + margin && Math.abs(l.y) <= PANEL_H / 2 + margin) return true;
@@ -118,7 +117,7 @@ export function rotationTowardsTeam(team: Team, p: Vec2): number {
  * panels, half a lane plus its wall away from the edges (R-22). The edges of the
  * generated circuit therefore stay within y ∈ [185, 895].
  */
-export const PLAY_AREA = { x0: 130, y0: 270, x1: 1790, y1: 810 };
+export const PLAY_AREA = { x0: 230, y0: 270, x1: 1680, y1: 810 };
 
 /** The two shared contacts of the divider are at least this far apart (context.md §5.2 step 1). */
 export const MIN_DIVIDER_PX = 360;

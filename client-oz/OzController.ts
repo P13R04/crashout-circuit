@@ -171,7 +171,8 @@ export class OzController {
 export function ozShortcut(e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>): string | null {
   if (e.altKey || e.metaKey) return null;
   if (e.ctrlKey) return e.key.toLowerCase() === 'z' && !e.shiftKey ? 'undo' : null;
-  if (e.code === 'Digit1' || e.code === 'Numpad1') return 'pylon1';
-  if (e.code === 'Digit2' || e.code === 'Numpad2') return 'pylon2';
-  return ({ m: 'wall', r: 'view', ArrowLeft: 'left', ArrowRight: 'right', ' ': 'presence', Delete: 'remove', Escape: 'cancel' } as Record<string, string>)[e.key.length === 1 ? e.key.toLowerCase() : e.key] ?? null;
+  if (e.code === 'Digit1' || e.code === 'Numpad1' || e.key==='1' || e.key==='&') return 'wall';
+  if (e.code === 'Digit2' || e.code === 'Numpad2' || e.key==='2' || e.key==='é') return 'pylon1';
+  if (e.code === 'Digit3' || e.code === 'Numpad3' || e.key==='3' || e.key==='"') return 'pylon2';
+  return ({ r: 'view', ArrowLeft: 'left', ArrowRight: 'right', ' ': 'presence', Delete: 'remove', Escape: 'cancel' } as Record<string, string>)[e.key.length === 1 ? e.key.toLowerCase() : e.key] ?? null;
 }

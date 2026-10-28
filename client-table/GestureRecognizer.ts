@@ -25,12 +25,12 @@ import {
   LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, worldToLocal, steerArea as steerAreaForState, inTangibleDepot, inNeutralUi, type PanelLayout,
   insidePanel, nearestStationTeam, checkDivider, inPlayArea, type Role,
 } from '../server/layout.js';
-import { nearestOnTrack, slingshotShot } from '../server/geometry.js';
-import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
+import { nearestOnTrack, slingshotShot, trackTangent } from '../server/geometry.js';
+import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON} from './Renderer.js';
 import { tutorialButtonAt } from './TutorialOverlay.js';
 import { showDividerRefusal, showMapError, showMapNotice, type View } from './view.js';
 import { activeMapTeam, inMapAnchor, mapEndpointError, mapStrokeEndpoints } from '../server/mapCreation.js';
-import { tangibleTouchPose, TANGIBLE_SETTLE_MS } from '../server/tangibleTouch.js';
+import { tangibleTouchPose, TANGIBLE_SETTLE_MS, TANGIBLE_CONTACT_GRACE_MS } from '../server/tangibleTouch.js';
 import { tangibleDefinition } from '../server/tangibles.js';
 
 export const MAX_CONTACTS = 10;
@@ -41,11 +41,11 @@ const SLING_DOMINANCE = 1.5;    // ...provided it moved this many times more tha
 const SIM_FORK_HALF_PX = 38;    // mouse stand-in: virtual anchors either side of the pull axis
 const BOOST_MIN_PX = 100;
 const BOOST_MAX_PX = 400;
-const EDGE_GRAB_PX = 20;
+const EDGE_GRAB_PX = 50;
 const PULL_MIN_PX = 20;
 const PULL_MAX_PX = 220;
-const PULL_PAIR_MAX_PX = 130;
-const PULL_EDGE_INDEX_GAP = 8;
+const PULL_PAIR_MAX_PX = 220;
+const PULL_EDGE_INDEX_GAP = 18;
 const PALM_MAX_PX = 140;        // contacts wider than this (logical px) are palms/arms
 
 type Zone = 'tangible' | 'simsling' | 'steer' | 'pedal' | 'item' | 'pad' | 'stroke' | 'target' | 'result' | 'pause' | 'mode' | 'free' | 'rejected';
@@ -63,6 +63,8 @@ interface Contact {
   strokeKey?: number; // unique per drawn stroke (a mouse reuses the same pointerId)
   outward?: Vec2; // border candidate: unit vector away from the centerline
   edgeIndex?: number;
+  edgeSide?: number;
+  releasedAt?: number;
 }
 
 type Send = (msg: { type: string } & Record<string, unknown>) => void;
@@ -82,6 +84,10 @@ export class GestureRecognizer {
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
   private pullSequence = 0;
   private borderPull: { ids:number[]; gestureId:string; start:Vec2; outward:Vec2; team:Team; lastSent:number } | null = null;
+  private placementRecent: Contact[] = [];
+  private placementRejected = false;
+  private placementSent = false;
+  private placementLatchTimer: ReturnType<typeof setTimeout> | null = null;
   private placementToken: number | null = null;
   private placementTimer: ReturnType<typeof setTimeout> | null = null;
   private placementMousePoint: Vec2 | null = null;
@@ -150,6 +156,8 @@ export class GestureRecognizer {
     const token=this.pendingPlacement?.token??null;
     if(token===this.placementToken)return;
     this.placementToken=token;
+    this.placementRecent=[];this.placementRejected=false;this.placementSent=false;
+    if(this.placementLatchTimer)clearTimeout(this.placementLatchTimer);this.placementLatchTimer=null;
     if(token!==null)this.borderPull=null;
     if(this.placementTimer)clearTimeout(this.placementTimer);
     this.placementTimer=null;this.placementMousePoint=null;this.view.tangibleTouch=null;
@@ -166,23 +174,24 @@ export class GestureRecognizer {
 
   private sendTangiblePlacement(a: Vec2,b: Vec2): void {
     const pending=this.pendingPlacement, s=this.state;
-    if(!pending||!s)return;
+    if(!pending||!s||this.placementSent)return;
     const definition=tangibleDefinition(pending.id);
     if(!definition||!tangibleTouchPose(definition.kind,a,b,s.params))return;
     for(const c of this.contacts.values())if(c.zone==='tangible')c.consumed=true;
+    this.placementSent=true;
     this.send({type:'TangibleTouchPlaced',id:pending.id,token:pending.token,a:{...a},b:{...b}});
   }
 
   private updateTangibleContacts(): void {
     const pending=this.pendingPlacement,s=this.state;
     if(!pending||!s)return;
-    const touches=[...this.contacts.values()].filter(c=>c.zone==='tangible');
-    if(touches.length>2)touches.forEach(c=>{c.consumed=true;});
+    const touches=this.placementRecent;
+    if(touches.length>2){touches.forEach(c=>{c.consumed=true;});this.placementRejected=true;}
     const points=this.placementMousePoint?[this.placementMousePoint]:touches.map(c=>({x:c.x,y:c.y}));
     const definition=tangibleDefinition(pending.id)!;
     const valid=points.length===2&&!!tangibleTouchPose(definition.kind,points[0],points[1],s.params);
     this.view.tangibleTouch={points,valid};
-    if(touches.length!==2||!valid||touches.some(c=>c.consumed)){
+    if(touches.length!==2||!valid||this.placementRejected||this.placementSent||touches.some(c=>c.consumed)){
       if(this.placementTimer)clearTimeout(this.placementTimer);
       this.placementTimer=null;return;
     }
@@ -190,7 +199,7 @@ export class GestureRecognizer {
     const token=pending.token;
     this.placementTimer=setTimeout(()=>{
       this.placementTimer=null;
-      if(this.pendingPlacement?.token===token && touches.every(c=>this.contacts.get(c.id)===c&&!c.consumed))
+      if(this.pendingPlacement?.token===token && !this.placementRejected && !this.placementSent && touches.every(c=>this.placementRecent.includes(c)&&!c.consumed))
         this.sendTangiblePlacement(touches[0],touches[1]);
     },TANGIBLE_SETTLE_MS);
   }
@@ -218,13 +227,6 @@ export class GestureRecognizer {
 
     const hit = (b: { x: number; y: number; w: number; h: number }) =>
       p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
-
-    // Reset button: accessible in all phases (returns state to launch)
-    if (hit(RESET_BUTTON)) {
-      c.zone = 'result';
-      this.send({ type: 'Reset' });
-      return;
-    }
 
     // 0 — lobby: start button
     if (state.phase === 'LOBBY') {
@@ -352,7 +354,15 @@ export class GestureRecognizer {
           this.sendTangiblePlacement(this.placementMousePoint,p);
           this.placementMousePoint=null;
         }else {this.placementMousePoint=p;this.view.tangibleTouch={points:[p],valid:false};}
-      }else this.updateTangibleContacts();
+      }else{
+        if(this.placementLatchTimer)clearTimeout(this.placementLatchTimer);this.placementLatchTimer=null;
+        this.placementRecent=this.placementRecent.filter(old=>old.releasedAt===undefined||performance.now()-old.releasedAt<=TANGIBLE_CONTACT_GRACE_MS);
+        const retained=this.placementRecent.filter(old=>old.releasedAt===undefined||Math.hypot(old.x-c.x,old.y-c.y)>22);
+        if(retained.length!==this.placementRecent.length&&this.placementTimer){clearTimeout(this.placementTimer);this.placementTimer=null;}
+        this.placementRecent=retained;
+        if(!this.placementSent&&!this.placementRejected)this.placementRecent.push(c);
+        this.updateTangibleContacts();
+      }
       return;
     }
 
@@ -387,7 +397,9 @@ export class GestureRecognizer {
     if (state.track) {
       const hit = nearestOnTrack(p, state.track);
       if (Math.abs(hit.distance - hit.halfWidth) < EDGE_GRAB_PX && hit.distance > 1e-6) {
-        c.outward = { x: (p.x - hit.closest.x) / hit.distance, y: (p.y - hit.closest.y) / hit.distance };
+        const tangent=trackTangent(state.track,hit.index),normal={x:-tangent.y,y:tangent.x};
+        c.edgeSide=(p.x-hit.closest.x)*normal.x+(p.y-hit.closest.y)*normal.y<0?-1:1;
+        c.outward={x:normal.x*c.edgeSide,y:normal.y*c.edgeSide};
         c.edgeIndex = hit.index;
       }
     }
@@ -426,10 +438,23 @@ export class GestureRecognizer {
     this.syncState();
     const c = this.contacts.get(e.pointerId);
     if (!c) return;
+    if(c.zone==='tangible'&&e.type==='pointerup'){const p=this.toLogical(e);c.x=p.x;c.y=p.y;}
     if(this.borderPull?.ids.includes(c.id)){if(e.type==='pointerup'){const at=this.toLogical(e);c.x=at.x;c.y=at.y;}this.streamBorderPull(true);this.borderPull=null;}
     this.contacts.delete(c.id);
     this.view.debug.contacts = this.contacts.size;
-    if(c.zone==='tangible')this.updateTangibleContacts();
+    if(c.zone==='tangible'){
+      c.releasedAt=performance.now();
+      if(e.type!=='pointerup'){
+        this.placementRejected=true;this.placementRecent.forEach(t=>{t.consumed=true;});
+      }
+      this.updateTangibleContacts();
+      if(this.placementRecent.length===1&&!this.placementRejected){
+        this.placementLatchTimer=setTimeout(()=>{this.placementRecent=[];this.view.tangibleTouch=null;this.placementLatchTimer=null;},TANGIBLE_CONTACT_GRACE_MS);
+      }
+      const active=[...this.contacts.values()].some(t=>t.zone==='tangible');
+      if(!active&&this.placementRejected){this.placementRecent=[];this.placementRejected=false;}
+      else if(!active&&!this.placementTimer&&this.placementRecent.length===2&&!this.placementSent){this.placementRecent=[];}
+    }
 
     if (c.zone === 'pad' && c.padKey) this.padUp(c.padKey, c.id);
     if (c.zone === 'steer' && c.panel) this.releaseStick(c.panel.team);
@@ -552,6 +577,8 @@ export class GestureRecognizer {
 
   /** Release everything (WebSocket lost, tab hidden) so no pad stays "held" on the server. */
   releaseAll(): void {
+    this.placementRecent=[];this.placementRejected=false;
+    if(this.placementLatchTimer)clearTimeout(this.placementLatchTimer);this.placementLatchTimer=null;
     if(this.borderPull){this.streamBorderPull(true);this.borderPull=null;}
     if(this.placementTimer)clearTimeout(this.placementTimer);
     this.placementTimer=null;this.placementMousePoint=null;this.view.tangibleTouch=null;
@@ -610,7 +637,7 @@ export class GestureRecognizer {
     if (!state || state.phase !== 'RACE' || this.slingIds || this.pendingPlacement) return;
     const free = [...this.contacts.values()].filter(c => c.zone === 'free' && !c.consumed);
 
-    if (free.length === 2 && !free.some(c => c.outward)) {
+    if (free.length === 2 && !this.borderPull && !free.some(c => c.outward && (c.x-c.sx)*c.outward.x+(c.y-c.sy)*c.outward.y>=PULL_MIN_PX)) {
       const d = Math.hypot(free[0].x - free[1].x, free[0].y - free[1].y);
       if (d >= BOOST_MIN_PX && d <= BOOST_MAX_PX) {
         const mid = { x: (free[0].x + free[1].x) / 2, y: (free[0].y + free[1].y) / 2 };
@@ -750,14 +777,16 @@ export class GestureRecognizer {
     if (n === 0) return;
     const rawGap = Math.abs(a.edgeIndex! - b.edgeIndex!);
     if (Math.min(rawGap, n - rawGap) > PULL_EDGE_INDEX_GAP) return;
-    const outward = { x: (a.outward!.x + b.outward!.x) / 2, y: (a.outward!.y + b.outward!.y) / 2 };
-    const outLen = Math.hypot(outward.x, outward.y);
-    if (outLen < 0.8) return;
-    outward.x /= outLen; outward.y /= outLen;
+    if(a.edgeSide!==b.edgeSide)return; // Same side of the ribbon, even around a tight bend.
+    const signedGap=((b.edgeIndex!-a.edgeIndex!+n*1.5)%n)-n/2;
+    const index=(Math.round(a.edgeIndex!+signedGap/2)+n)%n;
+    const tangent=trackTangent(state.track!,index),side=a.edgeSide??1;
+    const outward={x:-tangent.y*side,y:tangent.x*side};
     const dx = ((a.x - a.sx) + (b.x - b.sx)) / 2;
     const dy = ((a.y - a.sy) + (b.y - b.sy)) / 2;
     if (dx * outward.x + dy * outward.y < PULL_MIN_PX) return;
-    const start = { x: (a.sx + b.sx) / 2, y: (a.sy + b.sy) / 2 };
+    const centre=state.track!.centerline[index],halfWidth=state.track!.widths[index]/2;
+    const start={x:centre.x+outward.x*halfWidth,y:centre.y+outward.y*halfWidth};
     this.borderPull={ids:[a.id,b.id],gestureId:`${Date.now()}-${++this.pullSequence}`,start,outward,team:nearestStationTeam(start),lastSent:-Infinity};
     candidates.forEach(c=>{c.consumed=true;});
     this.streamBorderPull(false);

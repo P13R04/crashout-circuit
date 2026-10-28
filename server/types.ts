@@ -10,6 +10,7 @@ export interface Vec2 {
 export type Team = 'A' | 'B';
 export type Phase = 'LOBBY' | 'MAP' | 'READY' | 'RACE' | 'PAUSED' | 'RESULT';
 export type ItemKind = 'slingshot' | 'boost';
+export type Difficulty = 'easy' | 'medium' | 'hard';
 export type DriveMode = 'auto' | 'pedal';
 export type TangiblePlacementMode = 'manual' | 'touch';
 export interface TangiblePlacementRequest { id: TangibleId; token: number; expiresAt: number }
@@ -166,6 +167,7 @@ export interface TutorialState {
 
 /** Subset of config.json the clients need to draw rings, timers and thresholds. */
 export interface GameParams {
+  difficulty: Difficulty;
   hpMax: number;
   lapsToWin: number;
   sessionMaxSeconds: number;
@@ -221,6 +223,7 @@ export interface GameState {
   deformations: TrackDeformation[];
   winner: Team | 'draw' | null;
   sessionStartAt: number;
+  raceDeadline: number; // 0 when the race timer is disabled
   pausedAt: number;
   /** Ordered start/end targets for each team, set after the two anchor placements. */
   mapTargets: MapTargets | null;
@@ -254,6 +257,9 @@ export interface BaseMsg {
 }
 
 // Table → Server
+export interface RaceSettingsMsg extends BaseMsg {
+  type: 'RaceSettings'; difficulty?: Difficulty; lapsToWin?: number; sessionMaxSeconds?: number;
+}
 export interface StrokeDrawMsg extends BaseMsg {
   type: 'StrokeDraw';
   creator: Team;
@@ -446,6 +452,7 @@ export interface PhaseChangeMsg extends BaseMsg {
 }
 
 export type ClientMessage =
+  | RaceSettingsMsg
   | StrokeDrawMsg
   | GenerateTrackMsg
   | BeginRaceMsg

@@ -6,7 +6,7 @@
  * Only local energy paths, bounded trails and feedback change every frame.
  */
 import type { GameState, Team, Vec2 } from '../server/types.js';
-import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PLAY_AREA, TANGIBLE_DEPOT, NEUTRAL_RIGHT, HOME_BUTTON, SETTINGS_BUTTON, inTangibleDepot } from '../server/layout.js';
+import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PLAY_AREA, TANGIBLE_DEPOT, NEUTRAL_CONTROLS, SETTINGS_BUTTON, inTangibleDepot } from '../server/layout.js';
 import { HUD, drawItemIcon } from './HUD.js';
 import { TEAM_COLOR, type View, type SlingPreview } from './view.js';
 import { icon, type Icon } from './icons.js';
@@ -38,7 +38,6 @@ export const DRIVE_MODE_BUTTON = DRIVE_MODE_BUTTONS.A;
 export const MAP_GENERATE_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 export const RACE_START_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 /** Reset button located in the vertical middle on the far right edge of the screen. */
-export const RESET_BUTTON = HOME_BUTTON;
 
 export class Renderer {
   private hud = new HUD();
@@ -80,7 +79,7 @@ export class Renderer {
     if (!state) return;
 
     if (state.phase === 'LOBBY') { vehicles.clear(); this.drawLobby(ctx); return; }
-    if (state.phase === 'MAP') { vehicles.clear(); this.drawMap(ctx, state, view); this.drawResetButton(ctx); return; }
+    if (state.phase === 'MAP') { vehicles.clear(); this.drawMap(ctx, state, view);  return; }
     if (state.phase !== 'READY' && state.phase !== 'RACE' && state.phase !== 'PAUSED' && state.phase !== 'RESULT') return;
     const now = state.phase === 'PAUSED' ? state.pausedAt : view.now();
 
@@ -106,12 +105,12 @@ export class Renderer {
     if (state.phase === 'PAUSED') { this.drawPaused(ctx); this.drawPauseButton(ctx, 'REPRENDRE'); }
     if (state.phase === 'RESULT') this.drawResult(ctx, state);
     drawTutorial(ctx, state, this.reducedMotion ? 0 : this.time, DRIVE_MODE_BUTTONS);
-    this.drawResetButton(ctx);
+
   }
 
   private drawNeutralZones(ctx: Ctx,state: GameState): void {
     ctx.save();
-    for(const r of [TANGIBLE_DEPOT,NEUTRAL_RIGHT]){
+    for(const r of [TANGIBLE_DEPOT,NEUTRAL_CONTROLS]){
       ctx.fillStyle='#09131ddd';ctx.strokeStyle='#7d909b55';ctx.lineWidth=1.5;
       ctx.beginPath();ctx.roundRect(r.x,r.y,r.w,r.h,14);ctx.fill();ctx.stroke();
     }
@@ -127,13 +126,6 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawResetButton(ctx: Ctx): void {
-    const b = RESET_BUTTON;
-    ctx.save(); ctx.fillStyle = '#080f26dd'; ctx.strokeStyle = '#8795af'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 14); ctx.fill(); ctx.stroke();
-    icon(ctx, 'home', b.x + b.w / 2, b.y + b.h / 2, 32, '#b7c2da');
-    ctx.restore();
-  }
 
   private drawLobby(ctx: Ctx): void {
     ctx.save(); ctx.textAlign = 'center';
@@ -328,8 +320,9 @@ export class Renderer {
       ctx.restore(); return;
     }
     if (state.tutorial || state.sessionMode === 'tangibles-test') return;
-    // Team laps live in their pilot panels. Only the shared clock is repeated.
-    const remaining = Math.max(0, state.params.sessionMaxSeconds - (now - state.sessionStartAt) / 1000);
+    if(state.params.sessionMaxSeconds<=0)return;
+    // Team laps live in their pilot panels. Only the enabled clock is repeated.
+    const remaining = Math.max(0, (state.raceDeadline - now) / 1000);
     const mm = Math.floor(remaining / 60), ss = String(Math.floor(remaining % 60)).padStart(2, '0');
     ctx.save(); ctx.textAlign = 'center'; ctx.font = 'bold 24px monospace';
     for (const [y, rotation] of [[255, Math.PI], [825, 0]]) {

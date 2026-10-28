@@ -75,6 +75,25 @@ const conn = connectWs('/ws', {
 const controls = createControls(m => conn.send(m));
 const gestures = new GestureRecognizer(canvas, view, (m) => conn.send(m));
 
+document.getElementById('settings-home')!.addEventListener('click',()=>{conn.send({type:'Reset'});pcTools.open=false;});
+const difficultyInput=document.getElementById('race-difficulty') as HTMLSelectElement;
+const lapsInput=document.getElementById('race-laps') as HTMLInputElement;
+const timerInput=document.getElementById('race-timer') as HTMLInputElement;
+const minutesInput=document.getElementById('race-minutes') as HTMLInputElement;
+difficultyInput.addEventListener('change',()=>conn.send({type:'RaceSettings',difficulty:difficultyInput.value}));
+lapsInput.addEventListener('change',()=>{if(lapsInput.checkValidity())conn.send({type:'RaceSettings',lapsToWin:Number(lapsInput.value)});});
+const sendTimer=()=>{if(!timerInput.checked||minutesInput.checkValidity())conn.send({type:'RaceSettings',sessionMaxSeconds:timerInput.checked?Math.round(Number(minutesInput.value)*60):0});};
+timerInput.addEventListener('change',sendTimer);minutesInput.addEventListener('change',()=>{if(timerInput.checked)sendTimer();});
+function syncRaceOptions(): void {
+  const s=view.state;if(!s)return;
+  const editable=!s.tutorial&&s.phase!=='RESULT';
+  difficultyInput.disabled=!editable;lapsInput.disabled=!editable||s.sessionMode==='tangibles-test';timerInput.disabled=lapsInput.disabled;
+  if(document.activeElement!==difficultyInput)difficultyInput.value=s.params.difficulty;
+  if(document.activeElement!==lapsInput)lapsInput.value=String(s.params.lapsToWin);
+  timerInput.checked=s.params.sessionMaxSeconds>0;minutesInput.disabled=!timerInput.checked||timerInput.disabled;
+  if(s.params.sessionMaxSeconds>0&&document.activeElement!==minutesInput)minutesInput.value=String(s.params.sessionMaxSeconds/60);
+}
+
 const driveOptions=document.getElementById('drive-options')!;
 const driveButtons={A:document.getElementById('drive-A')!,B:document.getElementById('drive-B')!};
 for(const team of ['A','B'] as const)driveButtons[team].addEventListener('click',()=>conn.send({type:'ToggleDriveMode',team}));
@@ -241,6 +260,7 @@ function handleMessage(msg: ServerMessage): void {
       view.state = sync.apply(msg.state, msg.t);
       gestures.syncState();
       syncDriveOptions();
+      syncRaceOptions();
       if (view.state.mapTargets) {
         if (!prev?.mapTargets) view.mapNotice = null;
         view.pendingDivider = [];

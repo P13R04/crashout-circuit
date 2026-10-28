@@ -123,7 +123,7 @@ await test('READY accepts contact placement; mouse testing uses two clicks with 
 await test('dropping into the neutral depot disables the object and it can be placed again immediately',()=>{
   const r=rig();r.rules.prepareTangiblePlacement(1);r.place(1);assert.equal(r.s.walls.length,1);
   r.rules.prepareTangiblePlacement(1);assert.equal(r.s.walls.length,0,'announcing a reposition takes the object off the road');
-  r.place(1,{x:662,y:48},{x:662,y:116});assert.equal(r.s.tangibles[1].status,'parked');assert.equal(r.s.tangibles[1].active,false);
+  r.place(1,{x:1794,y:425},{x:1894,y:425});assert.equal(r.s.tangibles[1].status,'parked');assert.equal(r.s.tangibles[1].active,false);
   r.rules.onTangibleControl({type:'TangibleControl',id:1,t:0,action:'activate'});assert.equal(r.s.walls.length,0,'depot is always neutral');
   r.rules.prepareTangiblePlacement(1);r.place(1);assert.equal(r.s.walls.length,1,'no charge or cooldown is needed');
 });
@@ -138,6 +138,16 @@ await test('one continuous pull grows past a wall length, remains bounded and gi
   const before=JSON.stringify(r.s.deformations);r.rules.onBorderPull({type:'BorderPull',t:0,team:'A',x:at.x,y:at.y,dx:out.x*30,dy:out.y*30,gestureId:'continuous'});assert.equal(JSON.stringify(r.s.deformations),before,'a released gesture cannot be resumed by a delayed packet');
   for(let k=0;k<5;k++){r.rules.onBorderPull({type:'BorderPull',t:0,team:'A',x:at.x,y:at.y,dx:out.x*220,dy:out.y*220,gestureId:`repeat-${k}`});r.clock.now+=100;r.rules.updateTrackDeformations(r.clock.now);}
   for(let i=0;i<track.centerline.length;i++)assert.ok(Math.hypot(track.centerline[i].x-track.baseCenterline[i].x,track.centerline[i].y-track.baseCenterline[i].y)<=r.s.params.trackDeformMaxShiftPx+1e-5,'repeated pulls cannot stack beyond the maximum');
+});
+await test('two brief touch taps may arrive sequentially within the grace window',async()=>{
+  const r=gestures();r.announce();r.down(1,880,540);r.up(1,880,540);await sleep(450);
+  r.down(2,980,540);r.up(2,980,540);await sleep(140);
+  assert.equal(r.sent.filter(m=>m.type==='TangibleTouchPlaced').length,1);r.g.releaseAll();
+});
+await test('a lone touch is forgotten after the grace window and cannot combine with a later gesture',async()=>{
+  const r=gestures();r.announce();r.down(1,880,540);r.up(1,880,540);await sleep(1700);
+  r.down(2,980,540);r.up(2,980,540);await sleep(140);
+  assert.equal(r.sent.length,0);r.g.releaseAll();
 });
 console.log(`\n${passed} touch-placement scenarios passed`);
 process.exit(0);

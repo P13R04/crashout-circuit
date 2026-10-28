@@ -278,6 +278,23 @@ await test('a border pull follows the two fingers through a full wall-sized drag
   assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,0);
 });
 
+await test('bend grabs accept fingers inside and outside the edge and drag perpendicular to the local tangent',async()=>{
+  const {generatePreset}=await import('../server/MapGenerator.js');const {trackTangent}=await import('../server/geometry.js');
+  const r=rig('boost'),track=generatePreset();r.view.state!.track=track;
+  const index=42;
+  const point=(i:number,offset:number)=>{const t=trackTangent(track,i),edge=track.outerEdge[i],centre=track.centerline[i],side=(edge.x-centre.x)*(-t.y)+(edge.y-centre.y)*t.x<0?-1:1;return{x:edge.x-t.y*side*offset,y:edge.y+t.x*side*offset};};
+  const a=point(index,35),b=point(index+2,-35),t=trackTangent(track,index+1),edge=track.outerEdge[index+1],centre=track.centerline[index+1],side=(edge.x-centre.x)*(-t.y)+(edge.y-centre.y)*t.x<0?-1:1,out={x:-t.y*side,y:t.x*side};
+  r.down(1,a.x,a.y);r.down(2,b.x,b.y);r.move(1,a.x+out.x*100,a.y+out.y*100);r.move(2,b.x+out.x*100,b.y+out.y*100);r.up(1,a.x+out.x*100,a.y+out.y*100);r.up(2,b.x+out.x*100,b.y+out.y*100);
+  const pull=r.sent.find(m=>m.type==='BorderPull');assert.ok(pull,'the curved edge is grabbable on either side of its outline');
+  assert.ok(Math.abs((pull.dx as number)*t.x+(pull.dy as number)*t.y)<20,'the pull follows the normal to the local tangent');
+});
+
+await test('stationary boost contacts still work on the ribbon edges despite the wider drag grab margin',async()=>{
+  const {generatePreset}=await import('../server/MapGenerator.js');const r=rig('boost'),track=generatePreset();r.view.state!.track=track;
+  const i=42,a=track.outerEdge[i],b=track.innerEdge[i];r.down(1,a.x,a.y);r.down(2,b.x,b.y);await sleep(240);
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1);r.recognizer.releaseAll();
+});
+
 let failed = 0;
 for (const [name, ok, err] of results) {
   console.log(`${ok ? '  ✓' : '  ✗'} ${name}`);

@@ -8,7 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Default config values (REQ-8.1, REQ-8.2)
 const defaults = {
   lapsToWin: 3,
-  sessionMaxSeconds: 300,
+  sessionMaxSeconds: 0,
   hpMax: 100,
   dmgWall: 10,
   dmgArc: 10,

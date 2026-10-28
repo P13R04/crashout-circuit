@@ -8,6 +8,7 @@
  */
 import type { GameState, Team, Car } from './types.js';
 import { config } from './config.js';
+import { speedScale } from './raceSettings.js';
 import { nearestOnTrack } from './geometry.js';
 import { GameRules, CAR_RADIUS } from './GameRules.js';
 
@@ -92,7 +93,7 @@ export class PhysicsLoop {
 
     const boost = now < car.boostUntil ? 1 + config.boostGain * car.boostK : 1;
     const slow = now < car.slowUntil ? config.arcSlowFactor : 1;
-    const baseMaxFwd = isPedal ? config.vMaxPedal : config.vMaxFwd;
+    const baseMaxFwd = (isPedal ? config.vMaxPedal : config.vMaxFwd)*speedScale(this.state.params.difficulty);
     const maxFwd = baseMaxFwd * boost * slow;
 
     const target = throttle * maxFwd;

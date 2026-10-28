@@ -1,6 +1,6 @@
 {
   "lapsToWin": 3,
-  "sessionMaxSeconds": 300,
+  "sessionMaxSeconds": 0,
   "hpMax": 100,
   "dmgWall": 10,
   "dmgArc": 10,

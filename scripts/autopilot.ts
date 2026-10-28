@@ -11,6 +11,7 @@ let passed = 0;
 function test(name: string, run: () => void): void { run(); passed++; console.log(`  ✓ ${name}`); }
 function rig(begin = true) {
   const state = createInitialState(), clock = { now: 1_000_000 };
+  state.params.difficulty='hard'; // Preserve the reference-speed scenarios; ratios have dedicated tests.
   const feedback: Array<{ kind: string; team: Team }> = [];
   const rules = new GameRules(state, {
     transition: phase => { state.phase = phase; }, broadcastFull() {},

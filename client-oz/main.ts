@@ -220,7 +220,7 @@ function refresh(): void {
     button.disabled=!enabled||s?.phase==='PAUSED';
     button.classList.toggle('active',pending?.id===id);
     button.setAttribute('aria-pressed',String(pending?.id===id));
-    button.title=`Annoncer la prochaine pose · ${id===1?'M':id===2?'1 / &':'2 / é'}`;
+    button.title=`Annoncer la prochaine pose · ${id===1?'1 / &':id===2?'2 / é':'3 / "'}`;
   }
   touchCancel.hidden=!pending;
   touchCancel.textContent=`Annuler · ${Math.max(0,Math.ceil(((pending?.expiresAt??0)-sync.now())/1000))} s`;

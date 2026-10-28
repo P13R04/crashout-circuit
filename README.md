@@ -74,6 +74,12 @@ Le bouton **TUTORIEL** du lobby lance une course sur le circuit prédéfini, san
 
 Un objet armé ne périme pas. Si un portail déjà créé n’est pas traversé, l’équipe peut recommencer la leçon avec un nouveau boost. Le mode (table ou PC) est déduit du pointeur qui touche le bouton ; les interrupteurs de test PC sont désactivés. À la fin des deux équipes, un écran renvoie à l'accueil. La logique est dans `server/Tutorial.ts`, l'affichage dans `client-table/TutorialOverlay.ts`.
 
+## Réglages de course
+
+Dans l’engrenage **à gauche entre les pilotes** : **Easy** (50 %, par défaut), **Medium** (75 %) ou **Hard** (vitesse de référence), nombre de tours (1–99) et chronomètre facultatif (désactivé par défaut). Le réglage de vitesse s’applique aussi aux pédales et aux pilotes automatiques de test. Les valeurs sont partagées avec les clients et conservées au retour à l’accueil. Activer ou changer un chrono pendant la course démarre la nouvelle durée à cet instant ; la pause le fige. Accueil se trouve uniquement dans les paramètres.
+
+La prise de piste accepte une marge intérieure/extérieure de **50 px logiques** autour de son bord et utilise la tangente locale dans les virages. Deux contacts immobiles peuvent créer un boost armé ; une traction engage la déformation.
+
 ## POWER et objets ramassés
 
 Les boutons nommés **FANTÔME** et **DÉTRUIRE** ont été retirés de la zone copilote. Le copilote possède un seul bouton d’action, **POWER**, et le pad de réparation.
@@ -116,9 +122,9 @@ Vérifier les deux orientations de lecture sur la table réelle. Les pictogramme
 
 La console `/oz` gère **un mur** et **deux piliers** neutres. Ils sont disponibles immédiatement, sans recharge, cooldown ou limite de déplacement. Leurs effets concernent les deux voitures. Oz ne lance pas la partie et ne gère pas les bonus.
 
-Dans **Pose tactile**, cliquer **Mur / M**, **Pilier 1 / 1 (&)** ou **Pilier 2 / 2 (é)**, puis déposer l’objet avec deux contacts neufs. Les chiffres du pavé numérique fonctionnent aussi ; les raccourcis sont ignorés dans les champs et sélecteurs. Le milieu fixe le centre ; le grand axe du mur est perpendiculaire à l’axe des doigts. Les dimensions LEGO restent fixes. Deux contacts valides sont confirmés après 90 ms ; lever les doigts ne retire pas l’objet.
+Dans **Pose tactile**, cliquer **Mur / 1 (&)**, **Pilier 1 / 2 (é)** ou **Pilier 2 / 3 (")**, puis déposer l’objet avec deux contacts neufs. Les chiffres du pavé numérique fonctionnent aussi ; les raccourcis sont ignorés dans les champs et sélecteurs. Le milieu fixe le centre ; le grand axe du mur est perpendiculaire à l’axe des doigts. Les dimensions LEGO restent fixes. Deux contacts valides sont confirmés après 90 ms ; ils peuvent être décalés de 1,6 s, même si le premier doigt est levé. Lever les doigts ne retire pas l’objet.
 
-La zone neutre **à gauche de Pause** présente les trois tangibles au début de la partie. Une pose dans cette zone les désactive : ni collision, ni champ, ni arc électrique. Ils peuvent être reposés sur le circuit immédiatement, après une nouvelle annonce d’Oz. Cliquer un objet sur la carte Oz signale aussi son retrait et le renvoie inactif au dépôt. Sélectionner directement un objet déjà posé prépare son replacement et coupe son ancien effet.
+La zone neutre **à droite, entre les deux copilotes** présente les trois tangibles au début de la partie. Une pose dans cette zone les désactive : ni collision, ni champ, ni arc électrique. Ils peuvent être reposés sur le circuit immédiatement, après une nouvelle annonce d’Oz. Cliquer un objet sur la carte Oz signale aussi son retrait et le renvoie inactif au dépôt. Sélectionner directement un objet déjà posé prépare son replacement et coupe son ancien effet.
 
 L’attente d’Oz dure 20 secondes avec **Annuler / Échap** ; ce délai concerne seulement l’annonce de pose, pas un bonus armé. Pause, reset, déconnexion et changement de mode annulent cette attente. Les anciens contacts, paumes, prises ambiguës et paquets périmés sont rejetés. Pendant l’attente, les nouveaux contacts sur la carte servent uniquement à la pose ; le pilotage et la réparation continuent.
 

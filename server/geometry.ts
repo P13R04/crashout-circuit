@@ -140,3 +140,10 @@ export function slingshotShot(anchor: Vec2, pouch: Vec2, p: SlingshotParams): Sl
   };
   return { valid: pull >= p.slingMinPullPx, pull, dir, range, target };
 }
+
+/** Smoothed local tangent, stable at sampled bends and across the loop seam. */
+export function trackTangent(track: Pick<TrackGeometry,'centerline'>, index:number): Vec2 {
+  const points=track.centerline,n=points.length;if(n<2)return{x:1,y:0};
+  const a=points[(index-2+n)%n],b=points[(index+2)%n];
+  const length=Math.hypot(b.x-a.x,b.y-a.y)||1;return{x:(b.x-a.x)/length,y:(b.y-a.y)/length};
+}

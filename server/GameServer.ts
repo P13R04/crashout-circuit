@@ -103,6 +103,9 @@ export class GameServer {
         this.sendTo(client.ws, { type: 'Pong', t: Date.now(), clientT: msg.t } satisfies PongMsg);
         break;
       // Table → server (the pilot joystick and item button live on the table)
+      case 'RaceSettings':
+        if(fromTable)this.rules.updateRaceSettings(msg);
+        break;
       case 'PilotInput':
         if (fromTable && (msg.team === 'A' || msg.team === 'B')) this.rules.onPilotInput(msg.team, msg);
         break;

@@ -52,6 +52,11 @@ try {
   game.rules.startRace(undefined, true); // fixture: table track generation is covered by rule tests
   await table.until(s => s.phase === 'READY');
   assert.ok(game.getState().track);
+  oz.send({type:'RaceSettings',difficulty:'hard',lapsToWin:5,sessionMaxSeconds:60});await oz.flush();
+  assert.equal(game.getState().params.difficulty,'easy','Oz cannot alter race settings');
+  table.send({type:'RaceSettings',difficulty:'medium',lapsToWin:5,sessionMaxSeconds:120});
+  await oz.until(s=>s.params.difficulty==='medium'&&s.params.lapsToWin===5&&s.params.sessionMaxSeconds===120);
+  table.send({type:'RaceSettings',difficulty:'easy',lapsToWin:3,sessionMaxSeconds:0});await table.flush();
 
   // Touch placement splits authority: Oz announces; only table contacts supply the pose.
   table.send({type:'TangiblePlacementMode',mode:'touch'});await table.flush();

@@ -33,6 +33,7 @@ interface Rig { state: GameState; rules: GameRules; physics: PhysicsLoop; clock:
 function rig(seed = 1): Rig {
   const clock = { now: 1_000_000 };
   const state = createInitialState();
+  state.params.difficulty='hard';
   const feedback: string[] = [];
   const phases: Phase[] = [];
   const host: RulesHost = {
@@ -701,6 +702,8 @@ test('victory at lapsToWin → RESULT', () => {
 });
 test('timeout → RESULT, leader wins', () => {
   const r = raceRig();
+  r.rules.updateRaceSettings({type:'RaceSettings',t:0,sessionMaxSeconds:60});
+  r.state.raceDeadline=r.clock.now-1;
   r.state.cars.A.checkpointIndex = 4;
   r.state.sessionStartAt = r.clock.now - config.sessionMaxSeconds * 1000 - 1;
   r.advance(50);
@@ -1711,11 +1714,12 @@ test('confirmed snapshots reconcile pending edits; rejected or reset state canno
 });
 test('shortcuts support AZERTY, numpad and modifiers without hijacking other browser shortcuts', () => {
   const event = (key: string, code = '', extra = {}) => ({ key, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...extra });
-  assert.equal(ozShortcut(event('M')), 'wall');
-  assert.equal(ozShortcut(event('&', 'Digit1')), 'pylon1');
-  assert.equal(ozShortcut(event('é', 'Digit2')), 'pylon2');
-  assert.equal(ozShortcut(event('1', 'Numpad1')), 'pylon1');
-  assert.equal(ozShortcut(event('2', 'Numpad2')), 'pylon2');
+  assert.equal(ozShortcut(event('M')), null);
+  assert.equal(ozShortcut(event('&', 'Digit1')), 'wall');
+  assert.equal(ozShortcut(event('é', 'Digit2')), 'pylon1');
+  assert.equal(ozShortcut(event('1', 'Numpad1')), 'wall');
+  assert.equal(ozShortcut(event('2', 'Numpad2')), 'pylon1');
+  assert.equal(ozShortcut(event('3', 'Numpad3')), 'pylon2');
   for (const [key, action] of [['ArrowLeft', 'left'], ['ArrowRight', 'right'], [' ', 'presence'], ['Delete', 'remove'], ['Escape', 'cancel'], ['r', 'view']]) assert.equal(ozShortcut(event(key)), action);
   assert.equal(ozShortcut(event('z', '', { ctrlKey: true })), 'undo');
   assert.equal(ozShortcut(event('r', '', { ctrlKey: true })), null);
