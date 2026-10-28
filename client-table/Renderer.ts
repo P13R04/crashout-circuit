@@ -22,7 +22,7 @@ import { NeonVehicles } from './NeonVehicles.js';
 import { NeonObjects } from './NeonObjects.js';
 import { NeonEffects } from './NeonEffects.js';
 import { glow, NEON, plate } from './neon.js';
-import { activeMapTeam, inMapAnchor, MAP_ANCHOR_RADIUS } from '../server/mapCreation.js';
+import { activeMapTeam, inMapAnchor, mapStrokeEndpoints, MAP_ANCHOR_RADIUS } from '../server/mapCreation.js';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -429,7 +429,7 @@ export class Renderer {
 
       // Only the active team's direction is shown. Curved chevrons leave the divider
       // towards its half-plane, without suggesting that the straight divider is a road.
-      if (team) {
+      if (team && ![...view.strokes.values()].some(s => s.team === team && !s.done)) {
         const [from, to] = state.mapTargets[team];
         this.drawMapArrow(ctx, from, to, TEAM_COLOR[team], motion);
       }
@@ -452,11 +452,12 @@ export class Renderer {
       }
 
       if (team) {
-        const [from, to] = state.mapTargets[team];
         const activeStroke = [...view.strokes.values()].find(s => s.team === team && !s.done);
+        const [from, to] = mapStrokeEndpoints(activeStroke?.pts[0], ...state.mapTargets[team]);
         const nearTarget = activeStroke && inMapAnchor(activeStroke.pts[activeStroke.pts.length - 1], to);
-        this.drawMapAnchor(ctx, from, team === 'A' ? 'P1' : 'P2', 'DÉPART', TEAM_COLOR[team], team, !activeStroke, t);
-        this.drawMapAnchor(ctx, to, team === 'A' ? 'P2' : 'P1', nearTarget ? 'RELÂCHEZ ICI' : 'ARRIVÉE', TEAM_COLOR[team], team, true, t);
+        const label = (p: Vec2) => p === state.mapDivider![0] ? 'P1' : 'P2';
+        this.drawMapAnchor(ctx, from, label(from), 'DÉPART', TEAM_COLOR[team], team, !activeStroke, t);
+        this.drawMapAnchor(ctx, to, label(to), activeStroke ? nearTarget ? 'RELÂCHEZ ICI' : 'ARRIVÉE' : 'DÉPART', TEAM_COLOR[team], team, true, t);
       } else {
         this.drawMapAnchor(ctx, a, 'P1', '✓ RELIÉ', TEAM_COLOR.A, 'A', false, t);
         this.drawMapAnchor(ctx, b, 'P2', '✓ RELIÉ', TEAM_COLOR.B, 'B', false, t);

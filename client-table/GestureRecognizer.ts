@@ -29,7 +29,7 @@ import { nearestOnTrack, slingshotShot } from '../server/geometry.js';
 import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, DRIVE_MODE_BUTTONS, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
 import { tutorialButtonAt } from './TutorialOverlay.js';
 import { showDividerRefusal, showMapError, showMapNotice, type View } from './view.js';
-import { activeMapTeam, inMapAnchor, mapEndpointError } from '../server/mapCreation.js';
+import { activeMapTeam, inMapAnchor, mapEndpointError, mapStrokeEndpoints } from '../server/mapCreation.js';
 
 export const MAX_CONTACTS = 10;
 const SETTLE_MS = 180;          // wait for all fingers to land before judging a gesture
@@ -373,6 +373,7 @@ export class GestureRecognizer {
           s.rejectedAt = performance.now();
           showMapError(this.view, error, s.team);
         } else {
+          if (targets && mapStrokeEndpoints(s.pts[0], ...targets)[0] === targets[1]) s.pts.reverse();
           s.submitting = true;
           this.send({ type: 'StrokeDraw', creator: s.team, pts: s.pts });
         }
@@ -693,10 +694,8 @@ export class GestureRecognizer {
       return null;
     }
     const [start, end] = state.mapTargets[team];
-    if (!inMapAnchor(p, start)) {
-      showMapError(this.view, inMapAnchor(p, end)
-        ? team === 'A' ? 'mapWaitCyan' : 'mapLocked'
-        : 'mapWrongStart', inMapAnchor(p, end) ? team === 'A' ? 'B' : 'A' : team);
+    if (!inMapAnchor(p, start) && !inMapAnchor(p, end)) {
+      showMapError(this.view, 'mapWrongStart', team);
       return null;
     }
     this.view.mapNotice = null;

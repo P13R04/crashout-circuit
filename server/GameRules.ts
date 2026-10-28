@@ -15,10 +15,10 @@ import type {
 } from './types.js';
 import { AutomaticPilot } from './AutomaticPilot.js';
 import { config } from './config.js';
-import { dist, distToSegment, nearestOnTrack, segmentsIntersect, slingshotShot, wrapAngle } from './geometry.js';
+import { dist, distToSegment, nearestOnTrack, segmentsIntersect, slingshotShot, wrapAngle, clampToTrackRibbon } from './geometry.js';
 import { generate, generatePreset, validateStroke, rebuildEdges } from './MapGenerator.js';
 import { nearestStationTeam, LOGICAL_W, checkDivider, chargeZoneTeam, localToWorld, panelOf, CHARGE_ZONE_LOCAL } from './layout.js';
-import { activeMapTeam, mapEndpointError } from './mapCreation.js';
+import { activeMapTeam, mapEndpointError, mapStrokeEndpoints } from './mapCreation.js';
 import { Tutorial, TUTORIAL_ARM_WINDOW_S, TUTORIAL_PICKUP_RESPAWN_S, TUTORIAL_OBSTACLE_PREFIX } from './Tutorial.js';
 import { withinCorrection, wallContact } from './tangibleGeometry.js';
 import { tangibleArc, tangibleDefinition, validTangiblePose } from './tangibles.js';
@@ -257,7 +257,7 @@ export class GameRules {
       this.host.feedback(s.mapStrokes[team] ? 'mapLocked' : 'mapWaitCyan', p1.x, p1.y, team);
       return;
     }
-    const pts = (msg.pts ?? [])
+    let pts = (msg.pts ?? [])
       .filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))
       .slice(0, MAX_STROKE_POINTS)
       .map(p => ({ x: p.x, y: p.y }));
@@ -269,6 +269,8 @@ export class GameRules {
       this.host.feedback(error, last.x, last.y, team);
       return;
     }
+    const [drawStart, drawEnd] = mapStrokeEndpoints(pts[0], p1, p2);
+    if (drawStart === p2) pts = pts.reverse();
     // Once accepted, lock the endpoints exactly to the common anchors. This
     // makes a near miss inside the target ring a clean, continuous circuit.
     pts[0] = { ...p1 };
@@ -276,7 +278,7 @@ export class GameRules {
     this.strokes[team] = pts;
     s.mapStrokes[team] = true;
     this.host.broadcastFull();
-    this.host.feedback('mapAccepted', p2.x, p2.y, team);
+    this.host.feedback('mapAccepted', drawEnd.x, drawEnd.y, team);
   }
 
   /** The shared button is the explicit handoff from drawing to generation. */
@@ -344,7 +346,7 @@ export class GameRules {
     for (const pad of Object.values(s.repairPads)) { pad.held = false; pad.startedAt = 0; }
     s.walls = []; s.arcs = []; s.boostGates = []; s.stones = [];
     s.pickups = track.pickupPositions.map((pos, i) => ({
-      id: i, pos: { ...pos }, kind: this.randomItem(), respawnAt: 0,
+      id: i, pos: clampToTrackRibbon(pos, track, 25), kind: this.randomItem(), respawnAt: 0,
     }));
     s.winner = null;
     s.sessionStartAt = waitForPlayers ? 0 : this.now + COUNTDOWN_MS;
@@ -1012,6 +1014,15 @@ export class GameRules {
     const start = track.featureIndices.start;
     const t = tangent(start);
     track.startLine = { pos: { ...track.centerline[start] }, normal: { x: -t.y, y: t.x } };
+    // Baptiste's pickups follow their own anchor when the road is pulled, even while respawning.
+    track.featureIndices.pickups.forEach((index, i) => {
+      const direction = tangent(index), normal = { x: -direction.y, y: direction.x };
+      const lateral = (track.widths[index] / 2) * .3 * (i % 2 === 0 ? 1 : -1);
+      const at = track.centerline[index];
+      const safe = clampToTrackRibbon({ x: at.x + normal.x*lateral, y: at.y + normal.y*lateral }, track, 25);
+      track.pickupPositions[i] = safe;
+      if (this.state.pickups[i]) this.state.pickups[i].pos = { ...safe };
+    });
   }
 
   /** A small grace band prevents an easing edge from unfairly dropping a car. */
@@ -1027,7 +1038,10 @@ export class GameRules {
     s.walls = s.walls.filter(w => !w.expiresAt || w.expiresAt > now);
 
     for (const p of s.pickups) {
-      if (p.respawnAt !== 0 && p.respawnAt <= now) { p.respawnAt = 0; p.kind = this.randomItem(); }
+      if (p.respawnAt !== 0 && p.respawnAt <= now) {
+        p.respawnAt = 0; p.kind = this.randomItem();
+        if (s.track) p.pos = clampToTrackRibbon(s.track.pickupPositions[p.id] ?? p.pos, s.track, 25);
+      }
     }
     for (const team of TEAMS) {
       const car = s.cars[team];

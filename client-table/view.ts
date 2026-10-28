@@ -74,11 +74,9 @@ export function showMapNotice(view: View, text: string, color = REFUSAL_COLOR): 
 }
 
 export function showMapError(view: View, kind: string, team: Team): void {
-  const start = team === 'A' ? 'P1' : 'P2';
-  const end = team === 'A' ? 'P2' : 'P1';
   const messages: Record<string, string> = {
-    mapWrongStart: `Partez de ${start}.`,
-    mapWrongEnd: `Rejoignez ${end}.`,
+    mapWrongStart: 'Partez d’un des deux points.',
+    mapWrongEnd: 'Rejoignez l’autre point.',
     mapWrongSide: 'Restez dans votre zone.',
     mapWaitCyan: 'Le cyan trace en premier.',
     mapLocked: `Tracé ${team === 'A' ? 'cyan' : 'rose'} déjà validé.`,

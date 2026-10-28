@@ -14,7 +14,7 @@
 
 import type { Vec2, TrackGeometry } from './types.js';
 import { config } from './config.js';
-import { segmentsIntersect } from './geometry.js';
+import { segmentsIntersect, clampToTrackRibbon } from './geometry.js';
 import { PLAY_AREA } from './layout.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -481,12 +481,14 @@ function placeFeatures(geo: BaseGeometry, randomStart = true, preferredStart?: V
   // 4 pickup spots, halfway between checkpoint pairs
   const pickupPositions: Vec2[] = [];
   const pickupIndices: number[] = [];
+  const baseGeo = { centerline, widths };
   for (let p = 0; p < PICKUP_COUNT; p++) {
     const idx = (startIdx + Math.round(((p + 0.5) / PICKUP_COUNT) * n)) % n;
     const normal = perpendicular(tangentAt(centerline, idx));
     const halfW = (widths[idx] ?? config.trackWidthBasePx) / 2;
     const lateral = halfW * 0.3 * (p % 2 === 0 ? 1 : -1);
-    pickupPositions.push(add(centerline[idx], scale(normal, lateral)));
+    const rawPos = add(centerline[idx], scale(normal, lateral));
+    pickupPositions.push(clampToTrackRibbon(rawPos, baseGeo, 25));
     pickupIndices.push(idx);
   }
 
@@ -649,6 +651,7 @@ function fitToPlayArea(pts: Vec2[]): Vec2[] {
     minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
     minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
   }
+  if (minX >= PLAY_AREA.x0 && maxX <= PLAY_AREA.x1 && minY >= PLAY_AREA.y0 && maxY <= PLAY_AREA.y1) return pts;
   const w = Math.max(maxX - minX, 1);
   const h = Math.max(maxY - minY, 1);
   const s = Math.min(1, (PLAY_AREA.x1 - PLAY_AREA.x0) / w, (PLAY_AREA.y1 - PLAY_AREA.y0) / h);
@@ -919,7 +922,8 @@ function denseRing(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2, boost: number, forc
  */
 function faithfulTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackGeometry | null {
   // First the drawing as it is (a deep dip across the divider is a deliberate crossing),
-  // then with every dip folded back (the classic bean)
+  // then with every dip folded back (the classic bean).
+  // Preserve the drawn shape; fit only when it overflows the safe table area.
   for (const forceFold of [false, true]) {
     for (const [minAmp, boost] of AMPLITUDE_BOOSTS) {
       const dense = denseRing(a, b, P1, P2, boost, forceFold, minAmp);

@@ -39,7 +39,7 @@ export interface TrackHit {
 }
 
 /** Nearest point on the closed centerline, with the local half-width. */
-export function nearestOnTrack(p: Vec2, track: TrackGeometry): TrackHit {
+export function nearestOnTrack(p: Vec2, track: Pick<TrackGeometry, 'centerline' | 'widths'>): TrackHit {
   const c = track.centerline;
   const n = c.length;
   let best: TrackHit = { index: 0, closest: c[0], distance: Infinity, halfWidth: 70 };
@@ -65,6 +65,37 @@ export function wrapAngle(a: number): number {
   while (a > Math.PI) a -= Math.PI * 2;
   while (a < -Math.PI) a += Math.PI * 2;
   return a;
+}
+
+/**
+ * Check if a point is within the drivable track ribbon (with an optional safety margin from the outer edge).
+ */
+export function isInsideTrackRibbon(p: Vec2, track: Pick<TrackGeometry, 'centerline' | 'widths'>, marginPx = 25): boolean {
+  if (!track || !track.centerline || track.centerline.length === 0) return false;
+  const hit = nearestOnTrack(p, track);
+  return hit.distance <= Math.max(0, hit.halfWidth - marginPx);
+}
+
+/**
+ * Clamp a position so that it is guaranteed to lie within the drivable track ribbon.
+ * If the position is already inside (with marginPx from the edge), it is unchanged.
+ * If it is outside or too close to the neon edge, it is pulled onto the ribbon towards the centerline.
+ */
+export function clampToTrackRibbon(p: Vec2, track: Pick<TrackGeometry, 'centerline' | 'widths'>, marginPx = 25): Vec2 {
+  if (!track || !track.centerline || track.centerline.length === 0) return { ...p };
+  const hit = nearestOnTrack(p, track);
+  const maxAllowedDist = Math.max(0, hit.halfWidth - marginPx);
+  if (hit.distance <= maxAllowedDist) {
+    return { ...p };
+  }
+  if (hit.distance < 1e-6) {
+    return { ...hit.closest };
+  }
+  const ratio = maxAllowedDist / hit.distance;
+  return {
+    x: hit.closest.x + (p.x - hit.closest.x) * ratio,
+    y: hit.closest.y + (p.y - hit.closest.y) * ratio,
+  };
 }
 
 // ─── Slingshot ──────────────────────────────────────────────────────────────

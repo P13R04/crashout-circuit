@@ -11,9 +11,15 @@ export function inMapAnchor(point: Vec2, anchor: Vec2): boolean {
   return Math.hypot(point.x - anchor.x, point.y - anchor.y) <= MAP_ANCHOR_RADIUS;
 }
 
-/** Strict endpoints for the guided creation flow (the generator remains independent). */
+/** Either anchor may be the start; the active team and its half stay unchanged. */
+export function mapStrokeEndpoints(first: Vec2 | undefined, start: Vec2, end: Vec2): [Vec2, Vec2] {
+  return first && inMapAnchor(first, end) ? [end, start] : [start, end];
+}
+
+/** Both visible rings keep the same hit area, whatever the drawing direction. */
 export function mapEndpointError(pts: Vec2[], start: Vec2, end: Vec2): string | null {
-  if (!pts.length || !inMapAnchor(pts[0], start)) return 'mapWrongStart';
-  if (pts.length < 2 || !inMapAnchor(pts[pts.length - 1], end)) return 'mapWrongEnd';
+  if (!pts.length || (!inMapAnchor(pts[0], start) && !inMapAnchor(pts[0], end))) return 'mapWrongStart';
+  const [, arrival] = mapStrokeEndpoints(pts[0], start, end);
+  if (pts.length < 2 || !inMapAnchor(pts[pts.length - 1], arrival)) return 'mapWrongEnd';
   return null;
 }
