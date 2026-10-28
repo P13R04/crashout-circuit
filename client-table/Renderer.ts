@@ -86,7 +86,8 @@ export class Renderer {
     if (state) this.transitions.update(state, view.visualTime);
     this.reducedMotion = view.reducedMotion;
     this.time = view.visualTime;
-    (world?.backdrop ?? (industrial ? this.scrapBackdrop : this.backdrop)).draw(ctx, this.time, view.reducedMotion, state?.phase === 'MAP');
+    if(world)world.backdrop.draw(ctx,this.time,view.reducedMotion,state?.phase==='MAP',state?.track??null);
+    else (industrial?this.scrapBackdrop:this.backdrop).draw(ctx,this.time,view.reducedMotion,state?.phase==='MAP');
     if (!state) return;
 
     if (state.phase === 'LOBBY') { vehicles.clear(); this.drawLobby(ctx); return; }

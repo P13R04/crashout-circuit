@@ -63,8 +63,8 @@ export class NeonEffects {
             }
           }
           const heavy = e.kind === 'stoneImpact' || e.kind === 'stoneHit';
-          const count = reduced ? 4 : heavy ? 16 : 7;
-          const reach = heavy ? 80 : 36;
+          const count = reduced ? 4 : view.theme==='mayhem'?(heavy?24:12):heavy?16:7;
+          const reach = view.theme==='mayhem'?(heavy?95:48):heavy?80:36;
           glow(ctx, 0, 0, heavy ? 100 : 48, heavy ? '#ffb579' : NEON.danger, .85 * fade);
           for (let i = 0; i < count; i++) {
             const a = i / count * TAU + noise(i * 13) * .6;

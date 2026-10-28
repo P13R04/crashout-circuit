@@ -17,15 +17,21 @@ Néon conserve son décor matriciel, son circuit, ses véhicules et ses tangible
 
 ## Toy Circuit
 
-Une piste de jouet sur un tapis bleu-vert, avec tranche épaisse, rails orange/jaune, joints de moulage et reflets mobiles. Les blocs à tenons et petites pièces restent sous la piste. Des engrenages tournent, trois mécanismes à ressort coulissent et quelques confettis dérivent lentement. Les voitures ont une carrosserie en plastique, de grosses roues, une verrière et un aileron ; les commandes reprennent les arrondis et les reliefs moulés. Les murs ont des tenons, les bobines une coque violette et les impacts éclatent en confettis. Les couleurs du décor restent moins lumineuses que les commandes et les véhicules.
+Une collection de miniatures montée sur un tapis d’atelier : garage avec toit nervuré et verrières, deux baies de service, petites voitures, pompe, rangement de pneus et portique de chargement animé. L’avion a une silhouette lisible de dessus, un cockpit et une hélice mobile. Les autres espaces libres accueillent une boîte de voitures compartimentée, des crayons taillés, une clé et des billes en verre avec reflets.
+
+La piste est un objet en plastique moulé : épaisseur et ombre, rails chauds bicolores, clips de fixation, raccords transversaux, guides creusés et microtexture satinée. Le décor conserve sa palette d’objet peint et ses ombres de contact ; les voitures actives restent plus lumineuses. Les engrenages et confettis flottants de remplissage ont été retirés.
 
 ## F1 Classic
 
-Asphalte gris propre, vibreurs alternés rouge et blanc, damier clair et grilles de départ. Le fond vu de dessus montre pelouse tondue, tribunes et ventilateurs de paddock. Les drapeaux ondulent et des ombres de nuages dérivent doucement. Les monoplaces ont quatre roues découvertes, ailerons avant/arrière, nez fin, cockpit et halo. La vitesse produit une traînée de pneus et un léger sillage, sans réacteurs ; les impacts soulèvent de la poussière. Les commandes utilisent une finition sobre, des angles courts et un petit motif de damier. Les obstacles conservent leurs vrais volumes et leurs champs électriques.
+Un circuit de course entretenu, avec une identité de paddock classique : pelouse tondue, dégagements en gravier, asphalte granuleux, réparations discrètes et traces de freinage dans les courbes. Les vibreurs sont rouge et blanc, avec une peinture moins uniforme et une grille de départ claire.
+
+Les tribunes suivent les courbes **et les longues portions** du dessin, avec terrasses, rangées de sièges, public, escaliers, grillages et auvents partiels. Leur implantation évite les commandes et les autres branches d’un huit. Dans la plus grande zone libre se trouve un bâtiment de stands : baies ouvertes, monoplaces garées, chariots et pneus. Quelques bras et drapeaux bougent, les ombres des nuages glissent ; aucun rotor décoratif générique ne remplit le terrain.
 
 ## Mayhem
 
-Piste en terre brune avec ornières, flaques et rebords usés ; un sol sombre couvert de pneus, tôles et pièces de récupération. Des roues mécaniques avancent par crans, les soudures lancent des étincelles intermittentes, la fumée se dilate dans le plan de la table et des rides parcourent les flaques. Les voitures sont des bangers renforcées, avec pare-chocs soudés, plaques rivetées et arceau. Elles projettent de la boue et une petite flamme sous boost. Les murs ont des entretoises rouillées, les piliers des bobines récupérées et les commandes une finition métallique chaude et rayée.
+Un festival de démolition installé sur un terrain labouré : terrasses improvisées, double rangée de pneus, public, drapeaux à croix, guirlandes et projecteurs entourent l’arène. L’espace central accueille une scène avec enceintes, charpente, écran, barres lumineuses, faisceaux mobiles et deux canons à étincelles. Les autres zones libres reçoivent des carcasses reconnaissables, conteneurs nervurés, bidons, stands sous toiles rayées et établis de réparation.
+
+Les soudures produisent des gerbes localisées, la poussière dérive dans le plan de la table et les volutes s’élargissent autour des ateliers. Les impacts projettent davantage d’éclats que dans les autres thèmes. La piste montre des ornières continues, empreintes de pneus, terre agglomérée, accotements labourés et flaques à reflets. Aucun éclair décoratif ne traverse la piste : les arcs des vrais piliers restent lisibles.
 
 Les cinq thèmes gardent **cyan pour A et rose pour B**, avec les mêmes icônes et emplacements. Les accents d’ambiance ne changent ni les règles des bonus, ni la géométrie, ni les dimensions LEGO des tangibles.
 
@@ -39,13 +45,15 @@ Les cinq thèmes conservent chacun leur cache, préparé à la première utilisa
 
 La pause et la préférence de mouvement réduit s’appliquent aux cinq ambiances. Les éléments statiques restent détaillés lorsque le mouvement est réduit.
 
-`CircuitTrack.ts` décline les trois nouveaux matériaux sur la géométrie commune. La surface, les détails et les vibreurs sont calculés uniquement au changement de piste ou de résolution. Les bords masqués aux croisements restent ouverts. `ThemeWorld.ts` prépare un fond 960 × 540, une pièce tournante et une texture de brume par nouveau thème ; seuls un nombre fixe de pièces, drapeaux, volutes et étincelles sont animés. Aucun tableau de particules n’accumule d’éléments. Les carrosseries restent mises en cache. Les nouveaux décors sont préparés à la première sélection et réutilisés ensuite.
+`CircuitMaterials.ts` prépare de petites textures de matière réutilisées dans les caches. `CircuitTrack.ts` applique les détails à l’union exacte de la route, avec un masque séparé ; ils ne débordent pas dans les croisements. La piste est reconstruite au changement de géométrie ou de résolution.
+
+`SceneryLayout.ts` dispose tribunes et grands objets depuis la géométrie initiale du circuit : échantillonnage à distance régulière, marge autour de la route, exclusion des commandes, choix des espaces libres pour les objets volumineux. Le décor reste fixe pendant les déformations temporaires. `F1Venue.ts`, `ToyWorkshop.ts` et `MayhemFestival.ts` possèdent chacun leurs propres éléments et animations. `ThemeWorld.ts` conserve le sol en 1440 × 810 et la composition en 1920 × 1080, réutilisés entre les instantanés réseau. Les animations ne créent aucun pool de particules croissant.
 
 ## Vérification
 
-La passe actuelle vérifie les types, la compilation, les gestes et les règles serveur. Les 27 contrôles de rendu automatisés parcourent les cinq thèmes, toutes les phases, une boucle et un huit, les effets, les caches, le redimensionnement, la pause, le mouvement réduit et le changement de thème. Les animations des nouveaux décors n’allouent aucun nouveau canvas après leur préparation.
+La passe actuelle vérifie les types, la compilation, les gestes et les règles serveur. Les 31 contrôles de rendu automatisés parcourent les cinq thèmes, toutes les phases, une boucle et un huit, les effets, les caches, le redimensionnement, la pause, le mouvement réduit et le changement de thème. Les animations des nouveaux décors n’allouent aucun nouveau canvas après leur préparation.
 
-Cette passe ne comprend pas de nouvelle mesure de fréquence d’images ni de validation visuelle sur dalle. Le rendu et la lisibilité sont à confirmer lors du test sur table.
+Une planche comparative en navigateur a servi à vérifier la composition des trois ambiances et à prolonger les tribunes sur les lignes droites. Cette passe ne comprend pas de mesure de fréquence d’images sur la dalle ; la lisibilité à distance et la fluidité avec les joueurs restent à confirmer sur table.
 
 ## Parcours d’essai
 
@@ -53,5 +61,5 @@ Cette passe ne comprend pas de nouvelle mesure de fréquence d’images ni de va
 2. Recharger la page : le choix est conservé. Le menu doit aussi fonctionner depuis l’accueil et la création du circuit, sur écran tactile.
 3. Tracer une boucle puis un huit : observer l’épaisseur, le damier, les jonctions ouvertes et les détails de surface. Étirer une bordure puis attendre son retour : la piste reste visible et les détails suivent sa géométrie.
 4. Conduire les deux équipes, accélérer et déclencher les objets : les couleurs d’équipe, la direction des véhicules et les dangers doivent rester lisibles. Depuis Oz, déplacer/activer/désactiver les tangibles et observer les effets correspondants.
-5. Observer chaque fond pendant 10 secondes : mécanismes et confettis pour Toy Circuit, drapeaux/nuages/ventilateurs pour F1 Classic, soudures/roues/brouillard pour Mayhem, machines et énergie pour Ferraille. Mettre en pause : ambiance, LED et effets sont figés. Reprendre puis essayer `?motion=0` : le décor s’immobilise et les traces disparaissent, la conduite reste possible.
+5. Observer chaque fond pendant 10 secondes : portique et hélices pour Toy Circuit, drapeaux/public/nuages pour F1 Classic, scène/gerbes/soudures/poussière pour Mayhem, machines et énergie pour Ferraille. Mettre en pause : ambiance, LED et effets sont figés. Reprendre puis essayer `?motion=0` : le décor s’immobilise et les traces disparaissent, la conduite reste possible.
 6. Sur la table, vérifier la lecture à distance et la fluidité avec quatre joueurs ; F3 affiche les mesures locales.

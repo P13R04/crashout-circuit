@@ -2,9 +2,9 @@
 export const THEMES = [
   { id: 'neon', name: 'Néon', detail: 'Vide matriciel', colors: ['#131f35', '#9079ff', '#00e5ff'] },
   { id: 'scrap', name: 'Ferraille', detail: 'Acier · vapeur · énergie', colors: ['#424e54', '#91aaa9', '#70e6ed'] },
-  { id: 'toy', name: 'Toy Circuit', detail: 'Plastique · couleurs · ressorts', colors: ['#17686d', '#ffb82e', '#f86445'] },
+  { id: 'toy', name: 'Toy Circuit', detail: 'Miniatures · atelier · plastique', colors: ['#17686d', '#ffb82e', '#f86445'] },
   { id: 'classic', name: 'F1 Classic', detail: 'Asphalte · vibreurs · paddock', colors: ['#355a48', '#e9544d', '#e9e9df'] },
-  { id: 'mayhem', name: 'Mayhem', detail: 'Boue · carcasses · étincelles', colors: ['#3c3029', '#a45f3b', '#ffc16b'] },
+  { id: 'mayhem', name: 'Mayhem', detail: 'Festival · boue · castagne', colors: ['#3c3029', '#a45f3b', '#ffc16b'] },
 ] as const;
 export type ThemeId = typeof THEMES[number]['id'];
 export type CircuitTheme = Exclude<ThemeId, 'neon' | 'scrap'>;

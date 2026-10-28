@@ -1,6 +1,7 @@
 /** Visual invariants and rendering smoke checks; actual raster/performance QA runs in the browser. */
 import assert from 'node:assert/strict';
 import { indexedRotation, pressStroke, steamSample } from '../client-table/IndustrialMotion.js';
+import { layoutScenery, sceneryKey, venuePoint, roadClearance } from '../client-table/SceneryLayout.js';
 import { ThemeWorld } from '../client-table/ThemeWorld.js';
 import { ScrapBackdrop } from '../client-table/ScrapBackdrop.js';
 import { TrailBuffer, TRAIL_LIMIT, TRAIL_LIFE_MS, advanceVisualTime } from '../client-table/VisualMotion.js';
@@ -137,6 +138,22 @@ for(const id of ['toy','classic','mayhem'] as const)test(`${id}: scenery reuses 
   world.draw(ctx,0,false,false);const allocated=calls.get('canvasAllocations');
   for(let i=0;i<160;i++)world.draw(ctx,i*1271,i>120,i>140);
   assert.equal(calls.get('canvasAllocations'),allocated,'live scenery never allocates new canvases');
+});
+test('grandstands surround the drawing on both long sides and leave road and controls clear',()=>{
+  const track=generatePreset(),layout=layoutScenery(track),frames=layout.stands.flat();
+  assert.ok(frames.some(f=>f.ny<-.8),'grandstands reach the upper straight');
+  assert.ok(frames.some(f=>f.ny>.8),'grandstands reach the lower straight');
+  for(const f of frames){assert.ok(roadClearance(venuePoint(f,42),track)>28,'front terraces stay away from the road');assert.ok(roadClearance(venuePoint(f,110),track)>65,'the rear terrace does not overlap another branch');}
+  const key=sceneryKey(track),copy=structuredClone(track);copy.centerline[0].x+=100;
+  assert.equal(sceneryKey(copy),key,'a temporary pull does not make the venue slide around');
+  copy.baseCenterline[0].x+=50;assert.notEqual(sceneryKey(copy),key,'a different circuit rebuilds the venue');
+});
+for(const id of ['toy','classic','mayhem'] as const)test(`${id}: populated venue stays cached across snapshots and temporary pulls`,()=>{
+  const world=new ThemeWorld(id),ctx=canvas().getContext('2d')!,track=generatePreset();world.draw(ctx,0,false,false,track);
+  const allocated=calls.get('canvasAllocations');
+  for(let i=0;i<80;i++){const copy=structuredClone(track);copy.centerline[3].x+=i;world.draw(ctx,i*313,false,false,copy);}
+  assert.equal(world.builds,1,'drawing-based scenery is prepared once');assert.equal(calls.get('canvasAllocations'),allocated,'no new canvases during venue animations');
+  const changed=structuredClone(track);changed.baseCenterline[3].x+=25;world.draw(ctx,25000,true,false,changed);assert.equal(world.builds,2,'a new drawing updates the scenery');
 });
 function scene() {
   const view = createView(() => 1_000_000), state = createInitialState();
