@@ -9,6 +9,12 @@ Cette fiche conserve les décisions de conception et leurs identifiants (R-xx, C
 
 ---
 
+## Pose tactile des tangibles (28 octobre 2026)
+
+Dernière base récupérée : `4472263` (console Oz de Baptiste, portée d’arc 350 px). Le mode manuel est conservé ; le sélecteur Oz ajoute **Pose tactile**, indépendant des modes de course et des thèmes. Oz annonce un objet disponible après son passage physique par une station ; cette annonce valide aussi sa recharge et autorise une seule pose pendant 20 s. La table fournit le milieu de deux contacts neufs et l’angle orthogonal à leur axe pour le mur, sans modifier les dimensions LEGO. Deux contacts sont confirmés après 90 ms ; leur retrait ne retire pas l’objet. Oz clique sur l’objet dans sa carte lorsqu’il est physiquement enlevé. Une nouvelle pose demande une nouvelle annonce après recharge.
+
+Les contacts de pose sont prioritaires sur les gestes libres, sans absorber les pads ou le pilotage. Les anciens contacts, les prises ambiguës, les paumes et les paquets périmés sont rejetés. Pause, reset, changement de mode et déconnexion du dernier Oz/de la dernière table annulent l’attente. Le jeton serveur rend la confirmation atomique et non rejouable. Les animations, arcs, champs et collisions restent ceux du jeu. Voir le protocole dans le README ; `npm run test:tangible-touch` couvre le nouveau parcours.
+
 ## Intégration de l’équipe (28 octobre 2026)
 
 Les branches #30, #31, #32, #34, #41 et `baptiste` sont réunies avec les thèmes et le test à pilotes automatiques. Le boost s’oriente selon la piste (la branche transversale au geste à un croisement), les contacts règlent sa largeur et sa puissance. Les bonus restent liés à leur point de piste pendant les déformations et leur délai de réapparition. Le dessin reste séquentiel cyan puis rose, mais accepte les deux sens ; les traits sont normalisés avant génération. Les zones pilotes ne sont pas ré-inversées. Voir [le bilan et le protocole de recette](docs/integration-equipe.md).

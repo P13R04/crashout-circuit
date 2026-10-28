@@ -30,6 +30,8 @@ import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTT
 import { tutorialButtonAt } from './TutorialOverlay.js';
 import { showDividerRefusal, showMapError, showMapNotice, type View } from './view.js';
 import { activeMapTeam, inMapAnchor, mapEndpointError, mapStrokeEndpoints } from '../server/mapCreation.js';
+import { tangibleTouchPose, TANGIBLE_SETTLE_MS } from '../server/tangibleTouch.js';
+import { tangibleDefinition } from '../server/tangibles.js';
 
 export const MAX_CONTACTS = 10;
 const SETTLE_MS = 180;          // wait for all fingers to land before judging a gesture
@@ -46,7 +48,7 @@ const PULL_PAIR_MAX_PX = 130;
 const PULL_EDGE_INDEX_GAP = 8;
 const PALM_MAX_PX = 140;        // contacts wider than this (logical px) are palms/arms
 
-type Zone = 'simsling' | 'steer' | 'pedal' | 'item' | 'pad' | 'stroke' | 'target' | 'result' | 'pause' | 'mode' | 'free' | 'rejected';
+type Zone = 'tangible' | 'simsling' | 'steer' | 'pedal' | 'item' | 'pad' | 'stroke' | 'target' | 'result' | 'pause' | 'mode' | 'free' | 'rejected';
 
 interface Contact {
   id: number;
@@ -78,6 +80,9 @@ export class GestureRecognizer {
     A: { throttle: 0, steer: 0 }, B: { throttle: 0, steer: 0 },
   };
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
+  private placementToken: number | null = null;
+  private placementTimer: ReturnType<typeof setTimeout> | null = null;
+  private placementMousePoint: Vec2 | null = null;
   /** event.timeStamp of the latest pointerdown, to measure finger→frame latency. */
   lastDownTs = 0;
 
@@ -133,6 +138,60 @@ export class GestureRecognizer {
 
   private get state(): GameState | null { return this.view.state; }
 
+  private get pendingPlacement() {
+    const s=this.state, p=s?.tangiblePlacement;
+    return s?.tangiblePlacementMode==='touch' && p && ['READY','RACE'].includes(s.phase) && p.expiresAt>this.view.now() ? p : null;
+  }
+
+  /** A fresh Oz announcement never captures fingers already used by another gesture. */
+  syncState(): void {
+    const token=this.pendingPlacement?.token??null;
+    if(token===this.placementToken)return;
+    this.placementToken=token;
+    if(this.placementTimer)clearTimeout(this.placementTimer);
+    this.placementTimer=null;this.placementMousePoint=null;this.view.tangibleTouch=null;
+    if(token!==null){
+      if(this.settleTimer)clearTimeout(this.settleTimer);
+      this.settleTimer=null;
+      this.slingIds=null;this.slingPuller=null;this.simSling=null;this.view.sling=null;
+      this.simulate(null);
+    }
+    for(const c of this.contacts.values())if(['free','tangible','simsling'].includes(c.zone)){
+      c.consumed=true;c.zone='rejected';
+    }
+  }
+
+  private sendTangiblePlacement(a: Vec2,b: Vec2): void {
+    const pending=this.pendingPlacement, s=this.state;
+    if(!pending||!s)return;
+    const definition=tangibleDefinition(pending.id);
+    if(!definition||!tangibleTouchPose(definition.kind,a,b,s.params))return;
+    for(const c of this.contacts.values())if(c.zone==='tangible')c.consumed=true;
+    this.send({type:'TangibleTouchPlaced',id:pending.id,token:pending.token,a:{...a},b:{...b}});
+  }
+
+  private updateTangibleContacts(): void {
+    const pending=this.pendingPlacement,s=this.state;
+    if(!pending||!s)return;
+    const touches=[...this.contacts.values()].filter(c=>c.zone==='tangible');
+    if(touches.length>2)touches.forEach(c=>{c.consumed=true;});
+    const points=this.placementMousePoint?[this.placementMousePoint]:touches.map(c=>({x:c.x,y:c.y}));
+    const definition=tangibleDefinition(pending.id)!;
+    const valid=points.length===2&&!!tangibleTouchPose(definition.kind,points[0],points[1],s.params);
+    this.view.tangibleTouch={points,valid};
+    if(touches.length!==2||!valid||touches.some(c=>c.consumed)){
+      if(this.placementTimer)clearTimeout(this.placementTimer);
+      this.placementTimer=null;return;
+    }
+    if(this.placementTimer)return; // Small touch jitter must not postpone placement forever.
+    const token=pending.token;
+    this.placementTimer=setTimeout(()=>{
+      this.placementTimer=null;
+      if(this.pendingPlacement?.token===token && touches.every(c=>this.contacts.get(c.id)===c&&!c.consumed))
+        this.sendTangiblePlacement(touches[0],touches[1]);
+    },TANGIBLE_SETTLE_MS);
+  }
+
   private toLogical(e: PointerEvent): Vec2 {
     const r = this.canvas.getBoundingClientRect();
     return { x: ((e.clientX - r.left) / r.width) * LOGICAL_W, y: ((e.clientY - r.top) / r.height) * LOGICAL_H };
@@ -146,6 +205,7 @@ export class GestureRecognizer {
     if (this.contacts.size >= MAX_CONTACTS && !this.contacts.has(e.pointerId)) return; // touch budget
     const state = this.state;
     if (!state) return;
+    this.syncState();
     try { this.canvas.setPointerCapture(e.pointerId); } catch { /* ignore */ }
 
     const p = this.toLogical(e);
@@ -224,8 +284,8 @@ export class GestureRecognizer {
       const b = RACE_START_BUTTON;
       if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
         c.zone = 'result'; this.send({ type: 'BeginRace' });
-      } else c.zone = 'rejected';
-      return;
+        return;
+      } else if (!this.pendingPlacement) { c.zone = 'rejected'; return; }
     }
     if (state.phase === 'RACE' || state.phase === 'PAUSED') {
       const b = PAUSE_BUTTON;
@@ -236,7 +296,7 @@ export class GestureRecognizer {
       }
 
     }
-    if (state.phase !== 'RACE') { c.zone = 'rejected'; return; }
+    if (state.phase !== 'RACE' && !(state.phase === 'READY' && this.pendingPlacement)) { c.zone = 'rejected'; return; }
 
     // 2b — tutorial: skip a lesson, or leave once everybody is done
     const tutorialButton = tutorialButtonAt(state, p);
@@ -287,6 +347,24 @@ export class GestureRecognizer {
       if (Math.abs(l.x) <= panelWidth(panel.role) / 2 && Math.abs(l.y) <= PANEL_H / 2) { c.zone = 'rejected'; return; }
     }
 
+    // Oz reserves fresh map contacts before any bonus, simulation or border gesture.
+    const scale = LOGICAL_W / this.canvas.getBoundingClientRect().width;
+    if (Math.max(e.width || 0, e.height || 0) * scale > PALM_MAX_PX) { c.zone = 'rejected'; return; }
+    const pendingPlacement=this.pendingPlacement;
+    if(pendingPlacement){
+      c.zone='tangible';
+      if(e.pointerType==='mouse'){
+        c.consumed=true;
+        if(this.placementMousePoint){
+          const valid=!!tangibleTouchPose(tangibleDefinition(pendingPlacement.id)!.kind,this.placementMousePoint,p,state.params);
+          this.view.tangibleTouch={points:[this.placementMousePoint,p],valid};
+          this.sendTangiblePlacement(this.placementMousePoint,p);
+          this.placementMousePoint=null;
+        }else {this.placementMousePoint=p;this.view.tangibleTouch={points:[p],valid:false};}
+      }else this.updateTangibleContacts();
+      return;
+    }
+
     // 3b — PC testing: simulated multi-finger gesture (toolbar buttons)
     // PC mode needs no toolbar button for the slingshot: with a slingshot armed, a plain
     // mouse press is the fork and the drag pulls the pouch.
@@ -311,11 +389,7 @@ export class GestureRecognizer {
       return;
     }
 
-    // 4 — palm / arm rejection for everything that is not a pad
-    const scale = LOGICAL_W / this.canvas.getBoundingClientRect().width;
-    if (Math.max(e.width || 0, e.height || 0) * scale > PALM_MAX_PX) { c.zone = 'rejected'; return; }
-
-    // 6 — free contact: multi-finger gestures and border pull
+    // Free contact: multi-finger gestures and border pull.
     c.zone = 'free';
     if (state.track) {
       const hit = nearestOnTrack(p, state.track);
@@ -329,13 +403,16 @@ export class GestureRecognizer {
   }
 
   private onMove(e: PointerEvent): void {
+    this.syncState();
     const c = this.contacts.get(e.pointerId);
     if (!c) return;
     e.preventDefault();
     const p = this.toLogical(e);
     c.x = p.x; c.y = p.y;
 
-    if (c.zone === 'steer') {
+    if(c.zone==='tangible'&&!c.consumed){
+      this.updateTangibleContacts();
+    } else if (c.zone === 'steer') {
       this.updateSteer(c);
     } else if (c.zone === 'stroke') {
       const s = this.view.strokes.get(c.strokeKey ?? -1);
@@ -351,10 +428,12 @@ export class GestureRecognizer {
   }
 
   private onUp(e: PointerEvent): void {
+    this.syncState();
     const c = this.contacts.get(e.pointerId);
     if (!c) return;
     this.contacts.delete(c.id);
     this.view.debug.contacts = this.contacts.size;
+    if(c.zone==='tangible')this.updateTangibleContacts();
 
     if (c.zone === 'pad' && c.padKey) this.padUp(c.padKey, c.id);
     if (c.zone === 'steer' && c.panel) this.releaseStick(c.panel.team);
@@ -477,6 +556,11 @@ export class GestureRecognizer {
 
   /** Release everything (WebSocket lost, tab hidden) so no pad stays "held" on the server. */
   releaseAll(): void {
+    if(this.placementTimer)clearTimeout(this.placementTimer);
+    this.placementTimer=null;this.placementMousePoint=null;this.view.tangibleTouch=null;
+    if(this.settleTimer)clearTimeout(this.settleTimer);
+    this.settleTimer=null;
+    this.slingIds=null;this.slingPuller=null;this.simSling=null;this.view.sling=null;
     this.view.dividerSubmitting = false;
     for (const [key, stroke] of this.view.strokes) {
       if (!this.state?.mapStrokes[stroke.team]) this.view.strokes.delete(key);
@@ -525,8 +609,9 @@ export class GestureRecognizer {
    * and nothing is fired while a sling is being formed.
    */
   private evaluate(): void {
+    this.syncState();
     const state = this.state;
-    if (!state || state.phase !== 'RACE' || this.slingIds) return;
+    if (!state || state.phase !== 'RACE' || this.slingIds || this.pendingPlacement) return;
     const free = [...this.contacts.values()].filter(c => c.zone === 'free' && !c.consumed);
 
     if (free.length === 2 && !free.some(c => c.outward)) {

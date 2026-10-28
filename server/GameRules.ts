@@ -12,6 +12,7 @@ import type {
   GameState, Team, Vec2, Phase, ItemKind, Car, Wall, MapTargets, TrackGeometry,
   StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg,
   PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg,
+  TangiblePlacementMode, TangibleTouchPlacedMsg,
 } from './types.js';
 import { orientBoostGate, hitsBoostGate } from './boostGeometry.js';
 import { AutomaticPilot } from './AutomaticPilot.js';
@@ -23,6 +24,7 @@ import { activeMapTeam, mapEndpointError, mapStrokeEndpoints } from './mapCreati
 import { Tutorial, TUTORIAL_ARM_WINDOW_S, TUTORIAL_PICKUP_RESPAWN_S, TUTORIAL_OBSTACLE_PREFIX } from './Tutorial.js';
 import { withinCorrection, wallContact } from './tangibleGeometry.js';
 import { tangibleArc, tangibleDefinition, validTangiblePose } from './tangibles.js';
+import { tangibleTouchPose, TANGIBLE_WAIT_MS } from './tangibleTouch.js';
 
 export const CAR_RADIUS = 10;
 export const WALL_HALF_THICKNESS = 4;
@@ -113,6 +115,8 @@ export function createInitialState(): GameState {
     repairProgress: { A: 0, B: 0 },
     trackVersion: 0,
     tangibles: {},
+    tangiblePlacementMode: 'manual',
+    tangiblePlacement: null,
     testMode: { invincible: false, allItems: false },
     tutorial: null,
     params: {
@@ -152,6 +156,7 @@ export function createInitialState(): GameState {
 }
 
 export class GameRules {
+  private placementToken = 0;
   readonly inputs: Record<Team, { throttle: number; steer: number }> = {
     A: { throttle: 1, steer: 0 },
     B: { throttle: 1, steer: 0 },
@@ -324,6 +329,7 @@ export class GameRules {
   // ─── RACE start ────────────────────────────────────────────────────────────
 
   startRace(track = generatePreset(), waitForPlayers = false): void {
+    this.state.tangiblePlacement = null;
     const s = this.state;
     this.generating = true;
     this.automaticPilot.reset();
@@ -440,6 +446,7 @@ export class GameRules {
 
   /** Pause freezes physics and timers; resuming shifts the race clock accordingly. */
   togglePause(): void {
+    this.cancelTangiblePlacement();
     const s = this.state;
     if (s.phase === 'RACE') {
       this.pausedAt = this.now;
@@ -479,6 +486,7 @@ export class GameRules {
     s.trackVersion++;
     s.walls = []; s.arcs = []; s.boostGates = []; s.stones = []; s.pickups = [];
     s.tangibles = {};
+    s.tangiblePlacement = null;
     s.mapTargets = null;
     s.mapDivider = null;
     s.mapStrokes = { A: false, B: false };
@@ -588,6 +596,8 @@ export class GameRules {
    * nothing and keeps the item armed, so the copilot can simply try again.
    */
   onSlingshot(msg: SlingshotMsg): void {
+    this.tickTangiblePlacement(this.now);
+    if (this.state.tangiblePlacement) return;
     if (this.state.phase !== 'RACE' || !msg.anchor || !msg.pouch) return;
     const anchor = { x: msg.anchor.x, y: msg.anchor.y };
     const pouch = { x: msg.pouch.x, y: msg.pouch.y };
@@ -632,6 +642,8 @@ export class GameRules {
   // ─── Boost gate (C-02) ─────────────────────────────────────────────────────
 
   onBoostGate(msg: BoostGateMsg): void {
+    this.tickTangiblePlacement(this.now);
+    if (this.state.tangiblePlacement) return;
     if (this.state.phase !== 'RACE' || !msg.a || !msg.b) return;
     const a = { x: msg.a.x, y: msg.a.y };
     const b = { x: msg.b.x, y: msg.b.y };
@@ -794,10 +806,53 @@ export class GameRules {
 
   // ─── Tangible pylons (C-05) ────────────────────────────────────────────────
 
+  setTangiblePlacementMode(mode: TangiblePlacementMode): void {
+    if (mode !== 'manual' && mode !== 'touch') return;
+    this.state.tangiblePlacementMode = mode;
+    this.cancelTangiblePlacement();
+    this.host.broadcastFull();
+  }
+
+  /** Oz's announcement also acknowledges the physical recharge before this new pose. */
+  prepareTangiblePlacement(id: number): void {
+    if (this.state.tangiblePlacementMode !== 'touch' || !tangibleDefinition(id)
+      || !['READY','RACE'].includes(this.state.phase) || this.state.tangibles[id]?.status === 'placed') return;
+    this.state.tangiblePlacement = {id:id as 1|2|3, token:++this.placementToken, expiresAt:this.now+TANGIBLE_WAIT_MS};
+    this.host.broadcastFull();
+  }
+
+  cancelTangiblePlacement(): void {
+    if (!this.state.tangiblePlacement) return;
+    this.state.tangiblePlacement = null;
+    this.host.broadcastFull();
+  }
+
+  tickTangiblePlacement(now: number): void {
+    const pending=this.state.tangiblePlacement;
+    if (pending && (now>=pending.expiresAt || !['READY','RACE'].includes(this.state.phase))) this.cancelTangiblePlacement();
+  }
+
+  onTangibleTouchPlaced(msg: TangibleTouchPlacedMsg): void {
+    this.tickTangiblePlacement(this.now);
+    const s=this.state, pending=s.tangiblePlacement, definition=tangibleDefinition(msg.id);
+    if(s.tangiblePlacementMode!=='touch'||!pending||!definition||pending.id!==msg.id||pending.token!==msg.token
+      ||s.tangibles[msg.id]?.status==='placed')return;
+    const pose=tangibleTouchPose(definition.kind,msg.a,msg.b,s.params);
+    if(!pose)return;
+    // The single-use grant is consumed atomically; delayed/replayed packets cannot move it.
+    s.tangiblePlacement=null;
+    s.tangibles[msg.id]={...pose,kind:definition.kind,team:null,active:true,status:'placed',dockTeam:null,placementOrigin:{...pose}};
+    this.tangibleLog.push({t:this.now,type:'TangibleMoved',id:msg.id,...pose,active:true});
+    this.rebuildTangibles();
+    this.host.broadcastFull();
+  }
+
   /** Neutral inventory; only Oz can acknowledge the physical charging cycle. */
   onTangibleControl(msg: TangibleControlMsg): void {
     const id = Number(msg.id), definition = tangibleDefinition(id);
     if (!definition || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
+    if (!['dock','activate','deactivate'].includes(msg.action)) return;
+    if (this.state.tangiblePlacement?.id === id) this.cancelTangiblePlacement();
     if (msg.action === 'dock') {
       if (msg.team !== 'A' && msg.team !== 'B') return;
       const at = localToWorld(panelOf(msg.team, 'copilot'), CHARGE_ZONE_LOCAL.x, CHARGE_ZONE_LOCAL.y);
@@ -813,6 +868,7 @@ export class GameRules {
   }
 
   onTangibleMoved(msg: TangibleMovedMsg): void {
+    if (this.state.tangiblePlacementMode === 'touch') return;
     const id = Number(msg.id), definition = tangibleDefinition(id);
     if (!definition || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)
       || ![msg.x, msg.y, msg.angle].every(Number.isFinite)
@@ -835,6 +891,7 @@ export class GameRules {
   onTangibleRemoved(msg: TangibleRemovedMsg): void {
     const id = Number(msg.id);
     if (!tangibleDefinition(id) || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
+    if (this.state.tangiblePlacement?.id === id) this.cancelTangiblePlacement();
     this.tangibleLog.push({ t: this.now, type: 'TangibleRemoved', id });
     delete this.state.tangibles[id];
     this.rebuildTangibles();
@@ -865,6 +922,8 @@ export class GameRules {
   // ─── Local border pull (C-07) ──────────────────────────────────────────────
 
   onBorderPull(msg: BorderPullMsg): void {
+    this.tickTangiblePlacement(this.now);
+    if (this.state.tangiblePlacement) return;
     const s = this.state;
     const track = s.track;
     if (s.phase !== 'RACE' || !track || ![msg.x, msg.y, msg.dx, msg.dy].every(Number.isFinite)) return;

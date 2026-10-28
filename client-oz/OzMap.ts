@@ -9,6 +9,7 @@ import { PANELS, PANEL_H, panelWidth, chargeZoneTeam, CHARGE_ZONE_LOCAL, localTo
 export type OzTool = 'arc' | 'wall' | null;
 
 export interface OzMapHandlers {
+  onRemove?(id: TangibleId): void;
   onMove(id: TangibleId, x: number, y: number, angle: number): boolean;
   onDock(team: Team): void;
   onPlace(pose: TangiblePose): boolean;
@@ -144,6 +145,7 @@ export class OzMap {
   }
 
   setState(state: GameState): void {
+    if(this.state && this.state.tangiblePlacementMode!==state.tangiblePlacementMode)this.cancel();
     if (this.drag && (!state.tangibles[this.drag.id] || !this.h.enabled() || (this.drag.mode !== 'place' && (state.tangibles[this.drag.id].status !== 'placed' || this.state?.tangibles[this.drag.id]?.active !== state.tangibles[this.drag.id].active)))) this.cancel();
     if (this.movingTangibleId && (!state.tangibles[this.movingTangibleId] || !state.tangibles[this.movingTangibleId].active)) {
       this.cancel();
@@ -176,6 +178,11 @@ export class OzMap {
     if (!this.h.enabled() || !this.state || (e.button !== undefined && e.button !== 0)) return;
     e.preventDefault();
     const s = this.state, p = this.point(e);
+    if(s.tangiblePlacementMode==='touch'){
+      const hit=this.tangibleAt(p);
+      if(hit)this.h.onRemove?.(hit);
+      return;
+    }
     this.hover = p;
     this.downClientPos = { x: e.clientX, y: e.clientY };
 
@@ -338,6 +345,10 @@ export class OzMap {
   private move(e: PointerEvent): void {
     if (!this.state || !this.h.enabled()) return;
     const p = this.point(e);
+    if(this.state.tangiblePlacementMode==='touch'){
+      this.canvas.style.cursor=this.tangibleAt(p)?'pointer':'default';
+      return;
+    }
     this.hover = p;
     const s = this.state;
     const W = s.params.logicalWidth, H = s.params.logicalHeight;
@@ -370,6 +381,19 @@ export class OzMap {
     if (Math.abs(pose.x - d.pose.x) + Math.abs(pose.y - d.pose.y) + Math.abs(pose.angle - d.pose.angle) < 1e-10) return;
     if (d.mode === 'place' || this.h.onMove(d.id, pose.x, pose.y, pose.angle)) d.pose = pose;
     this.draw();
+  }
+
+  private tangibleAt(p: Vec2): TangibleId | null {
+    const s=this.state;if(!s)return null;
+    const transform=viewTransform(this.canvas.width,this.canvas.height,s.params.logicalWidth,s.params.logicalHeight,this.quarter);
+    const radius=20*this.canvas.width/Math.max(1,this.canvas.getBoundingClientRect().width)/transform.scale;
+    let hit: TangibleId|null=null,best=Infinity;
+    for(const [id,t] of this.visibleTangibles())if(t.status==='placed'){
+      const center={x:t.x*s.params.logicalWidth,y:t.y*s.params.logicalHeight};
+      const distance=t.kind==='wall'?distToSegment(p,...wallEndpoints(center,t.angle,s.params.wallLengthPx)):Math.hypot(p.x-center.x,p.y-center.y);
+      if(distance<=Math.max(radius,s.params.pylonBasePx/2)&&distance<best){hit=id as TangibleId;best=distance;}
+    }
+    return hit;
   }
 
   draw(): void {
@@ -540,7 +564,7 @@ export class OzMap {
         ctx.stroke();
         ctx.shadowBlur = 0;
         // Endpoints
-        for (const pt of [a, b]) {
+        for (const pt of s.tangiblePlacementMode==='touch'?[]:[a, b]) {
           ctx.fillStyle = '#ff6a6a';
           ctx.beginPath();
           ctx.arc(pt.x, pt.y, 6 * unit, 0, Math.PI * 2);
@@ -559,7 +583,7 @@ export class OzMap {
         const base = s.params.pylonBasePx;
         ctx.fillStyle = '#ffe14a';
         ctx.fillRect(center.x - base / 2, center.y - base / 2, base, base);
-        textAt('PYLÔNE', center.x, center.y, 10, '#ffe14a', -22);
+        textAt(s.tangiblePlacementMode==='touch'?`P${id-1}`:'PYLÔNE', center.x, center.y, 10, '#ffe14a', -22);
       }
       ctx.restore();
 

@@ -48,6 +48,7 @@ export interface View {
   strokes: Map<number, LocalStroke>;
   /** Live slingshot preview (3 fingers, or the mouse stand-in on PC). */
   sling: SlingPreview | null;
+  tangibleTouch: { points: Vec2[]; valid: boolean } | null;
   /** Joystick knob per team, normalized to the base radius (x right, y down), as drawn. */
   sticks: Record<Team, { x: number; y: number; active: boolean }>;
   /** Smoothed HP shown on the bars. */
@@ -106,6 +107,7 @@ export function createView(now: () => number): View {
     localPedals: { A: false, B: false },
     strokes: new Map(),
     sling: null,
+    tangibleTouch: null,
     sticks: { A: { x: 0, y: 0, active: false }, B: { x: 0, y: 0, active: false } },
     hpShown: { A: 100, B: 100 },
     mapErrorAt: { A: -1e9, B: -1e9 },

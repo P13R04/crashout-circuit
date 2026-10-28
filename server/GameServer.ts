@@ -74,6 +74,7 @@ export class GameServer {
 
     ws.on('close', () => {
       this.clients.delete(client);
+      if (![...this.clients].some(c=>c.role===client.role)) this.rules.cancelTangiblePlacement();
       console.log(`[GameServer] Client disconnected: ${client.role} (total: ${this.clients.size})`);
       if (client.role === 'table' && ![...this.clients].some((c) => c.role === 'table')) {
         // No table left: nothing may stay pressed
@@ -164,6 +165,18 @@ export class GameServer {
         }
         break;
       // Oz console (or a future TUIO bridge on the table) → server
+      case 'TangiblePlacementMode':
+        if (fromOz) this.rules.setTangiblePlacementMode(msg.mode);
+        break;
+      case 'TangiblePrepare':
+        if (fromOz) this.rules.prepareTangiblePlacement(msg.id);
+        break;
+      case 'TangiblePlacementCancel':
+        if (fromOz) this.rules.cancelTangiblePlacement();
+        break;
+      case 'TangibleTouchPlaced':
+        if (fromTable) this.rules.onTangibleTouchPlaced(msg);
+        break;
       case 'TangibleControl':
         if (fromOz) this.rules.onTangibleControl(msg);
         break;

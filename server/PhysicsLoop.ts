@@ -52,6 +52,7 @@ export class PhysicsLoop {
     s.tick++;
 
     this.rules.tickMap(now);
+    this.rules.tickTangiblePlacement(now);
 
     if (s.phase === 'RACE' && s.track) {
       this.rules.expire(now);

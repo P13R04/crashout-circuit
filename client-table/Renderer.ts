@@ -21,6 +21,7 @@ import { NeonTrack } from './NeonTrack.js';
 import { NeonVehicles } from './NeonVehicles.js';
 import { NeonObjects } from './NeonObjects.js';
 import { NeonEffects } from './NeonEffects.js';
+import { drawTangibleTouchPreview } from './TangibleTouchPreview.js';
 import { glow, NEON, plate } from './neon.js';
 import { activeMapTeam, inMapAnchor, mapStrokeEndpoints, MAP_ANCHOR_RADIUS } from '../server/mapCreation.js';
 
@@ -96,6 +97,7 @@ export class Renderer {
     for (const t of ['A', 'B'] as Team[]) vehicles.draw(ctx, state.cars[t], this.time, now, this.reducedMotion, view.effects);
     this.effects.draw(ctx, view);
     this.drawSling(ctx, state, view.sling);
+    drawTangibleTouchPreview(ctx, view);
     this.hud.draw(ctx, state, view);
     this.drawDisabledAlerts(ctx, state);
     if (state.phase === 'READY') { this.drawRaceReady(ctx, state); this.drawDriveModeButtons(ctx, state); }

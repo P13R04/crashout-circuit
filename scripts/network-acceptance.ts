@@ -53,6 +53,25 @@ try {
   await table.until(s => s.phase === 'READY');
   assert.ok(game.getState().track);
 
+  // Touch placement splits authority: Oz announces; only table contacts supply the pose.
+  table.send({type:'TangiblePlacementMode',mode:'touch'});await table.flush();
+  assert.equal(game.getState().tangiblePlacementMode,'manual','table cannot change the Oz input mode');
+  oz.send({type:'TangiblePlacementMode',mode:'touch'});await table.until(s=>s.tangiblePlacementMode==='touch');
+  table.send({type:'TangiblePrepare',id:1});await table.flush();assert.equal(game.getState().tangiblePlacement,null);
+  oz.send({type:'TangiblePrepare',id:1});const waiting=await table.until(s=>s.tangiblePlacement?.id===1);
+  const grant=waiting.tangiblePlacement!;
+  const observer=await client('table');assert.equal(observer.snapshots[0].tangiblePlacement?.token,grant.token,'new table gets the same single-use grant');observer.ws.terminate();
+  const placement={type:'TangibleTouchPlaced',id:1,token:grant.token,a:{x:900,y:500},b:{x:900,y:580}};
+  oz.send(placement);await oz.flush();assert.equal(game.getState().walls.length,0,'Oz cannot impersonate table contacts');
+  table.send({type:'TangiblePlacementCancel'});await table.flush();assert.equal(game.getState().tangiblePlacement?.token,grant.token,'table cannot cancel Oz’s grant');
+  table.send(placement);await oz.until(s=>s.tangibles[1]?.status==='placed');
+  assert.equal(game.getState().tangibles[1].angle,0,'vertical grip produces a horizontal wall');
+  assert.equal(game.getState().tangiblePlacement,null);
+  table.send({type:'TangibleRemoved',id:1});table.send({type:'TangibleControl',id:1,action:'deactivate'});await table.flush();
+  assert.equal(game.getState().tangibles[1].active,true,'only Oz controls removal and activation');
+  oz.send({type:'TangibleRemoved',id:1});oz.send({type:'TangiblePlacementMode',mode:'manual'});
+  await table.until(s=>s.tangiblePlacementMode==='manual'&&!s.tangibles[1]);
+
   // Only Oz can atomically place and activate the fixed neutral objects.
   table.send({ type: 'TangibleMoved', id: 1, x: .5, y: .5, angle: 90, active: true });
   await table.flush(); assert.equal(game.getState().tangibles[1], undefined);
@@ -121,7 +140,11 @@ try {
   oz.send({ type: 'TangibleControl', id: 1, action: 'activate' });
   await table.until(s => s.walls.length === 1);
   assert.equal(game.getState().walls[0].pos.x, 960, 'table cannot move tangible, reactivation keeps its position');
+  oz.send({type:'TangiblePlacementMode',mode:'touch'});oz.send({type:'TangiblePrepare',id:2});
+  await table.until(s=>s.tangiblePlacement?.id===2);
   oz.ws.terminate(); reconnected.ws.terminate();
+  await table.until(s=>s.tangiblePlacement===null);
+  assert.equal(game.getState().tangibles[2],undefined,'last Oz disconnect cancels the unplaced grant');
   // Continue pickup + arming with no Oz client connected.
   car.heldItem = null; car.itemArmed = false; pickup.respawnAt = 0;
   game.rules.afterMove('A', car.pos, Date.now());

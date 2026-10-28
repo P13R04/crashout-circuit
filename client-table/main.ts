@@ -226,6 +226,7 @@ function handleMessage(msg: ServerMessage): void {
     case 'State': {
       const prev = view.state;
       view.state = sync.apply(msg.state, msg.t);
+      gestures.syncState();
       if (view.state.mapTargets) {
         if (!prev?.mapTargets) view.mapNotice = null;
         view.pendingDivider = [];

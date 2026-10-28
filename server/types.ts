@@ -11,6 +11,8 @@ export type Team = 'A' | 'B';
 export type Phase = 'LOBBY' | 'MAP' | 'READY' | 'RACE' | 'PAUSED' | 'RESULT';
 export type ItemKind = 'slingshot' | 'boost';
 export type DriveMode = 'auto' | 'pedal';
+export type TangiblePlacementMode = 'manual' | 'touch';
+export interface TangiblePlacementRequest { id: TangibleId; token: number; expiresAt: number }
 
 export interface Tangible {
   x: number; y: number; angle: number; // normalized position, angle in degrees
@@ -232,6 +234,8 @@ export interface GameState {
   trackVersion: number;
   /** Operator-reported pylons currently on the table, keyed by tangible id. */
   tangibles: Record<number, Tangible>;
+  tangiblePlacementMode: TangiblePlacementMode;
+  tangiblePlacement: TangiblePlacementRequest | null;
   params: GameParams;
   /** PC test switches (only honoured in the PC mode, see `TestToggleMsg`). */
   testMode: { invincible: boolean; allItems: boolean };
@@ -371,6 +375,14 @@ export interface TangibleRemovedMsg extends BaseMsg {
   id: TangibleId;
 }
 
+/** Oz grants exactly one placement; the table supplies contact geometry, never activation. */
+export interface TangiblePlacementModeMsg extends BaseMsg { type: 'TangiblePlacementMode'; mode: TangiblePlacementMode }
+export interface TangiblePrepareMsg extends BaseMsg { type: 'TangiblePrepare'; id: TangibleId }
+export interface TangiblePlacementCancelMsg extends BaseMsg { type: 'TangiblePlacementCancel' }
+export interface TangibleTouchPlacedMsg extends BaseMsg {
+  type: 'TangibleTouchPlaced'; id: TangibleId; token: number; a: Vec2; b: Vec2;
+}
+
 /** Semantic lifecycle, shared by Oz and a future tangible sensor adapter. */
 export interface TangibleControlMsg extends BaseMsg {
   type: 'TangibleControl';
@@ -449,6 +461,10 @@ export type ClientMessage =
   | TangibleMovedMsg
   | TangibleRemovedMsg
   | TangibleControlMsg
+  | TangiblePlacementModeMsg
+  | TangiblePrepareMsg
+  | TangiblePlacementCancelMsg
+  | TangibleTouchPlacedMsg
   | PingMsg
   | NewGameMsg
   | ResetMsg

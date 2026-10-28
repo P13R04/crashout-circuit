@@ -114,18 +114,30 @@ Vérifier les deux orientations de lecture sur la table réelle. Les pictogramme
 
 ## Console Oz : tangibles neutres et recharge
 
-La console `/oz` gère **un mur** (id 1) et **deux piliers** (id 2 et 3). Leur effet concerne les deux voitures. Le cyan et le rose désignent uniquement la station de recharge utilisée ; ils ne donnent aucune propriété sur les tangibles. Oz reste seul responsable de leur charge et de leur activation ; aucune commande de partie ou de bonus n’est exposée.
+La console `/oz` gère **un mur** et **deux piliers** neutres. Leurs effets concernent les deux voitures. Le choix du mode de placement appartient à Oz ; il ne change ni le mode de course ni les thèmes. Oz ne lance pas la partie et ne gère pas les bonus.
 
-1. Sélectionner l’objet, puis **↧ Cyan / ↧ Rose**, ou cliquer sa station sur la carte pour constater le dépôt réel. L’effet précédent disparaît. L’objet est déchargé.
-2. **⚡ Charger / Espace** confirme la charge dans cette station. Le dock devient vert sur la table. POWER ne participe jamais à cette opération.
-3. **M**, **1 / &**, **2 / é** (ou le bouton d’un objet chargé) prépare la pose. Cliquer pour poser un pilier ; pour le mur, maintenir et glisser pour l’orienter autour du point 1, puis relâcher. L’aperçu reste local jusqu’au relâchement. **← / →** règle aussi l’angle avant la pose, par pas de 5° ; **Maj** passe à 15°.
-4. Une pose consomme le droit de déplacement. Pour corriger l’imprécision d’Oz, glisser légèrement le corps ; la poignée **2** tourne autour de **1**. Les corrections restent dans **15 mm et ±15° du point de pose initial**, même après plusieurs manipulations. Pour une nouvelle pose ailleurs : retour physique dans **l’une ou l’autre station**, puis charge par Oz.
-5. **Espace** active/désactive l’effet à position inchangée ; **Suppr** désactive. Cette bascule ne recharge pas le tangible. **Ctrl Z** annule une correction ou une activation ; annuler la première pose retire l’objet sans restituer sa charge. **Échap** abandonne une pose préparée.
-6. **R / Vue** tourne uniquement la carte de 90°, avec préférence mémorisée. Le mémo des raccourcis est replié sous la carte.
+### Pose tactile — deux doigts autour du tangible
 
-Un pilier seul produit déjà un champ électrique au sol. Les deux piliers actifs sur la piste forment aussi un arc à une distance d’au plus **500 px logiques** (environ 32 cm sur 55 pouces). Les stations ne produisent aucun champ ni arc. Désactiver ou remettre un pilier en station coupe son arc ; le réactiver au même endroit le rétablit. Les collisions et le ralentissement restent calculés par le serveur.
+Dans Oz, choisir **Pose tactile**. Ce mode fonctionne dans une partie normale, le tutoriel et **TEST TANGIBLES**, avant le départ et pendant la course.
 
-La console fonctionne avant le départ, en course et en pause. Les empreintes et leur marge doivent rester dans la table, hors des postes joueurs. Les commandes sont bloquées durant une déconnexion ; la reconnexion récupère l’état sans rejouer de commandes. Le journal `/api/oz-log` inclut la station de chaque recharge et permet de rejouer la séquence.
+1. Après le passage physique par une station copilote, Oz clique **Mur**, **Pilier 1** ou **Pilier 2** juste avant la pose. Cette annonce confirme aussi la recharge : elle donne un droit de pose unique, sans faire apparaître d’obstacle avant les contacts.
+2. Le copilote tient l’objet de part et d’autre et touche la table avec **deux doigts simultanément** en le déposant. Le centre est le milieu des deux contacts. Pour le mur, pincer les **deux grands côtés, à mi-longueur**, avec les doigts encadrant les 4 tenons de largeur, pas les extrémités des 10 tenons : le grand axe du mur est perpendiculaire à l’axe des doigts. Les dimensions LEGO restent fixes, indépendantes de l’écartement des doigts.
+3. Deux contacts valides sont confirmés après environ **90 ms**, puis la position est figée. Les doigts peuvent être retirés ; ils ne servent pas à suivre ou déplacer l’objet ensuite. Une empreinte et des cercles donnent le retour visuel, sans consigne répétée sur la table.
+4. Quand le joueur enlève un tangible, Oz clique cet objet sur sa carte : son effet est retiré immédiatement. Avant une nouvelle pose ailleurs, le tangible repasse physiquement par une station et Oz annonce à nouveau cet objet.
+
+L’attente dure **20 secondes**, avec **Annuler / Échap** dans Oz. Une pause, une déconnexion du dernier client Oz ou de la dernière table, un changement de mode ou un retour à l’accueil annulent l’annonce. Une annonce remplacée ne peut plus être utilisée par un ancien paquet réseau. Les doigts déjà posés avant l’annonce sont ignorés ; il faut les lever et les reposer. Trois contacts libres rendent la prise ambiguë et demandent également une nouvelle prise. Les paumes, les contacts hors table/postes et les écarts incohérents sont exclus.
+
+Pendant l’attente, les gestes sur la carte sont réservés à la pose : ni boost, ni lance-pierre, ni déformation ne sont déclenchés par ces contacts. Pilotage, POWER et réparation restent disponibles à leurs postes. Après la pose ou l’annulation, les gestes normaux reprennent avec de nouveaux contacts.
+
+**Essai à la souris :** après l’annonce d’Oz, deux clics successifs sur la table simulent les deux contacts. Sur la dalle, ce sont bien deux appuis simultanés. La géométrie et les règles serveur sont identiques.
+
+Le [briefing des copilotes et la recette sur dalle](docs/pose-tactile.md) sont prêts pour les essais.
+
+### Placement manuel conservé
+
+Le mode **Placement manuel** conserve la dernière console de Baptiste : **Arc électrique** place les deux piliers en deux clics ; **Mur** utilise deux points pour définir son centre et son orientation. Cliquer un objet déjà posé permet de le replacer ; pour le mur, les deux points et la molette règlent l’orientation. **Échap** annule l’outil, **Retirer les obstacles** vide la carte. Chaque nouvelle pose manuelle vaut validation de la recharge observée par Oz ; elle ne remplace pas le retour physique à une station.
+
+Un pilier seul produit déjà un champ électrique au sol. Les deux piliers actifs forment aussi un arc à une distance d’au plus **350 px logiques**, valeur de la dernière mise à jour du dépôt. Les collisions, les champs, le ralentissement et les dégâts restent calculés par le serveur. Le journal `/api/oz-log` conserve les poses effectives et les retraits.
 
 ### Échelle LEGO et tolérance de placement
 
@@ -138,15 +150,15 @@ La console fonctionne avant le départ, en course et en pause. Les empreintes et
 | Frange du mur | 10 mm autour | ≈16 px autour |
 | Champ électrique d’un pilier | diamètre 84 mm | ≈132 px |
 
-La frange douce du mur couvre un petit décalage sans allonger artificiellement ses extrémités ; les rebonds utilisent un rectangle à coins arrondis et détectent aussi une traversée entre deux images. Le socle du pilier est précis, son champ diffus reste visible au-delà du LEGO. Aucune aimantation sur la piste ne décale l’objet observé : elle pourrait aggraver un décalage réel. Le toucher au doigt reste une piste de secours, non imposée dans ce prototype.
+La frange douce du mur couvre un petit décalage sans allonger artificiellement ses extrémités ; les rebonds utilisent un rectangle à coins arrondis et détectent aussi une traversée entre deux images. Le socle du pilier est précis, son champ diffus reste visible au-delà du LEGO. Aucune aimantation sur la piste ne décale l’objet observé : elle pourrait aggraver un décalage réel. Le mode **Pose tactile** utilise le milieu des contacts sans aimantation sur la piste ; le mode manuel reste disponible.
 
 Le module nominal est documenté par LEGO : brique 2 × 4 d’environ 32 × 16 mm, [brevet EP3717086, §0021](https://data.epo.org/publication-server/rest/v1.2/patents/EP3717086NWB1/document.pdf).
 
 **Essai sur la vraie table :**
 
 1. Afficher le jeu en plein écran sans marge, puis comparer le mur avec une base 10 × 4 et le socle avec une 4 × 4. Si la diagonale réelle diffère, régler `tableDiagonalInches`, puis relancer le serveur. Une fenêtre de navigateur réduite ne peut pas conserver les dimensions physiques.
-2. Depuis Oz : station cyan → charge → pose du mur. Tester une orientation au glissement, puis une petite correction. Essayer de le déplacer loin ou de le faire avancer par petites étapes : le point initial reste la référence. Désactiver/réactiver ne débloque pas ce déplacement.
-3. Rapporter le mur à la station rose : l’effet doit disparaître. Sans charge, la repose est refusée ; après charge elle fonctionne ailleurs. Les deux voitures doivent subir le même mur.
+2. Dans **Pose tactile**, annoncer le mur, puis le poser avec deux contacts autour de sa largeur : comparer son centre et son orientation au LEGO. Vérifier les deux sens de prise, le retrait des doigts et une pose près d’un bord de piste.
+3. Enlever le mur physiquement et le cliquer sur la carte Oz : son effet doit disparaître. Sans nouvelle annonce, deux contacts ne doivent pas le replacer. Après retour dans une station et nouvelle annonce, essayer ailleurs. Les deux voitures doivent subir le même mur.
 4. Poser un pilier : vérifier le champ au sol et le ralentissement des deux voitures. Poser le second à portée : vérifier l’arc. Désactiver un pilier ou le remettre en station : le champ et l’arc disparaissent.
 5. Décaler volontairement le LEGO de 5 à 10 mm et observer depuis les deux côtés. Au-delà de cette marge, corriger Oz ou refaire la pose après recharge. L’alignement et le confort restent à valider avec les objets sur la dalle réelle.
 
@@ -186,6 +198,7 @@ npm run test:visuals
 npm run test:tangibles
 npm run test:autopilot
 npm run test:boost
+npm run test:tangible-touch
 npm run build
 ```
 

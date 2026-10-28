@@ -10,9 +10,14 @@ const btnArc = document.getElementById('btn-arc') as HTMLButtonElement;
 const btnWall = document.getElementById('btn-wall') as HTMLButtonElement;
 const btnClear = document.getElementById('btn-clear') as HTMLButtonElement;
 const canvas = document.getElementById('oz-map') as HTMLCanvasElement;
+const placementMode = document.getElementById('placement-mode') as HTMLSelectElement;
+const touchTools = document.getElementById('touch-tools')!;
+const touchCancel = document.getElementById('touch-cancel') as HTMLButtonElement;
+const touchButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-tangible]')];
 
 const sync = new StateSync();
 let conn: Connection;
+let wasTouch = false;
 
 // Controller kept for state tracking, optimistic reconciliation & unit tests
 const controller = new OzController((type, params) => {
@@ -22,6 +27,7 @@ const controller = new OzController((type, params) => {
 }, () => refresh());
 
 function updateToolUI(tool: OzTool, step: number): void {
+  if (controller.state?.tangiblePlacementMode === 'touch') return;
   btnArc.classList.toggle('active', tool === 'arc');
   btnWall.classList.toggle('active', tool === 'wall');
 
@@ -59,6 +65,7 @@ const map = new OzMap(canvas, {
   onMove: (id, x, y, angle) => controller.move(id, { x, y, angle }),
   onDragStart: () => controller.beginGesture(),
   onDragEnd: () => controller.endGesture(),
+  onRemove: id => { if(conn?.isOpen())conn.send({type:'TangibleRemoved',id}); },
 
   onPlaceArc: (p1: Vec2, p2: Vec2) => {
     if (!conn?.isOpen()) return;
@@ -171,6 +178,15 @@ btnArc.addEventListener('click', () => {
   map.setTool(current === 'arc' ? null : 'arc');
 });
 
+placementMode.addEventListener('change',()=>{
+  map.cancel();
+  if(conn?.isOpen())conn.send({type:'TangiblePlacementMode',mode:placementMode.value});
+});
+for(const button of touchButtons)button.addEventListener('click',()=>{
+  if(conn?.isOpen())conn.send({type:'TangiblePrepare',id:Number(button.dataset.tangible)});
+});
+touchCancel.addEventListener('click',()=>{if(conn?.isOpen())conn.send({type:'TangiblePlacementCancel'});});
+
 btnWall.addEventListener('click', () => {
   if (!controller.enabled) return;
   const current = map.getTool();
@@ -188,6 +204,7 @@ btnClear.addEventListener('click', () => {
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    if(controller.state?.tangiblePlacementMode==='touch'&&conn?.isOpen())conn.send({type:'TangiblePlacementCancel'});
     map.cancel();
     updateToolUI(null, 0);
   }
@@ -195,6 +212,26 @@ document.addEventListener('keydown', e => {
 
 function refresh(): void {
   const enabled = controller.enabled;
+  const s=controller.state,touch=s?.tangiblePlacementMode==='touch',pending=s?.tangiblePlacement;
+  placementMode.disabled=!controller.connected||!s;
+  placementMode.value=touch?'touch':'manual';
+  touchTools.hidden=!touch;
+  btnArc.hidden=touch;btnWall.hidden=touch;btnClear.hidden=touch;
+  for(const button of touchButtons){
+    const id=Number(button.dataset.tangible),placed=s?.tangibles[id]?.status==='placed';
+    button.disabled=!enabled||s?.phase==='PAUSED'||!!placed;
+    button.classList.toggle('active',pending?.id===id);
+    button.setAttribute('aria-pressed',String(pending?.id===id));
+    button.title=placed?'Cliquez sur cet objet sur la carte pour signaler son retrait':'Après recharge, annoncer la prochaine pose';
+  }
+  touchCancel.hidden=!pending;
+  touchCancel.textContent=`Annuler · ${Math.max(0,Math.ceil(((pending?.expiresAt??0)-sync.now())/1000))} s`;
+  if(touch){
+    hint.textContent=pending?'Posez l’objet · deux contacts sur la table':'Choisissez l’objet à poser · cliquez sur la carte pour le retirer';
+    canvas.style.cursor='default';
+  }
+  if(!touch&&wasTouch)updateToolUI(null,0);
+  wasTouch=touch;
   btnArc.disabled = !enabled;
   btnWall.disabled = !enabled;
   btnClear.disabled = !enabled;
@@ -206,7 +243,7 @@ function refresh(): void {
     status.textContent = 'En attente du circuit';
     status.classList.remove('online');
   } else {
-    status.textContent = 'En course · prêt';
+    status.textContent = s?.phase==='PAUSED'?'Pause':s?.phase==='READY'?'Circuit prêt':'En course';
     status.classList.add('online');
   }
 

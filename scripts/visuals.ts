@@ -193,6 +193,16 @@ test('automatic-pilot HUD and repair feedback render in both themes without chan
     const before=JSON.stringify(state);renderer.render(view);assert.equal(JSON.stringify(state),before);
   }
 });
+test('touch placement shows neutral contact cues and a fixed-size preview in both themes without state mutations',()=>{
+  const {view,state,renderer}=scene();state.phase='RACE';state.tangiblePlacementMode='touch';
+  for(const theme of THEMES)for(const reduced of [false,true])for(const id of [1,2,3] as const){
+    view.theme=theme.id;view.reducedMotion=reduced;state.tangiblePlacement={id,token:1,expiresAt:view.now()+20_000};
+    for(const points of [[],[{x:900,y:500}],[{x:900,y:500},{x:900,y:580}]]){
+      view.tangibleTouch={points,valid:points.length===2};const before=JSON.stringify(state);renderer.render(view);assert.equal(JSON.stringify(state),before);
+    }
+  }
+  state.tangiblePlacement=null;view.tangibleTouch=null;renderer.render(view);
+});
 for (const theme of THEMES) test(`${theme.name}: static / paused frames reuse the deck, deformed geometry updates it and resize invalidates it`, () => {
   const { view, state, renderer, surface } = scene(); view.theme = theme.id; state.phase = 'RACE'; renderer.render(view);
   assert.equal(renderer.stats.trackBuilds, 1);
