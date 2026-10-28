@@ -26,7 +26,7 @@ export class F1Venue {
           ribbon(c,a,b,49+row*8,49.7+row*8,'#c3c7ac70');
         }
       }
-      for(const f of run){
+      for(const f of run.slice(2,-2)){
         for(let row=0;row<7;row++){
           const p=venuePoint(f,51+row*8),col=Math.floor(f.distance/150)%3;
           c.save();c.translate(p.x,p.y);c.rotate(Math.atan2(f.ty,f.tx));
@@ -48,16 +48,20 @@ export class F1Venue {
         if(f.index%11===0)this.crowds.push(f);
       }
       // Short cantilevered roofs over the rear seats; gaps reveal the people below.
-      for(let i=1;i<run.length;i++)if(Math.floor(run[i].distance/190)%3===1){
+      for(let i=3;i<run.length-2;i++)if(Math.floor(run[i].distance/190)%3===1){
         const a=run[i-1],b=run[i];
         ribbon(c,a,b,80,111,'#0e292b70');ribbon(c,a,b,85,114,'#a5b4a3');
         ribbon(c,a,b,86,88,'#e3dfc875');ribbon(c,a,b,112,114,'#304f4d');
         if(i%2===0){const p=venuePoint(b,86),q=venuePoint(b,113);c.strokeStyle='#516f6588';c.lineWidth=.7;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(q.x,q.y);c.stroke();}
+        for(const [f,end] of [[a,i===3||Math.floor(run[i-1].distance/190)%3!==1],[b,i===run.length-3||Math.floor(run[i+1].distance/190)%3!==1]] as const)if(end){
+          const p=venuePoint(f,85),q=venuePoint(f,114);c.strokeStyle='#34524e';c.lineWidth=2.5;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(q.x,q.y);c.stroke();
+        }
       }
       c.strokeStyle='#c0c4a97a';c.lineWidth=.8;
       for(const offset of [36,39]){
         c.beginPath();run.forEach((f,i)=>{const p=venuePoint(f,offset);if(i)c.lineTo(p.x,p.y);else c.moveTo(p.x,p.y);});c.stroke();
       }
+      this.endSection(c,run[0],run[1]);this.endSection(c,run[run.length-1],run[run.length-2]);
     }
     if(this.pit)this.paintPit(c,this.pit);
     if(!layout.track&&layout.anchors[3])this.paintPit(c,layout.anchors[3]);
@@ -67,6 +71,23 @@ export class F1Venue {
       plate(c,-11,-8,22,16,1,'#233b3c','#b6bca1');plate(c,-10,-7,20,6,1,'#b9bba0');
       c.fillStyle='#c38b4b';c.fillRect(-4,1,7,4);c.restore();
     }
+  }
+
+  /** A real terminal bay: stair aisle, stepped side cheek, rail and front landing. */
+  private endSection(c:Ctx,a:VenueFrame,b:VenueFrame):void {
+    ribbon(c,a,b,43,112,'#8a998e');ribbon(c,a,b,37,44,'#a7b3a0');
+    c.save();c.lineJoin='round';
+    for(let y=48;y<=104;y+=8){
+      const p=venuePoint(a,y),q=venuePoint(b,y);
+      c.strokeStyle='#ced0b890';c.lineWidth=1.2;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(q.x,q.y);c.stroke();
+      const r=venuePoint(a,y+1.5),s=venuePoint(b,y+1.5);
+      c.strokeStyle='#28443c70';c.lineWidth=1;c.beginPath();c.moveTo(r.x,r.y);c.lineTo(s.x,s.y);c.stroke();
+    }
+    const front=venuePoint(a,42),back=venuePoint(a,114),turn=venuePoint(b,114);
+    c.strokeStyle='#1d3937';c.lineWidth=3;c.beginPath();c.moveTo(front.x,front.y);c.lineTo(back.x,back.y);c.lineTo(turn.x,turn.y);c.stroke();
+    c.strokeStyle='#ced4b7';c.lineWidth=1;c.stroke();
+    for(const y of [43,66,90,113]){const p=venuePoint(a,y);c.fillStyle='#e0dac0';c.beginPath();c.arc(p.x,p.y,1.5,0,TAU);c.fill();}
+    c.restore();
   }
 
   private paintPit(c:Ctx,p:SceneryAnchor):void {

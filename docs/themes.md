@@ -53,9 +53,11 @@ Les écrans d’accueil et de création utilisent une composition périphérique
 
 Les cases de départ F1 utilisent la distance le long du tracé, sa tangente et sa largeur locale. Leurs côtés suivent les virages ; une case qui ne tient pas dans un coude aigu est omise. La peinture est aussi masquée par la surface exacte de la route.
 
+Les sections de tribunes vérifient l’enveloppe complète de chaque portion, entre le mobilier avant et les auvents arrière. Une courbure qui replie la terrasse, une intersection avec une portion antérieure ou le manque d’espace entre deux sections provoque une coupure. Chaque extrémité possède une travée sans sièges, un escalier et un garde-corps (F1), ou une fermeture en bois et pneus (Mayhem). Les auvents ont aussi des faces de terminaison. Ces détails suivent les deux dernières coupes du tracé et restent dans le volume réservé.
+
 ## Vérification
 
-La passe actuelle vérifie les types, la compilation, les gestes et les règles serveur. Les 34 contrôles de rendu automatisés parcourent les cinq thèmes, toutes les phases, une boucle et un huit, les effets, les caches, le redimensionnement, la pause, le mouvement réduit et le changement de thème. Les animations des nouveaux décors n’allouent aucun nouveau canvas après leur préparation.
+La passe actuelle vérifie les types, la compilation, les gestes et les règles serveur. Les 37 contrôles de rendu automatisés parcourent les cinq thèmes, toutes les phases, une boucle et un huit, les effets, les caches, le redimensionnement, la pause, le mouvement réduit et le changement de thème. Les animations des nouveaux décors n’allouent aucun nouveau canvas après leur préparation.
 
 Une planche comparative en navigateur a servi à vérifier la composition des trois ambiances et à prolonger les tribunes sur les lignes droites. Cette passe ne comprend pas de mesure de fréquence d’images sur la dalle ; la lisibilité à distance et la fluidité avec les joueurs restent à confirmer sur table.
 

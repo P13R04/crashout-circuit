@@ -2,6 +2,8 @@
 import assert from 'node:assert/strict';
 import { indexedRotation, pressStroke, steamSample } from '../client-table/IndustrialMotion.js';
 import { layoutScenery, sceneryKey, sceneryReservations, standClearance, venuePoint, roadClearance } from '../client-table/SceneryLayout.js';
+import { planStandSections, standFootprint, standFootprintsOverlap } from '../client-table/StandSections.js';
+import type { VenueFrame } from '../client-table/SceneryLayout.js';
 import { racingGrid } from '../client-table/RaceGrid.js';
 import { isInsideTrackRibbon,trackTangent } from '../server/geometry.js';
 import { ThemeWorld } from '../client-table/ThemeWorld.js';
@@ -185,6 +187,35 @@ test('F1 start boxes follow curved approaches and stay inside the road at bends 
     for(const points of boxes)for(const p of points)assert.ok(isInsideTrackRibbon(p,track,8),'no paint outside the drivable ribbon');
   }
   assert.ok(visible>30,'the safety check preserves grid boxes on ordinary curves');
+});
+test('grandstand footprints detect overlap, containment and a separate aisle',()=>{
+  const box=(x:number,y:number)=>[{x,y},{x:x+20,y},{x:x+20,y:y+40},{x,y:y+40}];
+  assert.equal(standFootprintsOverlap(box(0,0),box(10,10)),true);
+  assert.equal(standFootprintsOverlap(box(0,0),box(20,0)),false,'a shared seam is valid');
+  assert.equal(standFootprintsOverlap(box(0,0),box(24,0),8),true,'independent sections need an aisle');
+  assert.equal(standFootprintsOverlap(box(0,0),box(30,0),8),false);
+});
+test('a tight concave offset is split before its rear terraces fold backwards',()=>{
+  const frames=Array.from({length:45},(_,i):VenueFrame=>{
+    const a=i*.04;return{x:960+100*Math.cos(a),y:540+100*Math.sin(a),tx:-Math.sin(a),ty:Math.cos(a),nx:-Math.cos(a),ny:-Math.sin(a),half:65,distance:i*14,index:i};
+  });
+  assert.equal(planStandSections(frames,()=>true).length,0,'reversed rear edges never produce a stand');
+  const convex=frames.map(f=>({...f,nx:-f.nx,ny:-f.ny}));
+  assert.ok(planStandSections(convex,()=>true).length>0,'ordinary outside curves retain their stands');
+});
+test('successive turns cannot overlap another section or an earlier part of the same terrace',()=>{
+  const frames=Array.from({length:310},(_,i):VenueFrame=>{
+    const a=i*.035,r=260-a*9,dx=-9*Math.cos(a)-r*Math.sin(a),dy=-9*Math.sin(a)+r*Math.cos(a),length=Math.hypot(dx,dy);
+    return{x:960+r*Math.cos(a),y:540+r*Math.sin(a),tx:dx/length,ty:dy/length,nx:dy/length,ny:-dx/length,half:50,distance:i*14,index:i};
+  });
+  const sections=planStandSections(frames,()=>true);
+  assert.ok(sections.length>0,'visible terraces remain around the curve');
+  const tiles=sections.flatMap((run,section)=>run.slice(1).map((b,i)=>({section,i,shape:standFootprint(run[i],b)})));
+  for(let i=0;i<tiles.length;i++)for(let j=i+1;j<tiles.length;j++){
+    const a=tiles[i],b=tiles[j];if(a.section===b.section&&Math.abs(a.i-b.i)===1)continue;
+    assert.equal(standFootprintsOverlap(a.shape,b.shape,a.section===b.section?0:8),false,'non-neighbouring terrace volumes never intersect');
+  }
+  assert.ok(tiles.length<frames.length-10,'the overlapping later turn is actually trimmed');
 });
 function scene() {
   const view = createView(() => 1_000_000), state = createInitialState();

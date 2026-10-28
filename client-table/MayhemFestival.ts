@@ -29,7 +29,7 @@ export class MayhemFestival {
           c.strokeStyle='#8c795057';c.lineWidth=3;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(q.x,q.y);c.stroke();
         }
       }
-      for(const f of run){
+      for(const f of run.slice(2,-2)){
         const p=venuePoint(f,27);tyre(c,p.x,p.y,6.5);
         if(f.index%2===0){const q=venuePoint(f,37);tyre(c,q.x,q.y,5.5);}
         if(f.index%3===0){
@@ -52,6 +52,7 @@ export class MayhemFestival {
           c.strokeStyle='#302d20';c.lineWidth=4;c.beginPath();for(let x=-24;x<26;x+=12){c.moveTo(x,-5);c.lineTo(x+8,5);}c.stroke();c.restore();
         }
       }
+      this.endSection(c,run[0],run[1]);this.endSection(c,run[run.length-1],run[run.length-2]);
     }
     layout.anchors.forEach((p,i)=>{
       c.save();c.translate(p.x,p.y);c.rotate(p.angle);const s=Math.min(1,p.room/(i===0?175:i%3===2?130:150));c.scale(s,s);
@@ -67,6 +68,18 @@ export class MayhemFestival {
       const s=this.smoke.getContext('2d')!,g=s.createRadialGradient(96,96,4,96,96,94);
       g.addColorStop(0,'#d5b58b85');g.addColorStop(.45,'#b49a7339');g.addColorStop(1,'#a99b7800');s.fillStyle=g;s.fillRect(0,0,192,192);
     }
+  }
+
+  /** Timber end deck and braced handrail close the terrace instead of cutting seats in half. */
+  private endSection(c:Ctx,a:VenueFrame,b:VenueFrame):void {
+    const front=venuePoint(a,43),next=venuePoint(b,43),rear=venuePoint(a,88),last=venuePoint(b,88);
+    c.save();c.fillStyle='#6a6544';c.strokeStyle='#272f23';c.lineWidth=1;c.beginPath();c.moveTo(front.x,front.y);c.lineTo(next.x,next.y);c.lineTo(last.x,last.y);c.lineTo(rear.x,rear.y);c.closePath();c.fill();c.stroke();
+    for(let y=48;y<86;y+=7){const p=venuePoint(a,y),q=venuePoint(b,y);c.strokeStyle='#c1a36977';c.beginPath();c.moveTo(p.x,p.y);c.lineTo(q.x,q.y);c.stroke();}
+    c.strokeStyle='#242e23';c.lineWidth=3;c.beginPath();c.moveTo(front.x,front.y);c.lineTo(rear.x,rear.y);c.lineTo(last.x,last.y);c.stroke();
+    c.strokeStyle='#b6a56e';c.lineWidth=1.2;c.stroke();
+    const braced=venuePoint(b,83);c.beginPath();c.moveTo(front.x,front.y);c.lineTo(braced.x,braced.y);c.stroke();
+    for(const f of [a,b]){const p=venuePoint(f,27);tyre(c,p.x,p.y,6);}
+    const p=venuePoint(a,37);tyre(c,p.x,p.y,5);c.restore();
   }
 
   private paintStage(c:Ctx):void {

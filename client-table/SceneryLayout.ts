@@ -1,4 +1,5 @@
 import type { TrackGeometry, Vec2 } from '../server/types.js';
+import { planStandSections } from './StandSections.js';
 import { insidePanel, inTangibleDepot } from '../server/layout.js';
 
 export interface VenueFrame extends Vec2 { tx:number; ty:number; nx:number; ny:number; half:number; distance:number; index:number; }
@@ -83,15 +84,10 @@ export function layoutScenery(track:TrackGeometry|null,mode:SceneryPresentation=
     }
     distance+=d;
   }
-  const stands:VenueFrame[][]=[];let run:VenueFrame[]=[];
-  for(const f of frames){
+  const stands=planStandSections(frames,f=>{
     const front=venuePoint(f,42),back=venuePoint(f,110);
-    const valid=clearUi(front,8)&&clearUi(back,12)&&roadClearance(front,track)>28&&roadClearance(back,track)>65;
-    const prev=run.at(-1),aligned=!prev||f.tx*prev.tx+f.ty*prev.ty>.8;
-    if(!valid||!aligned){if(run.length>=6)stands.push(run);run=[];}
-    if(valid)run.push(f);
-  }
-  if(run.length>=6)stands.push(run);
+    return clearUi(front,8)&&clearUi(back,12)&&roadClearance(front,track)>28&&roadClearance(back,track)>65;
+  });
   // Large recognisable props get real empty space, never arbitrary dots on the road.
   const candidates:SceneryAnchor[]=[];
   for(let y=240;y<=840;y+=60)for(let x=240;x<=1680;x+=60){
