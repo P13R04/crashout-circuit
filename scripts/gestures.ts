@@ -131,13 +131,13 @@ await test('whichever finger is pulled is the pouch (roles do not depend on the 
   near(m.anchor, { x: (F1.x + F3.x) / 2, y: (F1.y + F3.y) / 2 }, 'fork');
 });
 
-await test('a fork lift has a short recovery grace, then fires the valid shot', async () => {
+await test('a fork lift stays latched and never fires before the pouch release', async () => {
   const r = rig();
   await land(r);
   await pullDown(r, 3, F3, 150);
   r.up(1, F1.x, F1.y);
   assert.equal(r.sent.length,0);await sleep(300);
-  assert.equal(r.sent.length, 1);
+  assert.equal(r.sent.length, 0);
   r.up(2, F2.x, F2.y);
   r.up(3, F3.x, F3.y + 150);
   assert.equal(r.sent.length, 1, 'the other fingers do not fire anything else');
@@ -320,6 +320,37 @@ await test('two held fingers can grab the folded inner bank of a right-angle elb
   const a=track.innerEdge[19],b=track.innerEdge[21];r.down(1,a.x,a.y);r.down(2,b.x,b.y);
   r.move(1,a.x-70,a.y+70);r.move(2,b.x-70,b.y+70);r.up(1,a.x-70,a.y+70);r.up(2,b.x-70,b.y+70);
   assert.ok(r.sent.some(m=>m.type==='BorderPull'),'the concave elbow is a grabbable rendered bank');r.recognizer.releaseAll();
+});
+
+for(const delayed of [false,true])await test(`boost accepts close ${delayed?'one-second delayed':'simultaneous'} contacts`,async()=>{
+  const r=rig('boost');r.down(1,900,500);
+  if(delayed){r.up(1,900,500);await sleep(1000);}
+  r.down(2,930,500);r.up(2,930,500);await sleep(210);
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1,'close touches form a pair');r.recognizer.releaseAll();
+});
+await test('a repeated tap with the same pointerId is a second boost contact',async()=>{
+  const r=rig('boost');r.down(1,900,500);r.up(1,900,500);await sleep(220);
+  r.down(1,902,500);r.up(1,902,500);await sleep(210);
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1,'a second tap is not an anchor replacement');r.recognizer.releaseAll();
+});
+await test('fingers landing before the POWER state echo are retained',async()=>{
+  const r=rig('boost');r.view.state!.cars.A.itemArmed=false;
+  r.down(1,900,500);r.down(2,930,500);await sleep(50);
+  r.view.state!.cars.A.itemArmed=true;r.recognizer.syncState();await sleep(210);
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1,'network echo does not reject fresh fingers');r.recognizer.releaseAll();
+});
+await test('slingshot fork accepts a full second between the first two taps',async()=>{
+  const r=rig();r.down(1,F1.x,F1.y);r.up(1,F1.x,F1.y);await sleep(1000);
+  r.down(2,F2.x,F2.y);r.down(3,F3.x,F3.y);await pullDown(r,3,F3,150);
+  r.cancel(2,F2.x,F2.y);await sleep(350);assert.equal(r.sent.length,0,'a dropped anchor never fires');
+  r.up(3,F3.x,F3.y+150);assert.equal(r.sent.filter(m=>m.type==='Slingshot').length,1,'latched fork survives a missed hold');r.recognizer.releaseAll();
+});
+
+await test('one finger sliding while settling does not suppress an expected boost',async()=>{
+  const {generatePreset}=await import('../server/MapGenerator.js');const r=rig('boost'),track=generatePreset();r.view.state!.track=track;
+  const a=track.outerEdge[42],b=track.outerEdge[44],centre=track.centerline[42],d=Math.hypot(a.x-centre.x,a.y-centre.y),out={x:(a.x-centre.x)/d,y:(a.y-centre.y)/d};
+  r.down(1,a.x,a.y);r.down(2,b.x,b.y);r.move(1,a.x+out.x*25,a.y+out.y*25);await sleep(220);
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1,'a single settling correction is not a two-finger drag');r.recognizer.releaseAll();
 });
 
 let failed = 0;

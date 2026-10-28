@@ -6,7 +6,7 @@ import { Renderer } from './Renderer.js';
 import { SETTINGS_BUTTON } from '../server/layout.js';
 import { GestureRecognizer } from './GestureRecognizer.js';
 import { playFeedback, unlock } from './Sound.js';
-import { THEMES, loadTheme, saveTheme, type ThemeId } from './themes.js';
+import { THEMES, themeLook, loadTheme, saveTheme, type ThemeId } from './themes.js';
 import { advanceVisualTime } from './VisualMotion.js';
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -58,6 +58,8 @@ for (const theme of THEMES) {
 function selectTheme(id: ThemeId): void {
   view.theme = id; try { saveTheme(window.localStorage, id); } catch { /* Display preference still applies. */ }
   document.body.dataset.theme = id; canvas.dataset.theme = id;
+  const look=themeLook(id);
+  for(const [key,value] of Object.entries(look))document.body.style.setProperty(`--look-${key}`,typeof value==='number'?`${value}px`:value);
   for (const button of themeOptions.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.theme === id));
 }
 // Access to localStorage itself can be denied in embedded/private contexts.

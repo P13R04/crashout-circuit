@@ -27,7 +27,7 @@ const defaults = {
   slingMaxPullPx: 260,
   slingMinRangePx: 220,
   slingMaxRangePx: 900,
-  boostLenMinPx: 100,
+  boostLenMinPx: 0, // close or repeated taps still deploy a 110 px runway
   boostLenMaxPx: 400,
   boostGateLifeS: 8,
   boostDurationS: 2,

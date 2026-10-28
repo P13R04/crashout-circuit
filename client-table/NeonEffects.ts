@@ -1,6 +1,7 @@
 import { localToWorld, panelOf, POWER_BTN_LOCAL } from '../server/layout.js';
 import type { View } from './view.js';
 import { TEAM_COLOR } from './view.js';
+import { themeLook } from './themes.js';
 import { glow, NEON, noise } from './neon.js';
 
 type Ctx = CanvasRenderingContext2D;
@@ -8,7 +9,7 @@ const TAU = Math.PI * 2;
 /** Feedback has a shape per action, bounded by the client pool; no full-screen flashes. */
 export class NeonEffects {
   draw(ctx: Ctx, view: View): void {
-    const time = view.visualTime, reduced = view.reducedMotion;
+    const time = view.visualTime, reduced = view.reducedMotion,accent=themeLook(view.theme).accent;
     view.effects = view.effects.filter(e => time - e.start < e.dur);
     for (const e of view.effects) {
       const k = Math.max(0, Math.min(1, (time - e.start) / e.dur)), fade = 1 - k;
@@ -21,7 +22,7 @@ export class NeonEffects {
           const p = reduced ? 1 : 1 - (1 - k) ** 2;
           const bow = Math.sin(p * Math.PI) * 90;
           const x = e.x + (to.x - e.x) * p, y = e.y + (to.y - e.y) * p - bow;
-          glow(ctx, x, y, 24, NEON.gold, .75);
+          glow(ctx, x, y, 24, accent, .75);
           ctx.fillStyle = NEON.white; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, TAU); ctx.fill();
           if (!reduced) {
             ctx.strokeStyle = '#ffce6660'; ctx.lineWidth = 1.5; ctx.beginPath();
@@ -36,9 +37,9 @@ export class NeonEffects {
         case 'itemArmed': case 'itemLost': {
           ctx.translate(-e.x, -e.y);
           const at = localToWorld(panelOf(e.team, 'copilot'), POWER_BTN_LOCAL.x, POWER_BTN_LOCAL.y);
-          glow(ctx, at.x, at.y, e.kind === 'itemArmed' ? 85 : 55, NEON.gold, .6 * fade);
+          glow(ctx, at.x, at.y, e.kind === 'itemArmed' ? 85 : 55, accent, .6 * fade);
           if (e.kind === 'itemLost') {
-            ctx.fillStyle = NEON.gold;
+            ctx.fillStyle = accent;
             for (let i = 0; i < (reduced ? 3 : 7); i++) {
               ctx.fillRect(at.x + (noise(i * 21) - .5) * 50, at.y + (noise(i * 13) - .5) * 30 + (reduced ? 0 : k * 35), 2, 3);
             }
@@ -46,6 +47,21 @@ export class NeonEffects {
           break;
         }
         case 'stoneImpact': case 'stoneHit': case 'hit': case 'wallDestroyed': {
+          if(view.theme==='toy'){
+            for(let i=0;i<(reduced?4:12);i++){
+              const a=i*2.4,d=(reduced?12:10+k*48)*( .5+noise(i*31));
+              ctx.save();ctx.translate(Math.cos(a)*d,Math.sin(a)*d+k*k*18);ctx.rotate(a+k*7);
+              ctx.fillStyle=['#ffd36b','#ff865b','#8ee8dc','#b7a7ff'][i%4];ctx.fillRect(-2,-2,4,5);ctx.restore();
+            }
+            break;
+          }
+          if(view.theme==='classic'||view.theme==='mayhem'){
+            for(let i=0;i<(reduced?3:6);i++){
+              const a=i*2.3,d=reduced?7:6+k*24;
+              ctx.fillStyle=view.theme==='classic'?'#d1d9cf25':'#a78c5e40';
+              ctx.beginPath();ctx.arc(Math.cos(a)*d,Math.sin(a)*d,3+k*8,0,TAU);ctx.fill();
+            }
+          }
           const heavy = e.kind === 'stoneImpact' || e.kind === 'stoneHit';
           const count = reduced ? 4 : heavy ? 16 : 7;
           const reach = heavy ? 80 : 36;
@@ -54,7 +70,7 @@ export class NeonEffects {
             const a = i / count * TAU + noise(i * 13) * .6;
             const d = reduced ? 13 : 6 + reach * (1 - (1 - k) ** 2) * (.5 + noise(i * 19) * .5);
             const length = 3 + (heavy ? 14 : 7) * fade;
-            ctx.strokeStyle = i % 3 ? NEON.gold : NEON.white; ctx.lineWidth = i % 4 ? 1.4 : 2.5;
+            ctx.strokeStyle = i % 3 ? accent : NEON.white; ctx.lineWidth = i % 4 ? 1.4 : 2.5;
             ctx.beginPath(); ctx.moveTo(Math.cos(a) * d, Math.sin(a) * d);
             ctx.lineTo(Math.cos(a) * (d + length), Math.sin(a) * (d + length)); ctx.stroke();
           }
@@ -73,15 +89,15 @@ export class NeonEffects {
         }
         case 'boostHit': {
           const car = view.state?.cars[e.team]; if (!car) break;
-          ctx.rotate(car.angle); ctx.strokeStyle = NEON.gold; ctx.lineWidth = 1.8;
+          ctx.rotate(car.angle); ctx.strokeStyle = accent; ctx.lineWidth = 1.8;
           for (const y of [-18, -10, 10, 18]) {
             const start = reduced ? -20 : -8 - k * 35;
             ctx.beginPath(); ctx.moveTo(start, y); ctx.lineTo(start - 22 - k * 20, y); ctx.stroke();
           }
-          glow(ctx, -15, 0, 55, NEON.gold, .5 * fade); break;
+          glow(ctx, -15, 0, 55, accent, .5 * fade); break;
         }
         case 'boostGate': {
-          ctx.strokeStyle = NEON.gold; ctx.lineWidth = 1.2;
+          ctx.strokeStyle = accent; ctx.lineWidth = 1.2;
           for (const side of [-1, 1]) { const x = side * (reduced ? 18 : 10 + k * 50); ctx.beginPath(); ctx.moveTo(x, -20); ctx.lineTo(x, 20); ctx.stroke(); }
           break;
         }

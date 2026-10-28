@@ -1,6 +1,7 @@
 /** Visual invariants and rendering smoke checks; actual raster/performance QA runs in the browser. */
 import assert from 'node:assert/strict';
 import { indexedRotation, pressStroke, steamSample } from '../client-table/IndustrialMotion.js';
+import { ThemeWorld } from '../client-table/ThemeWorld.js';
 import { ScrapBackdrop } from '../client-table/ScrapBackdrop.js';
 import { TrailBuffer, TRAIL_LIMIT, TRAIL_LIFE_MS, advanceVisualTime } from '../client-table/VisualMotion.js';
 import { visibleTrackEdges } from '../client-table/NeonTrack.js';
@@ -131,6 +132,12 @@ test('industrial machinery and vapour reuse their raster parts through motion an
   for (let frame = 0; frame < 120; frame++) backdrop.draw(ctx, frame * 131, frame > 80, frame > 100);
   assert.equal(calls.get('canvasAllocations'), prepared, 'no new canvases in ongoing animation');
 });
+for(const id of ['toy','classic','mayhem'] as const)test(`${id}: scenery reuses its sprites through long animations and reduced motion`,()=>{
+  const world=new ThemeWorld(id),ctx=canvas().getContext('2d')!;
+  world.draw(ctx,0,false,false);const allocated=calls.get('canvasAllocations');
+  for(let i=0;i<160;i++)world.draw(ctx,i*1271,i>120,i>140);
+  assert.equal(calls.get('canvasAllocations'),allocated,'live scenery never allocates new canvases');
+});
 function scene() {
   const view = createView(() => 1_000_000), state = createInitialState();
   view.state = state; view.visualTime = 200; state.track = generatePreset(); state.trackVersion = 1;
@@ -173,7 +180,7 @@ test('map labels remain P1 and P2 after JSON synchronization and either drawing 
     recordedText=null;view.strokes.clear();
   }
 });
-test('boost deployment and expiry remain finite and immutable across both themes and reduced motion', () => {
+test('boost deployment and expiry remain finite and immutable across all themes and reduced motion', () => {
   const {view,state,renderer}=scene();state.phase='RACE';
   for(const theme of THEMES)for(const reduced of [false,true]){
     view.theme=theme.id;view.reducedMotion=reduced;
@@ -182,9 +189,9 @@ test('boost deployment and expiry remain finite and immutable across both themes
       const before=JSON.stringify(state);renderer.render(view);assert.equal(JSON.stringify(state),before);
     }
   }
-  assert.equal(renderer.stats.trackBuilds,2,'object animation never rebuilds either deck');
+  assert.equal(renderer.stats.trackBuilds,THEMES.length,'object animation never rebuilds a theme deck');
 });
-test('automatic-pilot HUD and repair feedback render in both themes without changing physics', () => {
+test('automatic-pilot HUD and repair feedback render in all themes without changing physics', () => {
   const {view,state,renderer}=scene();state.sessionMode='tangibles-test';
   state.cars.A.disabled=true;state.cars.A.hp=0;
   state.repairPads['A-pilot'].held=true;state.repairProgress.A=.45;
@@ -193,7 +200,7 @@ test('automatic-pilot HUD and repair feedback render in both themes without chan
     const before=JSON.stringify(state);renderer.render(view);assert.equal(JSON.stringify(state),before);
   }
 });
-test('touch placement shows neutral contact cues and a fixed-size preview in both themes without state mutations',()=>{
+test('touch placement shows neutral contact cues and a fixed-size preview in all themes without state mutations',()=>{
   const {view,state,renderer}=scene();state.phase='RACE';state.tangiblePlacementMode='touch';
   for(const theme of THEMES)for(const reduced of [false,true])for(const id of [1,2,3] as const){
     view.theme=theme.id;view.reducedMotion=reduced;state.tangiblePlacement={id,token:1,expiresAt:view.now()+20_000};
@@ -276,7 +283,7 @@ test('switching themes preserves race data, reuses each deck and clears incompat
 test('theme preference survives reload, tolerates invalid values and unavailable storage', () => {
   const values = new Map<string, string>();
   const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
-  assert.equal(loadTheme(storage), 'neon'); saveTheme(storage, 'scrap'); assert.equal(loadTheme(storage), 'scrap');
+  assert.equal(loadTheme(storage), 'neon');for(const theme of THEMES){saveTheme(storage,theme.id);assert.equal(loadTheme(storage),theme.id);}
   values.set(THEME_STORAGE_KEY, 'unknown'); assert.equal(loadTheme(storage), 'neon');
   assert.equal(loadTheme({ getItem() { throw Error('denied'); } }), 'neon');
   assert.doesNotThrow(() => saveTheme({ setItem() { throw Error('denied'); } }, 'scrap'));

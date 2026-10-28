@@ -1,6 +1,6 @@
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import { boostFrame } from '../server/boostGeometry.js';
-import type { ThemeId } from './themes.js';
+import { themeLook, type ThemeId } from './themes.js';
 import { drawItemIcon } from './HUD.js';
 import { TEAM_COLOR } from './view.js';
 import { glow, noise, NEON, plate } from './neon.js';
@@ -14,10 +14,10 @@ function ownerAlpha(state: GameState, team: Team | null, p: Vec2): number {
 }
 export class NeonObjects {
   constructor(private theme: ThemeId = 'neon') {}
-  private get electric(): string { return this.theme === 'scrap' ? '#79e3ef' : NEON.gold; }
+  private get electric(): string { return themeLook(this.theme).electric; }
   drawPickups(ctx: Ctx, state: GameState, time: number, reduced: boolean): void {
     for (const p of state.pickups) {
-      const available = p.respawnAt === 0, color = p.kind === 'slingshot' ? '#ffb08a' : NEON.gold;
+      const available = p.respawnAt === 0, color = p.kind === 'slingshot' ? '#ffb08a' : themeLook(this.theme).accent;
       const lift = reduced ? 0 : Math.sin(time / 650 + p.id * 1.7) * 2.5;
       ctx.save(); ctx.globalAlpha = available ? 1 : .16;
       ctx.fillStyle = '#00000050'; ctx.beginPath(); ctx.ellipse(p.pos.x, p.pos.y + 5, 12, 5, 0, 0, TAU); ctx.fill();
@@ -25,20 +25,20 @@ export class NeonObjects {
       ctx.translate(p.pos.x, p.pos.y - 3 + lift);
       ctx.beginPath();
       for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; const x = Math.cos(a) * 16, y = Math.sin(a) * 16; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
-      ctx.closePath(); ctx.fillStyle = '#111b2e'; ctx.fill(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.closePath(); ctx.fillStyle = themeLook(this.theme).button; ctx.fill(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
       drawItemIcon(ctx, p.kind, 0, 0, 9, color);
       if (available) { ctx.fillStyle = NEON.white; ctx.fillRect(-3, -18, 6, 1); }
       ctx.restore();
     }
   }
 
-  /** Baptiste's energy runway, with cached glow and a quiet expiry in both themes. */
+  /** Baptiste's energy runway, with cached glow and a quiet expiry in every theme. */
   drawGates(ctx: Ctx, state: GameState, now: number, time: number, reduced: boolean): void {
     for (const g of state.boostGates) {
       const left=g.expiresAt-now;if(left<=0)continue;
       const {across,forward,length,depth}=boostFrame(g);
       const birth=Math.max(0,Math.min(1,(now-(g.createdAt??now-500))/450));
-      const opacity=Math.min(1,left/900), amber=left<1800?'#ffb66b':NEON.gold;
+      const opacity=Math.min(1,left/900), amber=left<1800?'#ffb66b':themeLook(this.theme).accent;
       ctx.save();ctx.transform(across.x,across.y,forward.x,forward.y,g.a.x,g.a.y);
       ctx.globalAlpha=opacity;
       // The full active footprint is readable immediately. Only the inner charge deploys.
@@ -61,7 +61,7 @@ export class NeonObjects {
       }
       ctx.globalAlpha=opacity;
       for(const x of [0,length]){
-        plate(ctx,x-7,-9,14,18,2,'#20303c',TEAM_COLOR[g.team]);
+        plate(ctx,x-7,-9,14,18,this.theme==='toy'?5:2,themeLook(this.theme).material,TEAM_COLOR[g.team]);
         glow(ctx,x,0,28,amber,.4);ctx.fillStyle='#fff2ca';ctx.fillRect(x-2,-4,4,8);
         const y=(reduced?.5:(time/620)%1)*depth;
         glow(ctx,x,y,12,amber,.25);ctx.fillStyle=amber;ctx.fillRect(x-1,y-3,2,6);
@@ -94,7 +94,7 @@ export class NeonObjects {
         ctx.beginPath(); ctx.roundRect(-length/2-fringe, -width/2-fringe, length+fringe*2, width+fringe*2, fringe); ctx.fill(); ctx.stroke();
       }
       plate(ctx, -length/2, -width/2+4, length, width, 3, '#01060c');
-      plate(ctx, -length/2, -width/2, length, width, 3, this.theme === 'scrap' ? '#45565b' : '#26364c', '#829799');
+      plate(ctx, -length/2, -width/2, length, width, 3, themeLook(this.theme).material, '#829799');
       ctx.save(); ctx.beginPath(); ctx.rect(-length/2+5, -width/2+4, length-10, width-8); ctx.clip();
       ctx.strokeStyle = this.electric + '45'; ctx.lineWidth = 4;
       for(let x=-length/2-width;x<length/2;x+=16){ctx.beginPath();ctx.moveTo(x,-width/2);ctx.lineTo(x+width,width/2);ctx.stroke();}
@@ -102,6 +102,18 @@ export class NeonObjects {
       if(this.theme === 'scrap'){
         ctx.strokeStyle='#0b171e';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-length/2+7,-3);ctx.quadraticCurveTo(0,12,length/2-7,-3);ctx.stroke();
         ctx.strokeStyle='#b6c5c2';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+      }
+      if(this.theme==='toy'){
+        for(let x=-length/2+12;x<length/2-5;x+=20){
+          ctx.fillStyle='#c47830';ctx.beginPath();ctx.arc(x,0,6,0,TAU);ctx.fill();
+          ctx.strokeStyle='#ffe5a6';ctx.lineWidth=1;ctx.beginPath();ctx.arc(x,-1,5,Math.PI,TAU);ctx.stroke();
+        }
+      }else if(this.theme==='classic'){
+        ctx.fillStyle='#b94c42';for(let x=-length/2+7;x<length/2-7;x+=24)ctx.fillRect(x,-width/2+5,11,Math.max(2,width-10));
+        plate(ctx,-12,-7,24,14,2,'#192f37',this.electric);
+      }else if(this.theme==='mayhem'){
+        ctx.strokeStyle='#342b20';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-length/2+8,-width/2+7);ctx.lineTo(length/2-8,width/2-7);ctx.moveTo(-length/2+8,width/2-7);ctx.lineTo(length/2-8,-width/2+7);ctx.stroke();
+        for(const x of [-length/2+10,length/2-10])for(const y of [-width/2+8,width/2-8]){ctx.fillStyle='#c2a57d';ctx.fillRect(x-1,y-1,2,2);}
       }
       const pulse = reduced ? .8 : .75+.12*Math.sin(time/450);
       ctx.strokeStyle = this.electric;ctx.globalAlpha*=pulse;ctx.lineWidth=2;
@@ -173,13 +185,13 @@ export class NeonObjects {
         }ctx.stroke();
       }
       ctx.rotate(t.angle*Math.PI/180);
-      plate(ctx,-base/2,-base/2,base,base,2,'#20353e','#83b2ba');
+      plate(ctx,-base/2,-base/2,base,base,this.theme==='toy'?6:2,themeLook(this.theme).material,themeLook(this.theme).line);
       ctx.scale(base/40,base/40);
-      if (this.theme === 'scrap') {
+      if (this.theme !== 'neon') {
         // Concentric coils and four terminals have no privileged direction.
         ctx.fillStyle = '#010609bb'; ctx.beginPath(); ctx.arc(2, 3, 20, 0, TAU); ctx.fill();
         glow(ctx, 0, 0, 38, this.electric, .35);
-        for (const [r, fill, stroke] of [[18, '#33484e', color], [13, '#839693', '#c8d8d2'], [9, '#11252d', '#496770']] as const) {
+        for (const [r, fill, stroke] of [[18, themeLook(this.theme).material, color], [13, this.theme==='mayhem'?'#ad8f63':this.theme==='toy'?'#dbc6ff':'#839693', '#c8d8d2'], [9, themeLook(this.theme).button, '#496770']] as const) {
           ctx.fillStyle = fill; ctx.strokeStyle = stroke; ctx.lineWidth = 1.4;
           ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill(); ctx.stroke();
         }

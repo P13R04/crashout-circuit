@@ -19,7 +19,7 @@
   "slingMaxPullPx": 260,
   "slingMinRangePx": 220,
   "slingMaxRangePx": 900,
-  "boostLenMinPx": 100,
+  "boostLenMinPx": 0,
   "boostLenMaxPx": 400,
   "boostGateLifeS": 8,
   "boostDurationS": 2,

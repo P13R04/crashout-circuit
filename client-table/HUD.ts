@@ -10,7 +10,7 @@ import {
 } from '../server/layout.js';
 import { TEAM_COLOR, type View } from './view.js';
 import { icon, contacts } from './icons.js';
-import type { ThemeId } from './themes.js';
+import { themeLook, type ThemeId } from './themes.js';
 import { armedPickup } from '../server/armedPickup.js';
 import { glow, NEON } from './neon.js';
 
@@ -77,12 +77,12 @@ export class HUD {
 
   private drawFrame(ctx: Ctx, panel: PanelLayout, theme: ThemeId, state: GameState): void {
     const PANEL_W = panelWidth(panel.role,state.driveMode[panel.team]);
-    const color = TEAM_COLOR[panel.team];
+    const color = TEAM_COLOR[panel.team],look=themeLook(theme);
     const metal = ctx.createLinearGradient(0, -PANEL_H / 2, 0, PANEL_H / 2);
-    metal.addColorStop(0, theme === 'scrap' ? '#35444b' : '#132039'); metal.addColorStop(.45, theme === 'scrap' ? '#1b282f' : '#0b1528'); metal.addColorStop(1, theme === 'scrap' ? '#101b21' : '#080e1c');
-    ctx.fillStyle = metal; ctx.strokeStyle = '#344760'; ctx.lineWidth = 1.5;
+    metal.addColorStop(0,look.top);metal.addColorStop(.45,look.panel);metal.addColorStop(1,look.bottom);
+    ctx.fillStyle = metal; ctx.strokeStyle = look.line; ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.roundRect(-PANEL_W / 2, -PANEL_H / 2, PANEL_W, PANEL_H, 18);
+    ctx.roundRect(-PANEL_W / 2, -PANEL_H / 2, PANEL_W, PANEL_H, look.radius);
     ctx.fill();
     ctx.stroke();
     ctx.strokeStyle = '#ffffff07'; ctx.lineWidth = 1;
@@ -93,11 +93,20 @@ export class HUD {
       ctx.beginPath(); ctx.moveTo(x - side * 24, -PANEL_H / 2 + 1); ctx.lineTo(x, -PANEL_H / 2 + 1); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(x - side * 24, PANEL_H / 2 - 1); ctx.lineTo(x, PANEL_H / 2 - 1); ctx.stroke();
     }
-    if (theme === 'scrap') {
+    if (theme === 'scrap'||theme==='mayhem') {
       for (const x of [-PANEL_W / 2 + 10, PANEL_W / 2 - 10]) for (const y of [-PANEL_H / 2 + 11, PANEL_H / 2 - 11]) {
         ctx.fillStyle = '#03090d'; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = '#9aafaf'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - 1.5, y - 1); ctx.lineTo(x + 1.5, y + 1); ctx.stroke();
       }
+    }
+    if(theme==='toy'){
+      // Plastic lip and recessed screw heads, kept away from touch targets.
+      ctx.strokeStyle='#e4ffed55';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-PANEL_W/2+25,-PANEL_H/2+6);ctx.lineTo(PANEL_W/2-25,-PANEL_H/2+6);ctx.stroke();
+      for(const x of [-PANEL_W/2+12,PANEL_W/2-12]){ctx.fillStyle=look.button;ctx.beginPath();ctx.arc(x,0,4,0,Math.PI*2);ctx.fill();}
+    }else if(theme==='classic'){
+      ctx.fillStyle='#d8ddd880';for(let i=0;i<6;i++)if(i%2===0)ctx.fillRect(PANEL_W/2-58+i*6,-PANEL_H/2+7,6,4);
+    }else if(theme==='mayhem'){
+      ctx.strokeStyle='#bba07a38';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-PANEL_W/2+35,PANEL_H/2-8);ctx.lineTo(PANEL_W/2-40,PANEL_H/2-12);ctx.stroke();
     }
     ctx.fillStyle = color;
     ctx.font = '600 13px system-ui';
@@ -108,7 +117,7 @@ export class HUD {
   }
 
   private drawPilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
-    const team=panel.team,car=state.cars[team],color=TEAM_COLOR[team],mode=state.driveMode[team];
+    const team=panel.team,car=state.cars[team],color=TEAM_COLOR[team],mode=state.driveMode[team],look=themeLook(view.theme);
     const area=steerArea(mode),actual=Math.max(0,car.hp/state.params.hpMax),shown=Math.max(actual,view.hpShown[team]/state.params.hpMax);
     // Health is directly above the two steering pedals, with a short trailing damage trace.
     const x=area.x-area.w/2,y=-43,w=area.w-34,h=15;
@@ -121,8 +130,8 @@ export class HUD {
     ctx.strokeStyle=color+'66';ctx.lineWidth=1;ctx.strokeRect(x,y,w,h);
     ctx.fillStyle=health;ctx.font='bold 14px monospace';ctx.textAlign='right';ctx.fillText(`${Math.round(car.hp)}`,x+area.w,y+13);
     const stick=view.sticks[team],automatic=state.sessionMode==='tangibles-test';
-    ctx.fillStyle=stick.active?color+'19':'#081323';ctx.strokeStyle=stick.active?color:'#3e6177';ctx.lineWidth=stick.active?3:2;
-    ctx.beginPath();ctx.roundRect(area.x-area.w/2,area.y-area.h/2,area.w,area.h,12);ctx.fill();ctx.stroke();
+    ctx.fillStyle=stick.active?color+'29':look.button;ctx.strokeStyle=stick.active?color:look.line;ctx.lineWidth=stick.active?3:2;
+    ctx.beginPath();ctx.roundRect(area.x-area.w/2,area.y-area.h/2,area.w,area.h,Math.min(18,look.radius));ctx.fill();ctx.stroke();
     if(automatic)icon(ctx,'track',area.x,area.y,42,color);
     else{
       ctx.strokeStyle='#ffffff30';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(area.x,area.y-area.h/2+10);ctx.lineTo(area.x,area.y+area.h/2-10);ctx.stroke();
@@ -136,18 +145,19 @@ export class HUD {
       const p=PEDAL_LOCAL,active=view.localPedals[team];ctx.fillStyle=active?color+'55':'#ffffff09';ctx.strokeStyle=active?'#fff':color;ctx.lineWidth=active?3:2;
       ctx.beginPath();ctx.roundRect(p.x-p.w/2,p.y-p.h/2,p.w,p.h,12);ctx.fill();ctx.stroke();icon(ctx,'pedal',p.x,p.y,32,active?'#fff':color);
     }
-    icon(ctx,'flag',55,-60,15,color);ctx.fillStyle='#dceef4';ctx.font='bold 14px monospace';ctx.textAlign='left';
+    icon(ctx,'flag',55,-60,15,color);ctx.fillStyle=look.ink;ctx.font='bold 14px monospace';ctx.textAlign='left';
     ctx.fillText(state.sessionMode==='tangibles-test'?`${car.lap+1}`:`${Math.min(state.params.lapsToWin,car.lap+1)}/${state.params.lapsToWin}`,68,-55);
     void now;
   }
 
   private drawCopilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
-    const car=state.cars[panel.team],color=TEAM_COLOR[panel.team],armed=car.itemArmed&&!!car.heldItem,b=POWER_BTN_LOCAL;
+    const look=themeLook(view.theme),car=state.cars[panel.team],color=TEAM_COLOR[panel.team],armed=car.itemArmed&&!!car.heldItem,b=POWER_BTN_LOCAL;
     const locked=!!state.tangiblePlacement||!!armedPickup(state)&&!armed;
     const ink=armed?NEON.gold:car.heldItem&&!locked?color:'#586078';
     if(car.heldItem)glow(ctx,b.x,b.y,52,ink,armed?.25:.12);
-    ctx.fillStyle=armed?'#ffce661f':car.heldItem?color+'14':'#050d1c';
+    ctx.fillStyle=armed?'#ffce661f':car.heldItem?color+'24':look.button;
     ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();
+    if(view.theme==='toy'){ctx.strokeStyle='#ffffff25';ctx.lineWidth=3;ctx.beginPath();ctx.arc(b.x,b.y-2,b.r-5,Math.PI,Math.PI*1.8);ctx.stroke();}
     ring(ctx,b.x,b.y,b.r,1,ink,armed?4:2);icon(ctx,'power',b.x,b.y,30,ink);
     if(car.heldItem){
       drawItemIcon(ctx,car.heldItem,b.x,-43,12,ink);
@@ -169,7 +179,8 @@ export class HUD {
     const color = TEAM_COLOR[panel.team];
     const { x, y, r } = padLocal(panel.role,state.driveMode[panel.team]);
     if (held) glow(ctx, x, y, r + 12, NEON.mint, .25);
-    ctx.fillStyle = held ? 'rgba(97,244,186,0.12)' : car.disabled ? 'rgba(255,64,64,0.2)' : 'rgba(255,255,255,0.05)';
+    const look=themeLook(view.theme);
+    ctx.fillStyle = held ? 'rgba(97,244,186,0.12)' : car.disabled ? 'rgba(255,64,64,0.2)' : look.button;
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     ring(ctx, x, y, r - 5, state.repairProgress[panel.team], '#61f4ba', 6);
     ctx.strokeStyle = held ? '#61f4ba' : color;

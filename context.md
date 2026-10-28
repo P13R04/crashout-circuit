@@ -452,7 +452,7 @@ Les états de réparation sont représentés par les deux contacts et un anneau 
 | `repairHoldS` / `repairHpRestore` | 2 / 60 |
 | `pickupRespawnS` / `armWindowS` | 15 / 5 |
 | `stoneTelegraphS` / `stoneRadiusPx` | 0,8 / 60 |
-| `boostLenMinPx` / `boostLenMaxPx` | 100 / 400 |
+| `boostLenMinPx` / `boostLenMaxPx` | 0 / 400 (empreinte minimale 110 px) |
 | `boostGateLifeS` / `boostDurationS` / `boostGain` | 8 / 2 / 0,8 |
 | `ghostS` / `ghostCooldownS` | 3 / 20 |
 | `destroyDisableS` / `destroyCooldownS` | 10 / 15 |

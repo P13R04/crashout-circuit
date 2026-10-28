@@ -78,7 +78,7 @@ Un objet armé ne périme pas. Si un portail déjà créé n’est pas traversé
 
 L’annonce d’un tangible réserve tous les nouveaux contacts sur la carte jusqu’à sa pose ou son annulation (**A / Échap** dans Oz). Le bonus déjà armé reste en stock mais son geste est suspendu. Sans tangible attendu, un seul bonus peut être armé : la table affiche son symbole et reconnaît ce type de geste. Un troisième doigt parasite ne transforme pas un boost en lance-pierre. L’autre copilote peut utiliser ce bonus tout en gardant le sien, puis armer son propre stock après consommation du premier.
 
-Les deux contacts du boost ou de la fourche du lance-pierre peuvent arriver avec jusqu’à 1,6 s d’écart. La fourche tolère une brève levée/reprise d’un appui avant de libérer un tir déjà tendu. La déformation reste disponible sur le bord : une traction cohérente à deux doigts prend le pas sur des appuis immobiles, même avec un bonus armé. La prise utilise les bords effectivement dessinés, notamment dans l’intérieur des coudes.
+Les deux contacts du boost ou de la fourche du lance-pierre peuvent arriver avec jusqu’à 1,6 s d’écart. Les contacts peuvent être simultanés, maintenus ou brièvement tapés. La fourche reste mémorisée si un appui se lève ; seul le relâchement du doigt qui tire déclenche le projectile. Une correction de position sur un seul doigt ne bloque plus un boost attendu. La déformation reste disponible sur le bord : une traction cohérente à deux doigts prend le pas sur des appuis immobiles, même avec un bonus armé. La prise utilise les bords effectivement dessinés, notamment dans l’intérieur des coudes.
 
 Une voiture réparée attend **3 secondes** au point de reprise : trois feux rouges au-dessus du modèle, puis vert et départ. Les dégâts et mouvements ne reprennent pas pendant cette attente ; la pause fige aussi ces feux.
 
@@ -94,7 +94,7 @@ Les boutons nommés **FANTÔME** et **DÉTRUIRE** ont été retirés de la zone 
 
 1. La voiture ramasse un objet lorsque son stock est vide. Son icône apparaît comme information dans le poste copilote.
 2. **Seul POWER du copilote de l’équipe propriétaire peut armer ce stock.** POWER adverse ne l’arme pas. L’objet reste armé jusqu’au geste valide.
-3. Sans limite de temps après l’armement, le geste correspondant est disponible sur la surface partagée : **3 doigts rapprochés, tirer l’un d’eux puis relâcher** pour le lance-pierre à élastique, **2 doigts espacés de 100 à 400 px** pour le portail de boost.
+3. Sans limite de temps après l’armement, le geste correspondant est disponible sur la surface partagée : **3 doigts rapprochés, tirer l’un d’eux puis relâcher** pour le lance-pierre à élastique, **2 contacts simultanés ou décalés, espacés de 0 à 400 px** pour le portail de boost (largeur minimale de piste active : 110 px).
 4. L’armement est **neutre et volable** : le premier geste valide consomme l’objet armé du propriétaire, et l’effet appartient à l’équipe qui a exécuté le geste. Le lance-pierre touche toute voiture dans sa zone d’impact, tireur compris ; un portail volé aide l’équipe qui l’a créé.
 5. L’objet n’est jamais perdu par attente : il reste dans le stock avant armement, puis armé tant que personne ne réalise le geste. Un seul stock peut être armé sur toute la table : le premier POWER réserve son geste, sans consommer le stock de l’autre copilote. Après son utilisation, un nouveau stock peut être armé immédiatement. Un stock ne peut être consommé qu’une fois.
 
@@ -105,7 +105,7 @@ La table tactile ne reconnaît pas l’identité d’une personne : l’équipe 
 Le tiroir **Test PC**, fermé par défaut, apparaît en course avec une souris, ou avec `?sim=1`. Ramasser d’abord un objet avec la voiture, puis toucher le symbole **POWER** au poste copilote :
 
 - **Lance-pierre** : maintenir le clic pour poser la fourche, tirer en arrière, puis relâcher. La trajectoire est prévisualisée et la pierre vole depuis la poche. En mode PC, ce geste est disponible directement dès qu’un lance-pierre est armé.
-- **Boost** puis deux clics définissent le portail. Son centre et sa largeur viennent des contacts ; son orientation suit la piste. Aux croisements, l’axe entre les contacts indique la branche à traverser.
+- **Boost** puis deux clics définissent le portail. Son centre vient des contacts, sa largeur vaut au moins 110 px et son orientation suit la piste. Aux croisements, l’axe entre les contacts indique la branche à traverser.
 
 Les simulations passent par les mêmes règles d’armement, de vol et de consommation que les gestes tactiles. Le lance-pierre conserve les paramètres de `main` : traction minimale de 40 px, portée croissante et dégâts de 100 HP.
 
@@ -209,7 +209,7 @@ Les tests couvrent génération, conduite, collisions neutres, réparation, arme
 
 ## Structure
 
-L’audit graphique, les trois directions proposées et la liste de sons à chercher sont dans [docs/direction-artistique.md](docs/direction-artistique.md). Deux thèmes sont disponibles dans **Paramètres → Ambiance** : **Néon** et **Ferraille**, une ambiance de récupération industrielle froide avec énergie cyan. Le choix est mémorisé localement et peut changer pendant la partie. Voir [les thèmes et leur parcours de vérification](docs/themes.md) et [les détails du rendu néon](docs/rendu-neon.md). L’[audit des textes et de l’orientation](docs/lisibilite.md) documente les choix de lisibilité des issues #26 et #35.
+L’audit graphique, les trois directions proposées et la liste de sons à chercher sont dans [docs/direction-artistique.md](docs/direction-artistique.md). Cinq thèmes sont disponibles dans **Paramètres → Ambiance** : **Néon**, **Ferraille**, **Toy Circuit**, **F1 Classic** et **Mayhem**. Chaque ambiance possède son décor animé, sa piste, sa voiture et ses commandes ; le cyan et le rose identifient toujours les équipes. Le choix est mémorisé localement et peut changer pendant la partie. Voir [les thèmes et leur parcours de vérification](docs/themes.md) et [les détails du rendu néon](docs/rendu-neon.md). L’[audit des textes et de l’orientation](docs/lisibilite.md) documente les choix de lisibilité des issues #26 et #35.
 
 ```text
 server/          état autoritaire, règles, physique, génération, tutoriel, WebSocket

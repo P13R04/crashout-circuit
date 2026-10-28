@@ -1308,11 +1308,11 @@ test('T-07 boost zone affects allied car only, opponent ignores it', () => {
   assert.equal(carB.boostUntil, 0, 'opponent car does not receive allied boost');
   assert.equal(carB.speed, 200);
 });
-test('boost gate rejects lengths outside 100–400 px and expires after 8 s', () => {
+test('boost gate rejects contacts over 400 px apart and expires after 8 s', () => {
   const r = raceRig();
   r.state.cars.A.heldItem = 'boost';
   r.rules.onPower('A');
-  r.rules.onBoostGate(msg({ type: 'BoostGate' as const, team: 'A' as Team, a: { x: 0, y: 0 }, b: { x: 50, y: 0 } }));
+  r.rules.onBoostGate(msg({ type: 'BoostGate' as const, team: 'A' as Team, a: { x: 0, y: 0 }, b: { x: 450, y: 0 } }));
   assert.equal(r.state.boostGates.length, 0);
   assert.ok(r.state.cars.A.itemArmed, 'item stays armed after a rejected gesture');
   r.rules.onBoostGate(msg({ type: 'BoostGate' as const, team: 'A' as Team, a: { x: 0, y: 0 }, b: { x: 200, y: 0 } }));
