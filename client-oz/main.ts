@@ -1,31 +1,56 @@
 import { StateSync, connectWs, type Connection } from '../client-shared/net.js';
-import { TANGIBLES, tangibleDefinition, type TangibleId } from '../server/tangibles.js';
-import { OzMap } from './OzMap.js';
-import { OzController, ozShortcut } from './OzController.js';
+import { OzMap, type OzTool } from './OzMap.js';
+import { OzController } from './OzController.js';
+import type { Vec2 } from '../server/types.js';
+import type { TangibleId } from '../server/tangibles.js';
 
 const status = document.getElementById('status')!;
-const controls = document.getElementById('controls') as HTMLFieldSetElement;
-const notice = document.getElementById('notice')!;
 const hint = document.getElementById('hint')!;
-const arc = document.getElementById('arc-state')!;
-const presence = document.getElementById('presence') as HTMLButtonElement;
-const undo = document.getElementById('undo') as HTMLButtonElement;
-const cancel = document.getElementById('cancel') as HTMLButtonElement;
-const view = document.getElementById('rotate-view') as HTMLButtonElement;
+const btnArc = document.getElementById('btn-arc') as HTMLButtonElement;
+const btnWall = document.getElementById('btn-wall') as HTMLButtonElement;
+const btnClear = document.getElementById('btn-clear') as HTMLButtonElement;
 const canvas = document.getElementById('oz-map') as HTMLCanvasElement;
+
 const sync = new StateSync();
-const buttons = new Map<TangibleId, HTMLButtonElement>();
 let conn: Connection;
-let quarter = 0;
-try { const stored = Number(localStorage.getItem('oz-view')); if (Number.isInteger(stored) && stored >= 0 && stored < 4) quarter = stored; } catch { /* Storage may be disabled. */ }
+
+// Controller kept for state tracking, optimistic reconciliation & unit tests
 const controller = new OzController((type, params) => {
   if (!conn?.isOpen()) return false;
-  conn.send({ type, ...params }); return true;
+  conn.send({ type, ...params });
+  return true;
 }, () => refresh());
+
+function updateToolUI(tool: OzTool, step: number): void {
+  btnArc.classList.toggle('active', tool === 'arc');
+  btnWall.classList.toggle('active', tool === 'wall');
+
+  const maxRange = controller.state?.params.arcMaxDistPx ?? 350;
+
+  if (tool === 'arc') {
+    if (step === 0) {
+      hint.textContent = '⚡ Pylônes / Arc : cliquez sur la carte pour placer le 1er pylône';
+    } else {
+      hint.textContent = `⚡ Pylônes / Arc : cliquez pour placer le 2e pylône (arc si distance ≤ ${maxRange} px, pylônes seuls au-delà)`;
+    }
+    canvas.style.cursor = 'crosshair';
+  } else if (tool === 'wall') {
+    if (step === 0) {
+      hint.textContent = '🧱 Mur : cliquez sur la carte pour poser le 1er point';
+    } else {
+      hint.textContent = '🧱 Mur : cliquez sur un 2e point pour orienter et poser le mur';
+    }
+    canvas.style.cursor = 'crosshair';
+  } else {
+    hint.textContent = 'Cliquez sur un bouton (⚡ Arc ou 🧱 Mur), ou cliquez sur un obstacle pour le déplacer';
+    canvas.style.cursor = 'default';
+  }
+}
+
 const map = new OzMap(canvas, {
   enabled: () => controller.enabled,
   selectedId: () => controller.selectedId,
-  selectedKind: () => tangibleDefinition(controller.selectedId)!.kind,
+  selectedKind: () => (controller.selectedId === 1 ? 'wall' : 'pylon'),
   preparing: () => controller.preparing,
   draftAngle: () => controller.draftAngle,
   onDock: team => controller.dock(team),
@@ -34,89 +59,192 @@ const map = new OzMap(canvas, {
   onMove: (id, x, y, angle) => controller.move(id, { x, y, angle }),
   onDragStart: () => controller.beginGesture(),
   onDragEnd: () => controller.endGesture(),
+
+  onPlaceArc: (p1: Vec2, p2: Vec2) => {
+    if (!conn?.isOpen()) return;
+    const maxRange = controller.state?.params.arcMaxDistPx ?? 350;
+    const d = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    // Place Pylon 1 (id: 2) and Pylon 2 (id: 3)
+    conn.send({ type: 'TangibleControl', id: 2, action: 'dock', team: 'A' });
+    conn.send({ type: 'TangibleControl', id: 2, action: 'activate' });
+    conn.send({ type: 'TangibleMoved', id: 2, x: p1.x / 1920, y: p1.y / 1080, angle: 0, active: true });
+
+    conn.send({ type: 'TangibleControl', id: 3, action: 'dock', team: 'B' });
+    conn.send({ type: 'TangibleControl', id: 3, action: 'activate' });
+    conn.send({ type: 'TangibleMoved', id: 3, x: p2.x / 1920, y: p2.y / 1080, angle: 0, active: true });
+
+    if (d <= maxRange) {
+      hint.textContent = `⚡ Arc électrique formé entre les 2 pylônes (${Math.round(d)} px ≤ ${maxRange} px) !`;
+    } else {
+      hint.textContent = `2 pylônes placés (${Math.round(d)} px > ${maxRange} px : hors de portée, aucun arc actif)`;
+    }
+    updateToolUI(null, 0);
+  },
+
+  onPlaceWall: (center: Vec2, angle: number) => {
+    if (!conn?.isOpen()) return;
+    // Place Wall (id: 1)
+    conn.send({ type: 'TangibleControl', id: 1, action: 'dock', team: 'A' });
+    conn.send({ type: 'TangibleControl', id: 1, action: 'activate' });
+    conn.send({
+      type: 'TangibleMoved',
+      id: 1,
+      x: center.x / 1920,
+      y: center.y / 1080,
+      angle: ((angle % 360) + 360) % 360,
+      active: true,
+    });
+
+    hint.textContent = `🧱 Mur posé à l’angle ${Math.round(angle)}° !`;
+    updateToolUI(null, 0);
+  },
+
+  onRelocateTangible: (id: TangibleId, pos: Vec2, angle?: number) => {
+    if (!conn?.isOpen()) return;
+    const maxRange = controller.state?.params.arcMaxDistPx ?? 350;
+    if (id === 1) {
+      const wall = controller.state?.tangibles[1];
+      const finalAngle = angle !== undefined ? angle : (wall?.angle ?? 0);
+      conn.send({ type: 'TangibleControl', id: 1, action: 'dock', team: 'A' });
+      conn.send({ type: 'TangibleControl', id: 1, action: 'activate' });
+      conn.send({
+        type: 'TangibleMoved',
+        id: 1,
+        x: pos.x / 1920,
+        y: pos.y / 1080,
+        angle: ((finalAngle % 360) + 360) % 360,
+        active: true,
+      });
+      hint.textContent = `🧱 Mur déplacé et orienté à ${Math.round(finalAngle)}° !`;
+    } else if (id === 2 || id === 3) {
+      const team = id === 2 ? 'A' : 'B';
+      conn.send({ type: 'TangibleControl', id, action: 'dock', team });
+      conn.send({ type: 'TangibleControl', id, action: 'activate' });
+      conn.send({
+        type: 'TangibleMoved',
+        id,
+        x: pos.x / 1920,
+        y: pos.y / 1080,
+        angle: 0,
+        active: true,
+      });
+      const otherId = id === 2 ? 3 : 2;
+      const other = controller.state?.tangibles[otherId];
+      if (other?.status === 'placed') {
+        const d = Math.hypot(other.x * 1920 - pos.x, other.y * 1080 - pos.y);
+        if (d <= maxRange) {
+          hint.textContent = `⚡ Pylône ${id === 2 ? '1' : '2'} déplacé : arc électrique actif (${Math.round(d)} px ≤ ${maxRange} px) !`;
+        } else {
+          hint.textContent = `Pylône ${id === 2 ? '1' : '2'} déplacé (${Math.round(d)} px > ${maxRange} px : hors de portée)`;
+        }
+      } else {
+        hint.textContent = `⚡ Pylône ${id === 2 ? '1' : '2'} déplacé !`;
+      }
+    }
+    updateToolUI(null, 0);
+  },
+
+  onMovingTangibleChange: (id: TangibleId | null, step: number = 0) => {
+    if (id === 1) {
+      if (step === 0) {
+        hint.textContent = '🧱 Mur sélectionné : cliquez sur la carte pour poser le 1er point (ou Échap pour annuler)';
+      } else {
+        hint.textContent = '🧱 Mur : cliquez sur un 2e point pour orienter et déposer le mur';
+      }
+    } else if (id === 2) {
+      hint.textContent = '⚡ Pylône 1 sélectionné : cliquez sur la carte à l’endroit où vous souhaitez le déposer (Échap pour annuler)';
+    } else if (id === 3) {
+      hint.textContent = '⚡ Pylône 2 sélectionné : cliquez sur la carte à l’endroit où vous souhaitez le déposer (Échap pour annuler)';
+    } else {
+      hint.textContent = 'Cliquez sur un bouton (⚡ Arc ou 🧱 Mur), ou cliquez sur un obstacle pour le déplacer';
+    }
+  },
+
+  onToolStep: (tool, step) => {
+    updateToolUI(tool, step);
+  },
 });
-map.setQuarter(quarter);
-for (const t of TANGIBLES) {
-  const button = document.createElement('button'); button.type = 'button';
-  button.className = 'object'; button.dataset.id = String(t.id);
-  button.setAttribute('aria-keyshortcuts', t.id === 1 ? 'M' : String(t.id - 1));
-  button.innerHTML = `<span class="object-icon" aria-hidden="true">${t.kind === 'wall' ? '━' : '◉'}</span><span><strong>${t.name}</strong><span class="object-state">Absent</span></span><kbd>${t.shortcut}</kbd>`;
-  button.addEventListener('click', () => { controller.select(t.id); if (controller.state?.tangibles[t.id]?.status === 'docked' && controller.state.tangibles[t.id].active) controller.prepare(t.id); });
-  buttons.set(t.id, button); document.getElementById('tangible-list')!.append(button);
-}
-function rotateView(): void {
-  quarter = (quarter + 1) % 4; map.setQuarter(quarter);
-  try { localStorage.setItem('oz-view', String(quarter)); } catch { /* Optional preference. */ }
-  refresh();
-}
-function refresh(): void {
-  const s = controller.state;
-  controls.disabled = !controller.enabled;
-  status.textContent = !controller.connected ? 'Déconnecté · reconnexion…' : !controller.enabled ? 'En attente du circuit' : 'Connecté · objets neutres';
-  status.classList.toggle('online', controller.enabled);
-  for (const [id, button] of buttons) {
-    const selected = id === controller.selectedId, tangible = s?.tangibles[id], active = !!tangible?.active;
-    button.classList.toggle('selected', selected); button.classList.toggle('present', active);
-    button.setAttribute('aria-pressed', String(selected));
-    button.querySelector('.object-state')!.textContent = selected && controller.preparing ? 'À placer · cliquez sur la carte' : tangible?.status === 'docked' ? active ? 'Chargé · prêt à poser' : 'En station · à charger' : tangible ? active ? 'Actif' : 'Désactivé' : 'À recharger';
-  }
-  arc.textContent = !s?.tangibles[2]?.active || !s?.tangibles[3]?.active || s.tangibles[2].status !== 'placed' || s.tangibles[3].status !== 'placed' ? 'Pylône manquant' : s.arcs.length ? 'Arc établi' : 'Hors portée';
-  arc.classList.toggle('linked', !!s?.arcs.length);
-  const chosen = s?.tangibles[controller.selectedId];
-  presence.querySelector('span')!.textContent = chosen?.status === 'docked' ? chosen.active ? 'Décharger' : '⚡ Charger' : chosen?.active ? 'Désactiver' : 'Activer';
-  presence.disabled = !chosen;
-  undo.disabled = !controller.canUndo; cancel.disabled = !controller.preparing;
-  view.querySelector('span')!.textContent = `Vue ${quarter * 90}°`;
-  const name = tangibleDefinition(controller.selectedId)!.name;
-  hint.textContent = controller.preparing ? `${name} · clic pour poser${controller.selectedId === 1 ? ' · glisser pour orienter' : ''}`
-    : chosen?.status === 'placed' ? 'Correction ±15 mm / 15° · nouvelle pose : recharge'
-    : chosen?.active ? `${name} chargé · ${controller.selectedId === 1 ? 'M' : controller.selectedId-1} pour poser`
-    : 'Station cyan ou rose → charger → poser';
-  if (controller.notice) hint.textContent = '';
-  notice.textContent = controller.notice;
-  canvas.style.cursor = controller.preparing ? 'crosshair' : 'default';
-  if (s) map.setState(s); else map.draw();
-}
-for (const team of ['A','B'] as const) document.getElementById(`dock-${team}`)!.addEventListener('click',()=>controller.dock(team));
-presence.addEventListener('click', () => controller.presence());
-undo.addEventListener('click', () => { map.cancel(); controller.undo(); });
-cancel.addEventListener('click', () => { map.cancel(); controller.cancelPreparation(); });
-view.addEventListener('click', rotateView);
-let rotating = false;
+
+btnArc.addEventListener('click', () => {
+  if (!controller.enabled) return;
+  const current = map.getTool();
+  map.setTool(current === 'arc' ? null : 'arc');
+});
+
+btnWall.addEventListener('click', () => {
+  if (!controller.enabled) return;
+  const current = map.getTool();
+  map.setTool(current === 'wall' ? null : 'wall');
+});
+
+btnClear.addEventListener('click', () => {
+  if (!conn?.isOpen()) return;
+  map.cancel();
+  conn.send({ type: 'TangibleRemoved', id: 1 });
+  conn.send({ type: 'TangibleRemoved', id: 2 });
+  conn.send({ type: 'TangibleRemoved', id: 3 });
+  hint.textContent = 'Tous les obstacles ont été retirés.';
+});
+
 document.addEventListener('keydown', e => {
-  if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
-  const action = ozShortcut(e);
-  if (!action || !controller.enabled) return;
-  e.preventDefault();
-  if (action === 'left' || action === 'right') {
-    if (!rotating) { map.cancel(); controller.beginGesture(); rotating = true; }
-    controller.rotate((action === 'left' ? -1 : 1) * (e.shiftKey ? 15 : 5)); return;
-  }
-  if (e.repeat) return;
-  rotating = false; controller.endGesture(); map.cancel();
-  switch (action) {
-    case 'wall': controller.prepare(1); break;
-    case 'pylon1': controller.prepare(2); break;
-    case 'pylon2': controller.prepare(3); break;
-    case 'presence': controller.presence(); break;
-    case 'remove': controller.presence(false); break;
-    case 'cancel': controller.cancelPreparation(); break;
-    case 'undo': controller.undo(); break;
-    case 'view': rotateView(); break;
+  if (e.key === 'Escape') {
+    map.cancel();
+    updateToolUI(null, 0);
   }
 });
-document.addEventListener('keyup', e => {
-  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { rotating = false; controller.endGesture(); }
-});
-window.addEventListener('blur', () => { rotating = false; map.cancel(); controller.cancelPreparation(); });
+
+function refresh(): void {
+  const enabled = controller.enabled;
+  btnArc.disabled = !enabled;
+  btnWall.disabled = !enabled;
+  btnClear.disabled = !enabled;
+
+  if (!controller.connected) {
+    status.textContent = 'Déconnecté · reconnexion…';
+    status.classList.remove('online');
+  } else if (!enabled) {
+    status.textContent = 'En attente du circuit';
+    status.classList.remove('online');
+  } else {
+    status.textContent = 'En course · prêt';
+    status.classList.add('online');
+  }
+
+  if (controller.state) {
+    map.setState(controller.state);
+  } else {
+    map.draw();
+  }
+}
+
+// Fluid 60fps render loop for real-time car tracking and 2-click live previews
+function renderLoop(): void {
+  map.draw();
+  requestAnimationFrame(renderLoop);
+}
+requestAnimationFrame(renderLoop);
+
+// Resize handling
 new ResizeObserver(() => {
-  const rect = canvas.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.max(1, Math.round(rect.width * dpr)); canvas.height = Math.max(1, Math.round(rect.height * dpr));
-  map.cancel(); map.draw();
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.max(1, Math.round(rect.width * dpr));
+  canvas.height = Math.max(1, Math.round(rect.height * dpr));
+  map.draw();
 }).observe(canvas);
+
+// Connect WebSocket
 conn = connectWs('/ws/oz', {
   onOpen: () => controller.setConnected(true),
-  onClose: () => { map.cancel(); controller.setConnected(false); },
-  onMessage: msg => { if (msg.type === 'State') controller.applyState(sync.apply(msg.state, msg.t)); },
+  onClose: () => {
+    map.cancel();
+    controller.setConnected(false);
+  },
+  onMessage: msg => {
+    if (msg.type === 'State') {
+      controller.applyState(sync.apply(msg.state, msg.t));
+    }
+  },
 });
+
 refresh();

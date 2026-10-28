@@ -26,18 +26,21 @@ export function tangibleArc(tangibles: Record<number, Tangible>, params: {
 export function validTangiblePose(kind: Tangible['kind'], pose: TangiblePose, p: TangibleDimensions): boolean {
   if (![pose.x, pose.y, pose.angle].every(Number.isFinite)) return false;
   const at = { x: pose.x * p.logicalWidth, y: pose.y * p.logicalHeight };
+  // Allow objects anywhere on the table, including slightly outside the table/circuit edges
+  const margin = Math.max(p.wallLengthPx, 200);
+  if (at.x < -margin || at.x > p.logicalWidth + margin || at.y < -margin || at.y > p.logicalHeight + margin) return false;
+
   const length = kind === 'wall' ? p.wallLengthPx : p.pylonBasePx;
   const width = kind === 'wall' ? p.wallWidthPx : p.pylonBasePx;
-  const corners = wallCorners(at, pose.angle, length + p.tangibleTolerancePx * 2, width + p.tangibleTolerancePx * 2);
-  if (corners.some(v => v.x < 0 || v.y < 0 || v.x > p.logicalWidth || v.y > p.logicalHeight || insidePanel(v))) return false;
+  const corners = wallCorners(at, pose.angle, length, width);
+  if (insidePanel(at) || corners.some(v => insidePanel(v))) return false;
   for (const panel of PANELS) {
     const panelCorners = [[-1,-1],[1,-1],[1,1],[-1,1]].map(([x,y]) => localToWorld(panel, x*panelWidth(panel.role)/2,y*PANEL_H/2));
-    if (insidePanel(at) || panelCorners.some(v => {
-      const a = -pose.angle*Math.PI/180, dx=v.x-at.x, dy=v.y-at.y;
-      return Math.abs(dx*Math.cos(a)-dy*Math.sin(a)) <= length/2+p.tangibleTolerancePx
-        && Math.abs(dx*Math.sin(a)+dy*Math.cos(a)) <= width/2+p.tangibleTolerancePx;
-    })) return false;
-    for(let i=0;i<4;i++)for(let j=0;j<4;j++)if(segmentsIntersect(corners[i],corners[(i+1)%4],panelCorners[j],panelCorners[(j+1)%4]))return false;
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 4; j++) {
+        if (segmentsIntersect(corners[i], corners[(i+1)%4], panelCorners[j], panelCorners[(j+1)%4])) return false;
+      }
+    }
   }
   return true;
 }

@@ -434,7 +434,7 @@ Les états de réparation sont représentés par les deux contacts et un anneau 
 | `boostGateLifeS` / `boostDurationS` / `boostGain` | 8 / 2 / 0,8 |
 | `ghostS` / `ghostCooldownS` | 3 / 20 |
 | `destroyDisableS` / `destroyCooldownS` | 10 / 15 |
-| `wallLengthPx` / `arcMaxDistPx` | 120 / 500 |
+| `wallLengthPx` / `arcMaxDistPx` | 120 / 350 |
 | `trackWidthBasePx` / `trackWidthMinPx` | 140 / 90 |
 | `vMaxFwd` / `vMaxPedal` / `accel` / `turnRate` / gain direction / expiration d'entrée | 260 / 190 / 320 / 2,8 / 1,12 / 250 ms |
 

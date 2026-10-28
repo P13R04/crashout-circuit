@@ -28,7 +28,7 @@
   "ghostCooldownS": 20,
   "destroyDisableS": 10,
   "destroyCooldownS": 15,
-  "arcMaxDistPx": 500,
+  "arcMaxDistPx": 350,
   "trackWidthBasePx": 140,
   "trackWidthMinPx": 90,
   "trackDeformRampS": 0.35,

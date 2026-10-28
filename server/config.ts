@@ -38,7 +38,7 @@ const defaults = {
   destroyCooldownS: 15,
   tableDiagonalInches: 55,
   ...physicalDimensions(55),
-  arcMaxDistPx: 500,
+  arcMaxDistPx: 350,
   trackWidthBasePx: 140,
   trackWidthMinPx: 90,
   trackDeformRampS: 0.35,

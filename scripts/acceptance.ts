@@ -1077,10 +1077,10 @@ test('T-04 two fixed pylons form a neutral arc that slows both teams', () => {
     assert.equal(car.slowUntil, r.clock.now + config.arcSlowS * 1000);
   }
 });
-test('arc includes exactly 500 px, breaks beyond range, and unpaired pylons stay pylons', () => {
-  const r = raceRig(); place(r, 2, 600 / 1920, .5); place(r, 3, 1100 / 1920, .5);
+test(`arc includes exactly ${config.arcMaxDistPx} px, breaks beyond range, and unpaired pylons stay pylons`, () => {
+  const r = raceRig(); place(r, 2, 600 / 1920, .5); place(r, 3, (600 + config.arcMaxDistPx) / 1920, .5);
   assert.equal(r.state.arcs.length, 1);
-  place(r, 3, 1101 / 1920, .5); assert.equal(r.state.arcs.length, 0);
+  place(r, 3, (600 + config.arcMaxDistPx + 1) / 1920, .5); assert.equal(r.state.arcs.length, 0);
   assert.equal(r.state.walls.length, 0);
   assert.equal(r.state.tangibles[2].kind, 'pylon');
 });
@@ -1613,7 +1613,7 @@ function mapRig() {
     addEventListener: (name: string, fn: (event: PointerEvent) => void) => listeners.set(name, fn), setPointerCapture: () => {} } as unknown as HTMLCanvasElement;
   const sent: Array<{ x: number; y: number; angle: number }> = [];
   const map = new OzMap(canvas, { enabled: () => true, selectedId: () => 1, selectedKind: () => 'wall', preparing: () => false, draftAngle: () => 0, onPlace: () => false, onDragStart: () => {}, onDragEnd: () => {},
-    onDock: () => {}, onSelect: () => {}, onMove: (_id, x, y, angle) => { sent.push({ x, y, angle }); return true; } });
+    onDock: () => {}, onSelect: () => {}, onMove: (_id, x, y, angle) => { sent.push({ x, y, angle }); return true; }, onRelocateTangible: (id, pos, angle) => { sent.push({ x: pos.x / 1920, y: pos.y / 1080, angle: angle ?? 0 }); } });
   map.setState(r.state);
   const pointer = (name: string, x: number, y: number) => listeners.get(name)!({ pointerId: 1, clientX: x, clientY: y, preventDefault: () => {} } as PointerEvent);
   return { map, sent, pointer, state: r.state, draws: () => draws };
@@ -1652,6 +1652,16 @@ test('a confirmed removal clears the drag preview and stops movement', () => {
   r.pointer('pointermove', 485, 280); r.pointer('pointerup', 485, 280);
   assert.equal(r.sent.length, 0, 'an absent object is not moved back onto the map by an older gesture');
 });
+test('moving a wall with pick & drop supports 2-click positioning and orientation', () => {
+  const r = mapRig();
+  r.pointer('pointerdown', 480, 270); r.pointer('pointerup', 480, 270);
+  r.pointer('pointerdown', 250, 250); r.pointer('pointerup', 250, 250);
+  assert.equal(r.sent.length, 0, 'waiting for 2nd orientation click');
+  r.pointer('pointerdown', 250, 300); r.pointer('pointerup', 250, 300);
+  assert.equal(r.sent.length, 1);
+  assert.ok(Math.hypot(r.sent[0].x - 500 / 1920, r.sent[0].y - 550 / 1080) < 1e-4);
+  assert.equal(Math.round(r.sent[0].angle), 90);
+});
 
 section('Fast Oz console');
 function operatorRig() {
@@ -1681,7 +1691,7 @@ test('one placement atomically activates; rapid edits and undo use optimistic po
 test('first pylon prepares the second only on its first placement', () => {
   const { c, ready } = operatorRig(); ready(2); ready(3); c.prepare(2); c.place({ x: .4, y: .5, angle: 0 });
   assert.equal(c.selectedId, 3); assert.equal(c.preparing, true);
-  c.place({ x: .6, y: .5, angle: 0 }); assert.equal(c.preparing, false);
+  c.place({ x: .4 + (config.arcMaxDistPx - 10) / 1920, y: .5, angle: 0 }); assert.equal(c.preparing, false);
   assert.equal(c.state!.arcs.length, 1, 'arc preview follows optimistic pylons before a network reply');
   c.prepare(2); assert.equal(c.place({ x: .45, y: .5, angle: 0 }),false);
   assert.equal(c.selectedId, 2); assert.equal(c.preparing, false);
