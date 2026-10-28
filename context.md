@@ -9,6 +9,10 @@ Cette fiche conserve les décisions de conception et leurs identifiants (R-xx, C
 
 ---
 
+## Intégration de l’équipe (28 octobre 2026)
+
+Les branches #30, #31, #32, #34, #41 et `baptiste` sont réunies avec les thèmes et le test à pilotes automatiques. Le boost s’oriente selon la piste (la branche transversale au geste à un croisement), les contacts règlent sa largeur et sa puissance. Les bonus restent liés à leur point de piste pendant les déformations et leur délai de réapparition. Le dessin reste séquentiel cyan puis rose, mais accepte les deux sens ; les traits sont normalisés avant génération. Les zones pilotes ne sont pas ré-inversées. Voir [le bilan et le protocole de recette](docs/integration-equipe.md).
+
 ## Règles actuelles des tangibles LEGO (octobre 2026)
 
 Un mur neutre 10 × 4 et deux piliers neutres 4 × 4. Effets identiques pour les deux équipes. Avant chaque nouvelle pose, retour physique à l’une des deux stations copilote ; Oz constate le dépôt puis charge l’objet. POWER concerne seulement les bonus ramassés. Une désactivation ne recharge pas. Après la pose, seules des corrections de 15 mm / 15° autour de l’origine immuable sont permises. L’échelle est calculée pour l’image active 16:9 sur 55 pouces, réglable via `tableDiagonalInches`. Mur 80 × 32 mm + frange de 10 mm ; pilier 32 × 32 mm, champ de diamètre 84 mm, arc entre piliers à portée. Le [README](README.md#console-oz--tangibles-neutres-et-recharge) décrit le protocole actuel et les essais. Les spécifications historiques ci-dessous concernant quatre objets par équipe, les murs plats et les secours Oz sont dépassées.

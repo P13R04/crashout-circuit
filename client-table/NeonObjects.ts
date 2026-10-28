@@ -1,4 +1,5 @@
 import type { GameState, Team, Vec2 } from '../server/types.js';
+import { boostFrame } from '../server/boostGeometry.js';
 import type { ThemeId } from './themes.js';
 import { drawItemIcon } from './HUD.js';
 import { TEAM_COLOR } from './view.js';
@@ -31,31 +32,50 @@ export class NeonObjects {
     }
   }
 
+  /** Baptiste's energy runway, with cached glow and a quiet expiry in both themes. */
   drawGates(ctx: Ctx, state: GameState, now: number, time: number, reduced: boolean): void {
     for (const g of state.boostGates) {
-      const dx = g.b.x - g.a.x, dy = g.b.y - g.a.y, length = Math.hypot(dx, dy) || 1;
-      const sign = g.dir && (-dy * g.dir.x + dx * g.dir.y) < 0 ? -1 : 1, depth = g.depth ?? 60;
-      const birth = Math.min(1, Math.max(.3, (now - (g.createdAt ?? now - 400)) / 300));
-      ctx.save(); ctx.translate(g.a.x, g.a.y); ctx.rotate(Math.atan2(dy, dx));
-      ctx.globalAlpha = birth * Math.min(1, Math.max(0, (g.expiresAt - now) / 900));
-      const wash = ctx.createLinearGradient(0, 0, 0, sign * depth);
-      wash.addColorStop(0, '#ffce6635'); wash.addColorStop(.65, '#ffce6616'); wash.addColorStop(1, '#ffce6605');
-      ctx.fillStyle = wash; ctx.fillRect(0, Math.min(0, sign * depth), length, depth);
-      ctx.strokeStyle = '#ffce664a'; ctx.lineWidth = 1; ctx.strokeRect(0, Math.min(0, sign * depth), length, depth);
-      ctx.strokeStyle = NEON.gold; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(length, 0); ctx.stroke();
-      const flow = reduced ? .45 : (time / 900) % 1;
-      ctx.strokeStyle = '#ffe8af'; ctx.lineWidth = 1.6;
-      for (let x = 16; x < length - 8; x += 28) for (let row = 0; row < 2; row++) {
-        const f = (flow + row * .5) % 1, y = sign * (7 + f * (depth - 14));
-        ctx.globalAlpha *= 1 - f * .35;
-        ctx.beginPath(); ctx.moveTo(x - 4, y - sign * 4); ctx.lineTo(x, y + sign * 2); ctx.lineTo(x + 4, y - sign * 4); ctx.stroke();
-        ctx.globalAlpha /= 1 - f * .35;
+      const left=g.expiresAt-now;if(left<=0)continue;
+      const {across,forward,length,depth}=boostFrame(g);
+      const birth=Math.max(0,Math.min(1,(now-(g.createdAt??now-500))/450));
+      const opacity=Math.min(1,left/900), amber=left<1800?'#ffb66b':NEON.gold;
+      ctx.save();ctx.transform(across.x,across.y,forward.x,forward.y,g.a.x,g.a.y);
+      ctx.globalAlpha=opacity;
+      // The full active footprint is readable immediately. Only the inner charge deploys.
+      ctx.fillStyle='#08131b99';ctx.fillRect(0,0,length,depth);
+      ctx.strokeStyle=amber+'70';ctx.lineWidth=1;ctx.strokeRect(0,0,length,depth);
+      const wash=ctx.createLinearGradient(0,0,0,depth);
+      wash.addColorStop(0,amber+'30');wash.addColorStop(.65,amber+'17');wash.addColorStop(1,amber+'05');
+      ctx.fillStyle=wash;ctx.fillRect(0,0,length,depth*(reduced?1:.2+.8*birth));
+      ctx.fillStyle=TEAM_COLOR[g.team]+'10';ctx.fillRect(0,0,length,depth);
+      // Two physical emitters and their rails make it a boost, distinct from an electric link.
+      ctx.strokeStyle=amber;ctx.lineWidth=2;ctx.beginPath();
+      for(const x of [0,length]){ctx.moveTo(x,0);ctx.lineTo(x,depth);}ctx.stroke();
+      ctx.strokeStyle='#fff3d0';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(length,0);ctx.stroke();
+      const flow=reduced?.45:(time/850)%1, columns=Math.max(3,Math.min(9,Math.round(length/38)));
+      ctx.strokeStyle='#ffe3a0';ctx.lineWidth=1.8;
+      for(let col=0;col<columns;col++)for(let row=0;row<3;row++){
+        const f=(flow+row/3)%1,x=(col+.5)/columns*length,y=7+f*(depth-14);
+        ctx.globalAlpha=opacity*(.25+.65*Math.sin(f*Math.PI));
+        ctx.beginPath();ctx.moveTo(x-6,y-5);ctx.lineTo(x,y+2);ctx.lineTo(x+6,y-5);ctx.stroke();
       }
-      for (const x of [0, length]) {
-        glow(ctx, x, 0, 30, NEON.gold, .5);
-        ctx.fillStyle = '#102030'; ctx.strokeStyle = (g.team === null ? this.electric : TEAM_COLOR[g.team]); ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(x, 0, 10, 0, TAU); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = NEON.gold; ctx.beginPath(); ctx.arc(x, 0, 4, 0, TAU); ctx.fill();
+      ctx.globalAlpha=opacity;
+      for(const x of [0,length]){
+        plate(ctx,x-7,-9,14,18,2,'#20303c',TEAM_COLOR[g.team]);
+        glow(ctx,x,0,28,amber,.4);ctx.fillStyle='#fff2ca';ctx.fillRect(x-2,-4,4,8);
+        const y=(reduced?.5:(time/620)%1)*depth;
+        glow(ctx,x,y,12,amber,.25);ctx.fillStyle=amber;ctx.fillRect(x-1,y-3,2,6);
+      }
+      if(!reduced){
+        ctx.strokeStyle='#fff6da';ctx.lineWidth=1;ctx.globalAlpha=opacity*.6;
+        for(let i=0;i<4;i++){
+          const y=((time/420+i*.237)%1)*(depth-12),x=(i+.5)/4*length;
+          ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y+8);ctx.stroke();
+        }
+        if(birth<1){
+          ctx.globalAlpha=opacity*(1-birth)*.35;ctx.strokeStyle=amber;ctx.lineWidth=2;
+          ctx.beginPath();ctx.ellipse(length/2,0,12+birth*length*.45,8+birth*25,0,0,TAU);ctx.stroke();
+        }
       }
       ctx.restore();
     }

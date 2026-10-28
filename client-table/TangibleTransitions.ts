@@ -39,18 +39,21 @@ export class TangibleTransitions {
   dissolvingItems: DissolvingItem[] = [];
   private now = 0;
   private lastCue = -Infinity;
+  private pendingCue: string | null = null;
   constructor(private sound: (kind: string) => void = () => {}) {}
   private cue(kind: string): void {
-    if (this.now - this.lastCue < 450) return;
-    this.sound(kind); this.lastCue = this.now;
+    const priority = (k: string) => k === 'arcFormed' ? 5 : k === 'arcBroken' ? 4 : k.startsWith('wall') ? 3 : 2;
+    if (!this.pendingCue || priority(kind) > priority(this.pendingCue)) this.pendingCue = kind;
   }
   update(state: GameState, now: number): void {
     this.now = now;
+    this.pendingCue = null;
     if (state.phase === 'LOBBY' || state.phase === 'MAP') {
       this.trackedWalls.clear();
       this.trackedPylons.clear();
       this.trackedArcs.clear();
       this.dissolvingItems.length = 0;
+      this.lastCue = -Infinity;
       return;
     }
 
@@ -200,6 +203,9 @@ export class TangibleTransitions {
 
     // 4 — Cleanup finished dissolving items
     this.dissolvingItems = this.dissolvingItems.filter(item => now - item.start < item.dur).slice(-64);
+    if (this.pendingCue && this.now-this.lastCue >= 450) {
+      this.sound(this.pendingCue); this.lastCue = this.now;
+    }
   }
 
 
@@ -226,11 +232,42 @@ export class TangibleTransitions {
         ctx.beginPath(); ctx.moveTo(item.pylon1.x, item.pylon1.y); ctx.lineTo(item.pylon2.x, item.pylon2.y); ctx.stroke();
       } else if (item.pos) {
         ctx.save(); ctx.translate(item.pos.x, item.pos.y); ctx.rotate((item.angle ?? 0) * Math.PI / 180);
-        if (item.kind === 'wall') ctx.strokeRect(-(item.lengthPx ?? 120) / 2, -(item.widthPx ?? 16)/2, item.lengthPx ?? 120, item.widthPx ?? 16);
+        if (item.kind === 'wall') {
+          const length=item.lengthPx??120,width=item.widthPx??16,shrink=reduced?1:1-.45*f*f;
+          ctx.strokeRect(-length*shrink/2,-width/2,length*shrink,width);
+          if(!reduced){
+            ctx.fillStyle=electric;
+            for(let i=0;i<8;i++){
+              const x=(i/7-.5)*length*shrink,y=(i%2?1:-1)*(width/2+f*28),size=3*(1-f);
+              ctx.fillRect(x-size/2,y-size/2,size,size);
+            }
+          }
+        }
         else { ctx.beginPath(); ctx.arc(0, 0, 24 + (reduced ? 0 : f * 16), 0, Math.PI * 2); ctx.stroke(); }
         ctx.restore();
       }
     }
     ctx.restore();
   }
+  /** A centre-out deployment scan over the intact, already collidable wall. */
+  drawActivation(ctx: CanvasRenderingContext2D, time: number, reduced: boolean, electric: string): void {
+    for(const wall of this.trackedWalls.values()){
+      const f=(time-wall.birth)/600;if(f<0||f>=1)continue;
+      const length=wall.lengthPx??120,width=wall.widthPx??12;
+      ctx.save();ctx.translate(wall.pos.x,wall.pos.y);ctx.rotate((wall.angle??0)*Math.PI/180);
+      ctx.globalAlpha=(1-f)*.75;ctx.strokeStyle=electric;ctx.lineWidth=2;
+      if(reduced){ctx.strokeRect(-length/2,-width/2,length,width);}
+      else {
+        const front=length/2*(1-Math.pow(1-f,3));
+        for(const side of [-1,1]){
+          const x=side*front;glow(ctx,x,0,18,electric,.4);
+          ctx.fillStyle='#efffff';ctx.fillRect(x-1,-width/2-3,2,width+6);
+        }
+        ctx.beginPath();ctx.moveTo(-front,-width/2);ctx.lineTo(front,-width/2);
+        ctx.moveTo(-front,width/2);ctx.lineTo(front,width/2);ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
 }

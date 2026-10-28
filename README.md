@@ -32,7 +32,7 @@ Ouvrir `http://localhost:5173/client-table/` et `http://localhost:5173/client-oz
 Les partenaires d’une équipe sont en diagonale : pilote cyan en bas à gauche et copilote cyan en haut à droite ; pilote rose en haut à gauche et copilote rose en bas à droite. Chaque poste fait face à son bord de table. Les dépôts tangibles et l’attribution des gestes suivent la position du copilote.
 
 1. Choisir **TABLE** (main) ou **PC** (souris).
-2. Cyan place P1, Rose place P2 ; Cyan dessine P1 → P2, puis Rose dessine P2 → P1. Les deux modes utilisent cette création guidée et séquentielle. Le circuit suit les tracés, y compris les boucles et croisements ; les refus sont expliqués à l’écran.
+2. Cyan place P1, Rose place P2 ; Cyan relie les deux points, puis Rose les relie dans sa moitié ; chacun peut commencer par P1 ou P2. Les deux modes utilisent cette création guidée et séquentielle. Le circuit suit les tracés, y compris les boucles et croisements ; les refus sont expliqués à l’écran.
 3. Toucher le bouton à icône de circuit, puis **▶** sur la table. Le lancement, la pause et la remise à zéro appartiennent aux joueurs.
 4. Le pilote conduit avec la bande gauche / droite. Le sélecteur **AUTO / PÉDALE** près de chaque pilote bascule entre l’avance automatique et une pédale maintenue pour accélérer, à vitesse maximale réduite. Le pilote n’a plus de bouton pour utiliser les objets.
 5. Le copilote utilise **POWER** pour son objet ramassé, réalise les gestes et répare avec le pilote. Oz gère seul l’activation des tangibles.
@@ -91,7 +91,7 @@ La table tactile ne reconnaît pas l’identité d’une personne : l’équipe 
 Le tiroir **Test PC**, fermé par défaut, apparaît en course avec une souris, ou avec `?sim=1`. Ramasser d’abord un objet avec la voiture, puis toucher le symbole **POWER** au poste copilote :
 
 - **Lance-pierre** : maintenir le clic pour poser la fourche, tirer en arrière, puis relâcher. La trajectoire est prévisualisée et la pierre vole depuis la poche. En mode PC, ce geste est disponible directement dès qu’un lance-pierre est armé.
-- **Boost** puis deux clics définissent le portail.
+- **Boost** puis deux clics définissent le portail. Son centre et sa largeur viennent des contacts ; son orientation suit la piste. Aux croisements, l’axe entre les contacts indique la branche à traverser.
 
 Les simulations passent par les mêmes règles d’armement, de vol et de consommation que les gestes tactiles. Le lance-pierre conserve les paramètres de `main` : traction minimale de 40 px, portée croissante et dégâts de 100 HP.
 
@@ -102,7 +102,7 @@ En course **PC uniquement**, ce tiroir contient aussi **Invincibles** et **Objet
 Après `npm run build` puis `npm start`, ouvrir `http://localhost:3000/`.
 
 1. Choisir **TABLE** ou **PC**. Placer P1 puis P2 : les pastilles cyan et rose indiquent l’ordre. Essayer un P2 trop proche : un message bref apparaît et P1 reste en place.
-2. Relier le départ (main, cercle plein) à l’arrivée (drapeau, cercle pointillé), dans la moitié éclairée. L’arrivée devient verte au contact. Après le cyan, le rose prend la main. Les coches remplacent les messages de validation. Toucher le circuit, puis ▶ pour démarrer.
+2. Relier les deux points dans la moitié éclairée, dans le sens de son choix ; dès le premier contact, l’autre point devient l’arrivée. L’arrivée devient verte au contact. Après le cyan, le rose prend la main. Les coches remplacent les messages de validation. Toucher le circuit, puis ▶ pour démarrer.
 3. Piloter avec la zone à volant. Basculer **AUTO / PÉDALE** près d’un pilote ; sa pédale apparaît sans changer le mode de l’autre équipe. Les tours se lisent près du drapeau de chaque pilote, le temps près du circuit.
 4. Ramasser un bonus : son icône se relie à POWER. Armer : le contour devient doré, l’anneau décompte les cinq secondes et les contacts indiquent le geste à deux ou trois doigts. Tester aussi le geste adverse, l’expiration et le lance-pierre (jauge de traction et cible).
 5. Déposer un tangible depuis Oz : la zone à empreintes devient occupée (contour continu et pastilles), puis verte avec un éclair après activation par Oz. POWER n’intervient pas dans ce changement.
@@ -154,7 +154,7 @@ Le module nominal est documenté par LEGO : brique 2 × 4 d’environ 32 × 16 m
 
 Les travaux #41 (postes et conduite par équipe), #30 (corridor de boost), #31 (retours des tangibles), #32 (tutoriel) et #34 (console Oz) sont réunis avec leur historique. L’inversion des copilotes n’est appliquée qu’une fois. Les deux thèmes, les animations, les commandes sémantiques et les bonus autonomes sont conservés. Le tutoriel utilise les commandes de conduite par équipe et les piliers neutres ; il peut être parcouru sans Oz en passant son étape dédiée.
 
-La branche expérimentale `baptiste` a également été examinée. Elle change le sens de tracé et son ajustement à la surface ; elle reste séparée des branches d’issues pour conserver le parcours de création guidé actuellement validé.
+La branche `baptiste` est maintenant intégrée : dessin possible dans les deux sens pour l’équipe active, bonus qui suivent la piste déformée et placement sûr des bonus. Le parcours guidé, les zones hors postes et les thèmes récents sont conservés. Le [bilan d’intégration](docs/integration-equipe.md) précise les apports de chaque branche et les adaptations.
 
 ## Commandes et extensions futures
 
@@ -175,6 +175,8 @@ Deux doigts proches saisissant le même bord de piste et glissant vers l’exté
 
 ## Vérification
 
+`npm run verify` exécute tous les contrôles ci-dessous et compile les deux applications.
+
 ```bash
 npm run typecheck
 npm run test:acceptance
@@ -183,6 +185,7 @@ npm run test:network
 npm run test:visuals
 npm run test:tangibles
 npm run test:autopilot
+npm run test:boost
 npm run build
 ```
 

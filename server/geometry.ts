@@ -73,7 +73,7 @@ export function wrapAngle(a: number): number {
 export function isInsideTrackRibbon(p: Vec2, track: Pick<TrackGeometry, 'centerline' | 'widths'>, marginPx = 25): boolean {
   if (!track || !track.centerline || track.centerline.length === 0) return false;
   const hit = nearestOnTrack(p, track);
-  return hit.distance <= Math.max(0, hit.halfWidth - marginPx);
+  return hit.distance <= Math.max(0, hit.halfWidth - marginPx) + 1e-6;
 }
 
 /**

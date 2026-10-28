@@ -70,4 +70,18 @@ const dissolvingArc = rAny.dissolvingItems.find(i => i.kind === 'arc');
 assert.ok(dissolvingArc, 'dissolving arc recorded on arc break');
 console.log('✓ Arc break spawns dissolving arc rupture effect');
 
+// Birth cues from a pair have one meaningful sound, including the new arc.
+const cues: string[]=[];
+const audio=new TangibleTransitions(kind=>cues.push(kind)),paired=makeState();
+paired.tangibles[2]={x:.4,y:.5,angle:0,kind:'pylon',team:null,active:true,status:'placed',dockTeam:null};
+paired.tangibles[3]={x:.5,y:.5,angle:0,kind:'pylon',team:null,active:true,status:'placed',dockTeam:null};
+paired.arcs=[{id:'arc-2-3',team:null,pylon1:{x:768,y:540},pylon2:{x:960,y:540},disabledUntil:0}];
+audio.update(paired,5000);audio.update(paired,5100);
+assert.deepEqual(cues,['arcFormed'],'formation sound wins over simultaneous pylon cues, without repeats');
+paired.arcs=[];delete paired.tangibles[3];audio.update(paired,6000);
+assert.deepEqual(cues,['arcFormed','arcBroken']);
+paired.phase='LOBBY';audio.update(paired,6100);paired.phase='RACE';audio.update(paired,100);
+assert.equal(cues.at(-1),'pylonPlaced','a new game with a reset visual clock can play its cues');
+console.log('✓ Tangible audio prioritizes a new arc, avoids repeats and resets between games');
+
 console.log('All tangible animation tracking tests passed!\n');

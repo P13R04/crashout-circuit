@@ -20,7 +20,9 @@
     "test:network": "tsx scripts/network-acceptance.ts",
     "test:visuals": "tsx scripts/visuals.ts",
     "test:tangibles": "tsx scripts/test-tangible-anims.ts",
-    "test:autopilot": "tsx scripts/autopilot.ts"
+    "test:autopilot": "tsx scripts/autopilot.ts",
+    "test:boost": "tsx scripts/boost.ts",
+    "verify": "npm run typecheck && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run test:visuals && npm run test:tangibles && npm run test:autopilot && npm run test:boost && npm run build"
   },
   "dependencies": {
     "ws": "^8.18.0"

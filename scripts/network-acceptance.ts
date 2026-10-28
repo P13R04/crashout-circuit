@@ -162,7 +162,7 @@ try {
   table.send({ type: 'StartTutorial', mode: 'pc' });
   const started = await ozAgain.until(s => s.phase === 'RACE' && s.tutorial !== null);
   assert.equal(started.mapMode, 'pc');
-  assert.ok(started.track?.preset);
+  assert.ok(ozAgain.snapshots.find(s=>s.tutorial&&s.track)?.track?.preset, 'tutorial sends its full preset geometry');
   ozAgain.send({ type: 'TutorialSkip', team: 'A' });
   await ozAgain.flush(); assert.equal(game.getState().tutorial!.teams.A.step, 0, 'Oz cannot skip a lesson');
   table.send({ type: 'TutorialSkip', team: 'A' });
@@ -174,9 +174,10 @@ try {
   ozAgain.send({type:'StartTangibleTest'});await ozAgain.flush();assert.equal(game.getState().phase,'LOBBY');
   table.send({type:'StartTangibleTest'});
   const automated=await ozAgain.until(s=>s.phase==='READY'&&s.sessionMode==='tangibles-test');
-  assert.ok(automated.track?.preset);assert.deepEqual(automated.testMode,{invincible:false,allItems:false});
+  assert.ok(ozAgain.snapshots.find(s=>s.phase==='READY'&&s.sessionMode==='tangibles-test'&&s.track)?.track?.preset, 'test sends its full preset geometry');assert.deepEqual(automated.testMode,{invincible:false,allItems:false});
   const testReconnect=await client('table');
-  await testReconnect.until(s=>s.sessionMode==='tangibles-test'&&!!s.track);
+  await testReconnect.until(s=>s.sessionMode==='tangibles-test');
+  assert.ok(testReconnect.snapshots[0].track, 'reconnected test client receives initial geometry');
   table.send({type:'BeginRace'});await ozAgain.until(s=>s.phase==='RACE');
   game.rules.damage(game.getState().cars.A,100,Date.now());
   // Finish the countdown in the fixture; repair itself still uses the server physics loop.

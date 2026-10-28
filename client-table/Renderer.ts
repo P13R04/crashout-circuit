@@ -91,6 +91,7 @@ export class Renderer {
     objects.drawWalls(ctx, state, now, this.time, this.reducedMotion);
     objects.drawArcs(ctx, state, now, this.time, this.reducedMotion);
     objects.drawPylons(ctx, state, this.time, this.reducedMotion);
+    this.transitions.drawActivation(ctx, this.time, this.reducedMotion, industrial ? '#79e3ef' : '#ffce66');
     this.drawStones(ctx, state, now);
     for (const t of ['A', 'B'] as Team[]) vehicles.draw(ctx, state.cars[t], this.time, now, this.reducedMotion, view.effects);
     this.effects.draw(ctx, view);
@@ -455,7 +456,7 @@ export class Renderer {
         const activeStroke = [...view.strokes.values()].find(s => s.team === team && !s.done);
         const [from, to] = mapStrokeEndpoints(activeStroke?.pts[0], ...state.mapTargets[team]);
         const nearTarget = activeStroke && inMapAnchor(activeStroke.pts[activeStroke.pts.length - 1], to);
-        const label = (p: Vec2) => p === state.mapDivider![0] ? 'P1' : 'P2';
+        const label = (p: Vec2) => inMapAnchor(p, state.mapDivider![0]) ? 'P1' : 'P2';
         this.drawMapAnchor(ctx, from, label(from), 'DÉPART', TEAM_COLOR[team], team, !activeStroke, t);
         this.drawMapAnchor(ctx, to, label(to), activeStroke ? nearTarget ? 'RELÂCHEZ ICI' : 'ARRIVÉE' : 'DÉPART', TEAM_COLOR[team], team, true, t);
       } else {

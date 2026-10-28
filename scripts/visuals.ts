@@ -98,6 +98,7 @@ test('lighting visibility stays exact after a deformation and at a translated or
 
 // Finite drawing commands, complete canvas shape, and no DOM dependency in the game rules.
 const calls = new Map<string, number>();
+let recordedText: string[] | null = null;
 function finite(args: unknown[]): void { for (const x of args) if (typeof x === 'number') assert.ok(Number.isFinite(x)); }
 class TestPath {
   moveTo(...a: number[]): void { finite(a); }
@@ -114,7 +115,7 @@ function canvas(): HTMLCanvasElement {
       if (key in target) return target[key];
       if (key === 'createLinearGradient' || key === 'createRadialGradient') return (...args: number[]) => { finite(args); return gradient; };
       if (key === 'measureText') return (text: string) => ({ width: text.length * 8 });
-      return (...args: unknown[]) => { finite(args); calls.set(key, (calls.get(key) ?? 0) + 1); };
+      return (...args: unknown[]) => { if (key === 'fillText' && recordedText) recordedText.push(String(args[0])); finite(args); calls.set(key, (calls.get(key) ?? 0) + 1); };
     },
     set(target, key: string, value) { if (typeof value === 'number') finite([value]); target[key] = value; return true; },
   });
@@ -158,6 +159,30 @@ test('every phase, both motion preferences and all feedback effects render witho
     }
   }
   assert.ok((calls.get('drawImage') ?? 0) > 0);
+});
+test('map labels remain P1 and P2 after JSON synchronization and either drawing direction', () => {
+  const {view,state,renderer}=scene(),a={x:600,y:540},b={x:1400,y:540};
+  state.phase='MAP';state.mapDivider=[a,b];state.mapTargets={A:[a,b],B:[b,a]};
+  for(const team of ['A','B'] as const)for(const reverse of [false,true]){
+    state.mapStrokes={A:team==='B',B:false};view.state=JSON.parse(JSON.stringify(state));
+    const endpoints=view.state!.mapTargets![team],first=endpoints[reverse?1:0];
+    view.strokes.set(1,{team,pts:[{...first},{x:1000,y:team==='A'?700:380}],done:false});
+    recordedText=[];renderer.render(view);
+    assert.equal(recordedText.filter(t=>t==='P1').length,1,'one P1 after crossing the network');
+    assert.equal(recordedText.filter(t=>t==='P2').length,1,'one P2 after crossing the network');
+    recordedText=null;view.strokes.clear();
+  }
+});
+test('boost deployment and expiry remain finite and immutable across both themes and reduced motion', () => {
+  const {view,state,renderer}=scene();state.phase='RACE';
+  for(const theme of THEMES)for(const reduced of [false,true]){
+    view.theme=theme.id;view.reducedMotion=reduced;
+    for(const age of [0,180,449,1400,7200,7999,8001]){
+      state.boostGates[0]={id:'lifecycle',team:'A',a:{x:1050,y:510},b:{x:1110,y:330},dir:{x:.948683298,y:.316227766},depth:60,createdAt:1_000_000-age,expiresAt:1_008_000-age};
+      const before=JSON.stringify(state);renderer.render(view);assert.equal(JSON.stringify(state),before);
+    }
+  }
+  assert.equal(renderer.stats.trackBuilds,2,'object animation never rebuilds either deck');
 });
 test('automatic-pilot HUD and repair feedback render in both themes without changing physics', () => {
   const {view,state,renderer}=scene();state.sessionMode='tangibles-test';
