@@ -1,7 +1,7 @@
 import type { GameState, Tangible, Team } from '../server/types.js';
 import { tangibleArc, tangibleDefinition, validTangiblePose, type TangibleId } from '../server/tangibles.js';
-import { withinCorrection, type TangiblePose } from '../client-shared/tangibleGeometry.js';
-import { localToWorld, panelOf, CHARGE_ZONE_LOCAL } from '../server/layout.js';
+import { type TangiblePose } from '../client-shared/tangibleGeometry.js';
+import { depotPose, inTangibleDepot } from '../server/layout.js';
 
 type Snapshot = Tangible | undefined;
 interface Edit { id: TangibleId; before: Snapshot }
@@ -75,10 +75,6 @@ export class OzController {
   prepare(id: TangibleId): void {
     if (!this.enabled) return;
     this.endGesture(); this.selectedId = id;
-    const t = this.state?.tangibles[id];
-    if (t?.status !== 'docked' || !t.active) {
-      this.preparing = false; this.notice = 'Déposez l’objet dans une station, puis chargez-le.'; this.changed(); return;
-    }
     this.preparing = true;
     this.draftAngle = this.state?.tangibles[id]?.angle ?? 0;
     this.notice = ''; this.changed();
@@ -94,21 +90,18 @@ export class OzController {
     const definition = tangibleDefinition(id);
     if (!this.enabled || !this.state || !definition) return false;
     const before = this.state.tangibles[id];
-    if (!before || (before.status === 'docked' && !before.active)) return false;
-    if (before.status === 'placed' && (!before.placementOrigin || !withinCorrection(before.placementOrigin, pose, this.state.params))) {
-      this.notice = 'Correction limitée à 15 mm / 15°. Nouvelle pose : recharge.'; this.changed(); return false;
-    }
     if (!validTangiblePose(definition.kind, pose, this.state.params)) {
       this.notice = 'Gardez l’objet hors des postes joueurs et des bords.';
       this.changed(); return false;
     }
+    const parked=inTangibleDepot({x:pose.x*this.state.params.logicalWidth,y:pose.y*this.state.params.logicalHeight});
     const value: Tangible = { ...pose, angle: ((pose.angle % 360) + 360) % 360,
-      active, kind: definition.kind, team: null, dockTeam: null, status: 'placed',
-      placementOrigin: before.status === 'placed' ? before.placementOrigin : { ...pose } };
+      active:parked?false:active, kind: definition.kind, team: null, dockTeam: null, status: parked?'parked':'placed',
+      placementOrigin: { ...pose } };
     if (equal(before, value)) { this.notice = ''; this.changed(); return true; }
     if (!this.send('TangibleMoved', { id, x: value.x, y: value.y, angle: value.angle, active })) return false;
     if (record && (!this.grouping || !this.groupRecorded)) {
-      this.history.push({ id, before: before.status === 'docked' ? undefined : clone(before) });
+      this.history.push({ id, before: before?.status !== 'placed' ? undefined : clone(before) });
       if (this.history.length > 100) this.history.shift();
       if (this.grouping) this.groupRecorded = true;
     }
@@ -122,12 +115,12 @@ export class OzController {
     if (!this.edit(id, pose, true)) return false;
     this.preparing = false;
     if (id === 2) this.firstPylonPlaced = true;
-    if (first && this.state?.tangibles[3]?.status === 'docked' && this.state.tangibles[3].active) this.prepare(3);
+    if (first && this.state?.tangibles[3]?.status === 'parked') this.prepare(3);
     this.changed(); return true;
   }
 
   move(id: TangibleId, pose: TangiblePose): boolean {
-    return this.edit(id, pose, this.state?.tangibles[id]?.active ?? false);
+    return this.edit(id, pose, this.state?.tangibles[id]?.status==='placed' ? this.state.tangibles[id].active : true);
   }
   rotate(degrees: number): void {
     if (!this.enabled || this.selectedId !== 1) return;
@@ -141,9 +134,7 @@ export class OzController {
     if (!this.enabled || !this.state) return;
     const id = this.selectedId, kind = tangibleDefinition(id)!.kind;
     if (!this.send('TangibleControl', { id, action: 'dock', team })) return;
-    const at = localToWorld(panelOf(team, 'copilot'), CHARGE_ZONE_LOCAL.x, CHARGE_ZONE_LOCAL.y);
-    const value: Tangible = { x: at.x/this.state.params.logicalWidth, y: at.y/this.state.params.logicalHeight,
-      angle: 0, kind, team: null, dockTeam: team, status: 'docked', active: false };
+    const value: Tangible = {...depotPose(id),kind,team:null,dockTeam:null,status:'parked',active:false};
     this.preparing = false; this.endGesture(); this.history = [];
     this.pending.set(id, { value, at: this.now() }); this.project(); this.notice = ''; this.changed();
   }
@@ -151,7 +142,7 @@ export class OzController {
     if (!this.enabled) return;
     this.preparing = false; this.endGesture();
     const id = this.selectedId, t = this.state?.tangibles[id];
-    if (!t) { this.notice = 'Déposez l’objet dans une station de recharge.'; this.changed(); return; }
+    if (!t || t.status!=='placed') { this.notice = 'Posez d’abord cet objet.'; this.changed(); return; }
     const on = active ?? !t.active;
     if (!this.send('TangibleControl', { id, action: on ? 'activate' : 'deactivate' })) return;
     if (t.status === 'placed') {
@@ -170,7 +161,7 @@ export class OzController {
       if (!this.edit(last.id, last.before, last.before.active, false)) return;
     } else {
       if (!this.send('TangibleRemoved', { id: last.id })) return;
-      this.pending.set(last.id, { value: undefined, at: this.now() }); this.project();
+      this.pending.set(last.id, { value: {...depotPose(last.id),kind:tangibleDefinition(last.id)!.kind,team:null,dockTeam:null,status:'parked',active:false}, at: this.now() }); this.project();
     }
     this.history.pop(); this.selectedId = last.id; this.notice = 'Dernière manipulation annulée.'; this.changed();
   }

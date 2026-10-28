@@ -1,6 +1,6 @@
 import { StateSync, connectWs, type Connection } from '../client-shared/net.js';
 import { OzMap, type OzTool } from './OzMap.js';
-import { OzController } from './OzController.js';
+import { OzController, ozShortcut } from './OzController.js';
 import type { Vec2 } from '../server/types.js';
 import type { TangibleId } from '../server/tangibles.js';
 
@@ -72,12 +72,8 @@ const map = new OzMap(canvas, {
     const maxRange = controller.state?.params.arcMaxDistPx ?? 350;
     const d = Math.hypot(p2.x - p1.x, p2.y - p1.y);
     // Place Pylon 1 (id: 2) and Pylon 2 (id: 3)
-    conn.send({ type: 'TangibleControl', id: 2, action: 'dock', team: 'A' });
-    conn.send({ type: 'TangibleControl', id: 2, action: 'activate' });
     conn.send({ type: 'TangibleMoved', id: 2, x: p1.x / 1920, y: p1.y / 1080, angle: 0, active: true });
 
-    conn.send({ type: 'TangibleControl', id: 3, action: 'dock', team: 'B' });
-    conn.send({ type: 'TangibleControl', id: 3, action: 'activate' });
     conn.send({ type: 'TangibleMoved', id: 3, x: p2.x / 1920, y: p2.y / 1080, angle: 0, active: true });
 
     if (d <= maxRange) {
@@ -91,8 +87,6 @@ const map = new OzMap(canvas, {
   onPlaceWall: (center: Vec2, angle: number) => {
     if (!conn?.isOpen()) return;
     // Place Wall (id: 1)
-    conn.send({ type: 'TangibleControl', id: 1, action: 'dock', team: 'A' });
-    conn.send({ type: 'TangibleControl', id: 1, action: 'activate' });
     conn.send({
       type: 'TangibleMoved',
       id: 1,
@@ -112,8 +106,6 @@ const map = new OzMap(canvas, {
     if (id === 1) {
       const wall = controller.state?.tangibles[1];
       const finalAngle = angle !== undefined ? angle : (wall?.angle ?? 0);
-      conn.send({ type: 'TangibleControl', id: 1, action: 'dock', team: 'A' });
-      conn.send({ type: 'TangibleControl', id: 1, action: 'activate' });
       conn.send({
         type: 'TangibleMoved',
         id: 1,
@@ -125,8 +117,6 @@ const map = new OzMap(canvas, {
       hint.textContent = `🧱 Mur déplacé et orienté à ${Math.round(finalAngle)}° !`;
     } else if (id === 2 || id === 3) {
       const team = id === 2 ? 'A' : 'B';
-      conn.send({ type: 'TangibleControl', id, action: 'dock', team });
-      conn.send({ type: 'TangibleControl', id, action: 'activate' });
       conn.send({
         type: 'TangibleMoved',
         id,
@@ -203,6 +193,14 @@ btnClear.addEventListener('click', () => {
 });
 
 document.addEventListener('keydown', e => {
+  if(e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'))return;
+  const shortcut=ozShortcut(e);
+  const id=shortcut==='wall'?1:shortcut==='pylon1'?2:shortcut==='pylon2'?3:null;
+  if(id && controller.state?.tangiblePlacementMode==='touch' && !e.repeat){
+    e.preventDefault();touchButtons.find(b=>Number(b.dataset.tangible)===id)?.click();return;
+  }
+  if(shortcut==='wall' && controller.state?.tangiblePlacementMode==='manual' && !e.repeat){e.preventDefault();btnWall.click();return;}
+
   if (e.key === 'Escape') {
     if(controller.state?.tangiblePlacementMode==='touch'&&conn?.isOpen())conn.send({type:'TangiblePlacementCancel'});
     map.cancel();
@@ -218,17 +216,17 @@ function refresh(): void {
   touchTools.hidden=!touch;
   btnArc.hidden=touch;btnWall.hidden=touch;btnClear.hidden=touch;
   for(const button of touchButtons){
-    const id=Number(button.dataset.tangible),placed=s?.tangibles[id]?.status==='placed';
-    button.disabled=!enabled||s?.phase==='PAUSED'||!!placed;
+    const id=Number(button.dataset.tangible);
+    button.disabled=!enabled||s?.phase==='PAUSED';
     button.classList.toggle('active',pending?.id===id);
     button.setAttribute('aria-pressed',String(pending?.id===id));
-    button.title=placed?'Cliquez sur cet objet sur la carte pour signaler son retrait':'Après recharge, annoncer la prochaine pose';
+    button.title=`Annoncer la prochaine pose · ${id===1?'M':id===2?'1 / &':'2 / é'}`;
   }
   touchCancel.hidden=!pending;
   touchCancel.textContent=`Annuler · ${Math.max(0,Math.ceil(((pending?.expiresAt??0)-sync.now())/1000))} s`;
   if(touch){
     hint.textContent=pending?'Posez l’objet · deux contacts sur la table':'Choisissez l’objet à poser · cliquez sur la carte pour le retirer';
-    canvas.style.cursor='default';
+    if(!wasTouch)canvas.style.cursor='default';
   }
   if(!touch&&wasTouch)updateToolUI(null,0);
   wasTouch=touch;

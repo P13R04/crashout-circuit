@@ -3,6 +3,7 @@ import { createControls } from '../client-shared/controls.js';
 import { StateSync, connectWs } from '../client-shared/net.js';
 import { createView, showDividerRefusal, showMapError } from './view.js';
 import { Renderer } from './Renderer.js';
+import { SETTINGS_BUTTON } from '../server/layout.js';
 import { GestureRecognizer } from './GestureRecognizer.js';
 import { playFeedback, unlock } from './Sound.js';
 import { THEMES, loadTheme, saveTheme, type ThemeId } from './themes.js';
@@ -24,7 +25,11 @@ function resizeCanvas(): void {
   canvas.style.height = `${LOGICAL_H * fit}px`;
   const left = (window.innerWidth - LOGICAL_W * fit) / 2;
   const top = (window.innerHeight - LOGICAL_H * fit) / 2;
-  document.documentElement.style.setProperty('--tools-x', `${left + LOGICAL_W * fit * .5625}px`);
+  document.documentElement.style.setProperty('--tools-x', `${left + SETTINGS_BUTTON.x * fit}px`);
+  document.documentElement.style.setProperty('--tools-y', `${top + SETTINGS_BUTTON.y * fit}px`);
+  document.documentElement.style.setProperty('--tools-w', `${SETTINGS_BUTTON.w * fit}px`);
+  document.documentElement.style.setProperty('--tools-h', `${SETTINGS_BUTTON.h * fit}px`);
+  document.documentElement.style.setProperty('--tools-scale', `${fit}`);
   document.documentElement.style.setProperty('--tools-bottom', `${top + 8}px`);
   document.documentElement.style.setProperty('--table-top', `${top + 18}px`);
 }
@@ -69,6 +74,14 @@ const conn = connectWs('/ws', {
 });
 const controls = createControls(m => conn.send(m));
 const gestures = new GestureRecognizer(canvas, view, (m) => conn.send(m));
+
+const driveOptions=document.getElementById('drive-options')!;
+const driveButtons={A:document.getElementById('drive-A')!,B:document.getElementById('drive-B')!};
+for(const team of ['A','B'] as const)driveButtons[team].addEventListener('click',()=>conn.send({type:'ToggleDriveMode',team}));
+function syncDriveOptions(): void {
+  const s=view.state;driveOptions.hidden=!s||!['READY','RACE','PAUSED'].includes(s.phase)||s.sessionMode==='tangibles-test';
+  for(const team of ['A','B'] as const){const mode=s?.driveMode[team]??'auto';driveButtons[team].textContent=`${team==='A'?'Cyan':'Rose'} · ${mode==='auto'?'AUTO':'PÉDALE'}`;driveButtons[team].setAttribute('aria-pressed',String(mode==='pedal'));}
+}
 
 // PC testing: buttons that stand in for the 3- and 2-finger gestures (shown with a mouse or ?sim=1)
 const pcTools = document.getElementById('pc-tools') as HTMLDetailsElement;
@@ -227,6 +240,7 @@ function handleMessage(msg: ServerMessage): void {
       const prev = view.state;
       view.state = sync.apply(msg.state, msg.t);
       gestures.syncState();
+      syncDriveOptions();
       if (view.state.mapTargets) {
         if (!prev?.mapTargets) view.mapNotice = null;
         view.pendingDivider = [];

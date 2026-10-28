@@ -190,7 +190,7 @@ await test('only the copilot POWER button emits activation, the former pilot ite
     r.sent.length = 0;
     const former = localToWorld(panelOf(team, 'pilot'), -20, 45);
     r.down(2, former.x, former.y); r.up(2, former.x, former.y);
-    assert.deepEqual(r.sent, []);
+    assert.equal(r.sent.filter(m=>m.type==='Power').length,0,'pilot controls never arm stock');
   }
 });
 
@@ -211,10 +211,10 @@ await test('two repair contacts in opposite corners belong to the same team', as
 });
 
 await test('the shared control adapter preserves held-pedal throttle across steering and releases', async () => {
-  const { localToWorld, panelOf, PEDAL_LOCAL, STEER_AREA_LOCAL } = await import('../server/layout.js');
+  const { localToWorld, panelOf, PEDAL_LOCAL, STEER_AREA_LOCAL, steerArea } = await import('../server/layout.js');
   const r = rig(); r.view.state!.driveMode.A = 'pedal';
   const pedal = localToWorld(panelOf('A', 'pilot'), PEDAL_LOCAL.x, PEDAL_LOCAL.y);
-  const steer = localToWorld(panelOf('A', 'pilot'), STEER_AREA_LOCAL.x - 30, STEER_AREA_LOCAL.y);
+  const steer = localToWorld(panelOf('A', 'pilot'), steerArea('pedal').x - 30, steerArea('pedal').y);
   r.down(1, pedal.x, pedal.y);
   assert.equal(r.sent.at(-1)!.throttle, 1);
   r.down(2, steer.x, steer.y);
@@ -237,29 +237,9 @@ await test('the central resume icon works only while paused, and consumes the to
   assert.equal(r.view.sling, null);
 });
 
-await test('tapping a pilot drive mode button toggles the drive mode for that team', async () => {
-  const { DRIVE_MODE_BUTTONS } = await import('../client-table/Renderer.js');
-  const r = rig();
-  const btnA = DRIVE_MODE_BUTTONS.A;
-
-  // In LOBBY (title screen), buttons are inert
-  r.view.state!.phase = 'LOBBY';
-  r.down(1, btnA.x + btnA.w / 2, btnA.y + btnA.h / 2);
-  r.up(1, btnA.x + btnA.w / 2, btnA.y + btnA.h / 2);
-  assert.equal(r.sent.length, 0);
-
-  // In READY, Pilot A button toggles
-  r.view.state!.phase = 'READY';
-  r.down(1, btnA.x + btnA.w / 2, btnA.y + btnA.h / 2);
-  r.up(1, btnA.x + btnA.w / 2, btnA.y + btnA.h / 2);
-  assert.deepEqual(r.sent.at(-1), { type: 'ToggleDriveMode', team: 'A' });
-
-  // In RACE, Pilot B button toggles
-  r.view.state!.phase = 'RACE';
-  const btnB = DRIVE_MODE_BUTTONS.B;
-  r.down(2, btnB.x + btnB.w / 2, btnB.y + btnB.h / 2);
-  r.up(2, btnB.x + btnB.w / 2, btnB.y + btnB.h / 2);
-  assert.deepEqual(r.sent.at(-1), { type: 'ToggleDriveMode', team: 'B' });
+await test('former mode buttons and neutral settings space never toggle drive mode on the canvas',async()=>{
+  const {SETTINGS_BUTTON}=await import('../server/layout.js');
+  for(const phase of ['LOBBY','READY','RACE'] as const){const r=rig(null);r.view.state!.phase=phase;r.down(1,SETTINGS_BUTTON.x+30,SETTINGS_BUTTON.y+30);r.up(1,SETTINGS_BUTTON.x+30,SETTINGS_BUTTON.y+30);assert.equal(r.sent.length,0);}
 });
 
 await test('the tangible-test lobby entry starts its own mode without changing the other entries', async () => {
@@ -282,6 +262,20 @@ await test('automatic test consumes pilot touches while copilot POWER and repair
   const pad=padLocal('copilot'),at=localToWorld(panel,pad.x,pad.y);
   r.down(4,at.x,at.y);r.up(4,at.x,at.y);
   assert.deepEqual(r.sent.filter(m=>m.type==='PadHold').map(m=>[m.role,m.on]),[['copilot',true],['copilot',false]]);
+});
+
+await test('a border pull follows the two fingers through a full wall-sized drag instead of consuming the first movement',async()=>{
+  const {generatePreset}=await import('../server/MapGenerator.js');
+  const r=rig('boost'),track=generatePreset();r.view.state!.track=track;
+  const index=Math.floor(track.centerline.length/4),at=track.outerEdge[index],centre=track.centerline[index],d=Math.hypot(at.x-centre.x,at.y-centre.y),out={x:(at.x-centre.x)/d,y:(at.y-centre.y)/d};
+  // Adjacent samples on the same edge supply actual, nearby grab points.
+  const b=track.outerEdge[(index+1)%track.outerEdge.length];r.down(1,at.x,at.y);r.down(2,b.x,b.y);
+  for(let amount=30;amount<=220;amount+=30){r.move(1,at.x+out.x*amount,at.y+out.y*amount);r.move(2,b.x+out.x*amount,b.y+out.y*amount);await sleep(35);}
+  r.up(1,at.x+out.x*220,at.y+out.y*220);r.up(2,b.x+out.x*220,b.y+out.y*220);
+  const pulls=r.sent.filter(m=>m.type==='BorderPull');assert.ok(pulls.length>=4,'one gesture streams its growing displacement');
+  assert.equal(new Set(pulls.map(m=>m.gestureId)).size,1);assert.equal(pulls.at(-1)!.end,true);
+  assert.ok(Math.hypot(pulls.at(-1)!.dx as number,pulls.at(-1)!.dy as number)>150,'the final pull is much larger than its first 20 px');
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,0);
 });
 
 let failed = 0;

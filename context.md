@@ -9,19 +9,23 @@ Cette fiche conserve les décisions de conception et leurs identifiants (R-xx, C
 
 ---
 
-## Pose tactile des tangibles (28 octobre 2026)
+## Commandes et tangibles — simplification après essais (28 octobre 2026)
 
-Dernière base récupérée : `4472263` (console Oz de Baptiste, portée d’arc 350 px). Le mode manuel est conservé ; le sélecteur Oz ajoute **Pose tactile**, indépendant des modes de course et des thèmes. Oz annonce un objet disponible après son passage physique par une station ; cette annonce valide aussi sa recharge et autorise une seule pose pendant 20 s. La table fournit le milieu de deux contacts neufs et l’angle orthogonal à leur axe pour le mur, sans modifier les dimensions LEGO. Deux contacts sont confirmés après 90 ms ; leur retrait ne retire pas l’objet. Oz clique sur l’objet dans sa carte lorsqu’il est physiquement enlevé. Une nouvelle pose demande une nouvelle annonce après recharge.
+Les postes compacts conservent le partenariat en diagonale. Pilote : gauche/droite, vie au-dessus et réparation ; copilote : POWER et réparation. AUTO/PÉDALE se choisit uniquement dans **Paramètres → Conduite** ; AUTO n’affiche ni bouton ni espace d’accélérateur. Le cadre fait 420 × 160 pour le pilote AUTO, 520 × 160 en PÉDALE et 280 × 160 pour le copilote. Les réglages et l’accueil se trouvent dans une zone neutre à droite de Pause ; le dépôt neutre est à gauche. La création de circuit dispose d’une surface élargie.
 
-Les contacts de pose sont prioritaires sur les gestes libres, sans absorber les pads ou le pilotage. Les anciens contacts, les prises ambiguës, les paumes et les paquets périmés sont rejetés. Pause, reset, changement de mode et déconnexion du dernier Oz/de la dernière table annulent l’attente. Le jeton serveur rend la confirmation atomique et non rejouable. Les animations, arcs, champs et collisions restent ceux du jeu. Voir le protocole dans le README ; `npm run test:tangible-touch` couvre le nouveau parcours.
+Aucune expiration du stock, avant ou après armement. POWER appartient au copilote propriétaire ; le geste armé reste neutre et volable. Seul un geste valide consomme le bonus. Le champ `itemArmExpiry` vaut 0 pour compatibilité réseau, sans compte à rebours.
+
+Les trois tangibles sont prêts au dépôt dès le début, sans recharge, délai ou correction bornée. Les anciennes stations copilote sont supprimées. Une pose dans le dépôt est inactive ; une nouvelle annonce permet de la remettre sur la piste immédiatement. Oz annonce via **M / 1 (&) / 2 (é)** ou les boutons, puis deux nouveaux contacts fixent la position ; le mur est orthogonal à leur axe. Cliquer l’objet dans Oz le retire vers le dépôt. Les effets, l’échelle LEGO, les deux thèmes et les voitures automatiques restent conservés. La fenêtre de 20 s d’une annonce Oz est distincte des bonus, qui ne périment pas.
+
+La déformation suit les deux doigts pendant la traction, jusqu’à 220 px. Le serveur met à jour une seule déformation par geste, sur une transition de 22 échantillons, avec une rampe de 0,18 s. Les interventions se fondent sans dépasser l’amplitude maximale ; les postes, le dépôt et les contrôles sont protégés. Voir [le briefing actuel](docs/pose-tactile.md). Les anciennes règles de recharge, de budget de correction et d’expiration ci-dessous sont historiques.
 
 ## Intégration de l’équipe (28 octobre 2026)
 
 Les branches #30, #31, #32, #34, #41 et `baptiste` sont réunies avec les thèmes et le test à pilotes automatiques. Le boost s’oriente selon la piste (la branche transversale au geste à un croisement), les contacts règlent sa largeur et sa puissance. Les bonus restent liés à leur point de piste pendant les déformations et leur délai de réapparition. Le dessin reste séquentiel cyan puis rose, mais accepte les deux sens ; les traits sont normalisés avant génération. Les zones pilotes ne sont pas ré-inversées. Voir [le bilan et le protocole de recette](docs/integration-equipe.md).
 
-## Règles actuelles des tangibles LEGO (octobre 2026)
+## Échelle actuelle des tangibles LEGO
 
-Un mur neutre 10 × 4 et deux piliers neutres 4 × 4. Effets identiques pour les deux équipes. Avant chaque nouvelle pose, retour physique à l’une des deux stations copilote ; Oz constate le dépôt puis charge l’objet. POWER concerne seulement les bonus ramassés. Une désactivation ne recharge pas. Après la pose, seules des corrections de 15 mm / 15° autour de l’origine immuable sont permises. L’échelle est calculée pour l’image active 16:9 sur 55 pouces, réglable via `tableDiagonalInches`. Mur 80 × 32 mm + frange de 10 mm ; pilier 32 × 32 mm, champ de diamètre 84 mm, arc entre piliers à portée. Le [README](README.md#console-oz--tangibles-neutres-et-recharge) décrit le protocole actuel et les essais. Les spécifications historiques ci-dessous concernant quatre objets par équipe, les murs plats et les secours Oz sont dépassées.
+Mur neutre 10 × 4 (80 × 32 mm) avec frange de 10 mm ; deux piliers 4 × 4 (32 × 32 mm), champs de diamètre 84 mm, arc à 350 px logiques. Échelle pour l’image active 16:9 d’une table 55 pouces, réglable via `tableDiagonalInches`. Les règles actuelles de dépôt et d’activation sont décrites plus haut et dans le README ; les anciennes règles de recharge ci-dessous sont dépassées.
 
 ## Évolution intégrée — console Oz (22 octobre 2026)
 

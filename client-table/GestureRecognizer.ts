@@ -22,11 +22,11 @@
 import { createControls } from '../client-shared/controls.js';
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import {
-  LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, worldToLocal, type PanelLayout,
+  LOGICAL_W, LOGICAL_H, PANELS, padLocal, panelWidth, PANEL_H, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, worldToLocal, steerArea as steerAreaForState, inTangibleDepot, inNeutralUi, type PanelLayout,
   insidePanel, nearestStationTeam, checkDivider, inPlayArea, type Role,
 } from '../server/layout.js';
 import { nearestOnTrack, slingshotShot } from '../server/geometry.js';
-import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTON, DRIVE_MODE_BUTTONS, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
+import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON, RESET_BUTTON} from './Renderer.js';
 import { tutorialButtonAt } from './TutorialOverlay.js';
 import { showDividerRefusal, showMapError, showMapNotice, type View } from './view.js';
 import { activeMapTeam, inMapAnchor, mapEndpointError, mapStrokeEndpoints } from '../server/mapCreation.js';
@@ -43,7 +43,7 @@ const BOOST_MIN_PX = 100;
 const BOOST_MAX_PX = 400;
 const EDGE_GRAB_PX = 20;
 const PULL_MIN_PX = 20;
-const PULL_MAX_PX = 105;
+const PULL_MAX_PX = 220;
 const PULL_PAIR_MAX_PX = 130;
 const PULL_EDGE_INDEX_GAP = 8;
 const PALM_MAX_PX = 140;        // contacts wider than this (logical px) are palms/arms
@@ -80,6 +80,8 @@ export class GestureRecognizer {
     A: { throttle: 0, steer: 0 }, B: { throttle: 0, steer: 0 },
   };
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
+  private pullSequence = 0;
+  private borderPull: { ids:number[]; gestureId:string; start:Vec2; outward:Vec2; team:Team; lastSent:number } | null = null;
   private placementToken: number | null = null;
   private placementTimer: ReturnType<typeof setTimeout> | null = null;
   private placementMousePoint: Vec2 | null = null;
@@ -148,6 +150,7 @@ export class GestureRecognizer {
     const token=this.pendingPlacement?.token??null;
     if(token===this.placementToken)return;
     this.placementToken=token;
+    if(token!==null)this.borderPull=null;
     if(this.placementTimer)clearTimeout(this.placementTimer);
     this.placementTimer=null;this.placementMousePoint=null;this.view.tangibleTouch=null;
     if(token!==null){
@@ -221,18 +224,6 @@ export class GestureRecognizer {
       c.zone = 'result';
       this.send({ type: 'Reset' });
       return;
-    }
-
-    // Drive mode buttons (accessible in all phases except RESULT)
-    if (state.phase === 'READY' || state.phase === 'RACE' || state.phase === 'PAUSED') {
-      for (const t of ['A', 'B'] as const) {
-        const mode = DRIVE_MODE_BUTTONS[t];
-        if (hit(mode)) {
-          c.zone = 'mode';
-          if (state.sessionMode !== 'tangibles-test') this.send({ type: 'ToggleDriveMode', team: t });
-          return;
-        }
-      }
     }
 
     // 0 — lobby: start button
@@ -310,10 +301,10 @@ export class GestureRecognizer {
     for (const panel of PANELS) {
       const l = worldToLocal(panel, p.x, p.y);
       if (panel.role === 'pilot') {
-        if (state.sessionMode === 'tangibles-test' && Math.abs(l.x) <= panelWidth('pilot') / 2 && Math.abs(l.y) <= PANEL_H / 2) {
+        if (state.sessionMode === 'tangibles-test' && Math.abs(l.x) <= panelWidth('pilot',state.driveMode[panel.team]) / 2 && Math.abs(l.y) <= PANEL_H / 2) {
           c.zone = 'rejected'; return;
         }
-        const steerArea = STEER_AREA_LOCAL;
+        const steerArea = steerAreaForState(state.driveMode[panel.team]);
         if (Math.abs(l.x - steerArea.x) <= steerArea.w / 2 && Math.abs(l.y - steerArea.y) <= steerArea.h / 2) {
           if (this.sticks.has(panel.team)) { c.zone = 'rejected'; return; }
           c.zone = 'steer';
@@ -333,7 +324,7 @@ export class GestureRecognizer {
           return;
         }
       }
-      const pad = padLocal(panel.role);
+      const pad = padLocal(panel.role,state.driveMode[panel.team]);
       if (Math.hypot(l.x - pad.x, l.y - pad.y) <= pad.r + 6) {
         c.zone = 'pad';
         c.padKey = `${panel.team}-${panel.role}`;
@@ -344,7 +335,7 @@ export class GestureRecognizer {
         c.zone = 'item'; this.controls.power(panel.team); return;
       }
       // Rest of a panel: not a game surface
-      if (Math.abs(l.x) <= panelWidth(panel.role) / 2 && Math.abs(l.y) <= PANEL_H / 2) { c.zone = 'rejected'; return; }
+      if (Math.abs(l.x) <= panelWidth(panel.role,state.driveMode[panel.team]) / 2 && Math.abs(l.y) <= PANEL_H / 2) { c.zone = 'rejected'; return; }
     }
 
     // Oz reserves fresh map contacts before any bonus, simulation or border gesture.
@@ -364,6 +355,8 @@ export class GestureRecognizer {
       }else this.updateTangibleContacts();
       return;
     }
+
+    if(inTangibleDepot(p)||inNeutralUi(p)){c.zone='rejected';return;}
 
     // 3b — PC testing: simulated multi-finger gesture (toolbar buttons)
     // PC mode needs no toolbar button for the slingshot: with a slingshot armed, a plain
@@ -410,7 +403,9 @@ export class GestureRecognizer {
     const p = this.toLogical(e);
     c.x = p.x; c.y = p.y;
 
-    if(c.zone==='tangible'&&!c.consumed){
+    if(this.borderPull?.ids.includes(c.id)){
+      this.streamBorderPull(false);
+    }else if(c.zone==='tangible'&&!c.consumed){
       this.updateTangibleContacts();
     } else if (c.zone === 'steer') {
       this.updateSteer(c);
@@ -431,6 +426,7 @@ export class GestureRecognizer {
     this.syncState();
     const c = this.contacts.get(e.pointerId);
     if (!c) return;
+    if(this.borderPull?.ids.includes(c.id)){if(e.type==='pointerup'){const at=this.toLogical(e);c.x=at.x;c.y=at.y;}this.streamBorderPull(true);this.borderPull=null;}
     this.contacts.delete(c.id);
     this.view.debug.contacts = this.contacts.size;
     if(c.zone==='tangible')this.updateTangibleContacts();
@@ -490,7 +486,7 @@ export class GestureRecognizer {
     const local = worldToLocal(c.panel, c.x, c.y);
     // Match the keyboard: either half of the strip is a full left/right turn.
     // Only the zone changes as the finger crosses the centre.
-    c.steer = local.x <= STEER_AREA_LOCAL.x ? -1 : 1;
+    c.steer = local.x <= steerAreaForState(this.state?.driveMode[c.panel.team]).x ? -1 : 1;
     this.view.sticks[c.panel.team] = { x: c.steer, y: 0, active: true };
   }
 
@@ -556,6 +552,7 @@ export class GestureRecognizer {
 
   /** Release everything (WebSocket lost, tab hidden) so no pad stays "held" on the server. */
   releaseAll(): void {
+    if(this.borderPull){this.streamBorderPull(true);this.borderPull=null;}
     if(this.placementTimer)clearTimeout(this.placementTimer);
     this.placementTimer=null;this.placementMousePoint=null;this.view.tangibleTouch=null;
     if(this.settleTimer)clearTimeout(this.settleTimer);
@@ -594,10 +591,9 @@ export class GestureRecognizer {
   private armedTeam(kind: 'slingshot' | 'boost', at: Vec2): Team | null {
     const state = this.state;
     if (!state) return null;
-    const now = this.view.now();
     const armed = (['A', 'B'] as Team[]).filter(t => {
       const car = state.cars[t];
-      return car.itemArmed && (state.testMode.allItems || car.heldItem === kind) && now < car.itemArmExpiry;
+      return car.itemArmed && (state.testMode.allItems || car.heldItem === kind);
     });
     if (armed.length === 0) return null;
     return nearestStationTeam(at);
@@ -761,12 +757,20 @@ export class GestureRecognizer {
     const dx = ((a.x - a.sx) + (b.x - b.sx)) / 2;
     const dy = ((a.y - a.sy) + (b.y - b.sy)) / 2;
     if (dx * outward.x + dy * outward.y < PULL_MIN_PX) return;
-    const mag = Math.hypot(dx, dy);
-    const k = Math.min(1, PULL_MAX_PX / mag);
     const start = { x: (a.sx + b.sx) / 2, y: (a.sy + b.sy) / 2 };
-    const team = nearestStationTeam(start);
-    this.send({ type: 'BorderPull', x: start.x, y: start.y, dx: dx * k, dy: dy * k, team });
-    candidates.forEach(c => { c.consumed = true; });
+    this.borderPull={ids:[a.id,b.id],gestureId:`${Date.now()}-${++this.pullSequence}`,start,outward,team:nearestStationTeam(start),lastSent:-Infinity};
+    candidates.forEach(c=>{c.consumed=true;});
+    this.streamBorderPull(false);
+  }
+
+  private streamBorderPull(end:boolean): void {
+    const pull=this.borderPull,s=this.state;if(!pull||!s||s.phase!=='RACE'||this.pendingPlacement)return;
+    const pair=pull.ids.map(id=>this.contacts.get(id));if(pair.some(c=>!c))return;
+    const now=performance.now();if(!end&&now-pull.lastSent<32)return;
+    const dx=pair.reduce((sum,c)=>sum+c!.x-c!.sx,0)/2,dy=pair.reduce((sum,c)=>sum+c!.y-c!.sy,0)/2;
+    const amount=Math.max(PULL_MIN_PX,Math.min(s.params.trackDeformMaxShiftPx??PULL_MAX_PX,dx*pull.outward.x+dy*pull.outward.y));
+    this.send({type:'BorderPull',x:pull.start.x,y:pull.start.y,dx:pull.outward.x*amount,dy:pull.outward.y*amount,team:pull.team,gestureId:pull.gestureId,end});
+    pull.lastSent=now;
   }
 
   private mapStrokeStartTeam(state: GameState, p: Vec2): Team | null {

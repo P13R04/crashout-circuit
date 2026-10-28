@@ -34,7 +34,7 @@ Les partenaires d’une équipe sont en diagonale : pilote cyan en bas à gauche
 1. Choisir **TABLE** (main) ou **PC** (souris).
 2. Cyan place P1, Rose place P2 ; Cyan relie les deux points, puis Rose les relie dans sa moitié ; chacun peut commencer par P1 ou P2. Les deux modes utilisent cette création guidée et séquentielle. Le circuit suit les tracés, y compris les boucles et croisements ; les refus sont expliqués à l’écran.
 3. Toucher le bouton à icône de circuit, puis **▶** sur la table. Le lancement, la pause et la remise à zéro appartiennent aux joueurs.
-4. Le pilote conduit avec la bande gauche / droite. Le sélecteur **AUTO / PÉDALE** près de chaque pilote bascule entre l’avance automatique et une pédale maintenue pour accélérer, à vitesse maximale réduite. Le pilote n’a plus de bouton pour utiliser les objets.
+4. Le pilote conduit avec la bande gauche / droite. **Paramètres → Conduite**, séparément pour chaque équipe, bascule entre l’avance automatique et une pédale maintenue pour accélérer, à vitesse maximale réduite. Le pilote n’a plus de bouton pour utiliser les objets.
 5. Le copilote utilise **POWER** pour son objet ramassé, réalise les gestes et répare avec le pilote. Oz gère seul l’activation des tangibles.
 6. Une sortie de piste immobilise la voiture. Maintenir les deux pads de réparation pour la remettre en jeu. La pause fige la course et les durées des effets.
 
@@ -44,16 +44,16 @@ Les partenaires d’une équipe sont en diagonale : pilote cyan en bas à gauche
 
 Les pilotes suivent le centre de la piste en envoyant des commandes de direction et d’accélération à la physique normale. Ils ne voient pas les obstacles et ne les évitent pas. Les murs provoquent de vrais rebonds, les piliers et arcs infligent leurs dégâts et leur ralentissement. Après une déviation, la voiture cherche progressivement le centre sans repositionnement artificiel. Un choc peut provoquer une sortie de piste et une panne.
 
-Le copilote garde **POWER, les gestes, les bonus ramassés, les déformations et la réparation**. Oz conserve uniquement la charge, la pose et l’activation des tangibles neutres. Les aides PC d’invincibilité et d’objets libres sont désactivées dans cette session.
+Le copilote garde **POWER, les gestes, les bonus ramassés, les déformations et la réparation**. Oz conserve uniquement la pose, le retrait et l’activation des tangibles neutres. Les aides PC d’invincibilité et d’objets libres sont désactivées dans cette session.
 
 Lorsqu’une réparation est nécessaire (voiture détruite ou moins de 60 HP), le pilote maintient automatiquement son pad. **Le copilote doit toujours maintenir le sien pendant 2 secondes** ; relâcher interrompt la réparation. La voiture repart ensuite toute seule. Une personne peut ainsi réparer les deux voitures à tour de rôle depuis leurs postes copilote respectifs.
 
 ### Parcours conseillé sur la table
 
 1. Relancer la version à jour avec `npm run build` puis `npm start`. Ouvrir la table et la console Oz sur le même réseau.
-2. Sur la table : **Paramètres → Plein écran**, puis **TEST TANGIBLES → ▶**. Les panneaux pilotes indiquent **PILOTE AUTO**.
-3. Faire quelques tours sans obstacle, puis charger et poser un mur diagonal depuis Oz. Observer le rebond, les HP et le retour vers le centre. Si une voiture tombe, désactiver le mur pour isoler la réparation, puis maintenir seulement son pad copilote.
-4. Charger et poser un pilier, puis le second à portée : vérifier les champs électriques, la liaison, les dégâts et le ralentissement sur chaque voiture. Le circuit de recharge reste obligatoire avant toute nouvelle pose.
+2. Sur la table : **Paramètres → Plein écran**, puis **TEST TANGIBLES → ▶**. Une icône de circuit remplace la conduite manuelle.
+3. Faire quelques tours sans obstacle, puis poser un mur diagonal depuis Oz. Observer le rebond, les HP et le retour vers le centre. Si une voiture tombe, désactiver le mur pour isoler la réparation, puis maintenir seulement son pad copilote.
+4. Poser un pilier, puis le second à portée : vérifier les champs électriques, la liaison, les dégâts et le ralentissement sur chaque voiture. Les objets sont réutilisables immédiatement, sans recharge.
 5. Tester aussi POWER et les gestes du copilote. Le mode ne donne pas de bonus gratuits : les voitures les ramassent normalement.
 6. La maison permet de retrouver TABLE, PC et TUTORIEL avec leurs règles habituelles.
 
@@ -72,17 +72,17 @@ Le bouton **TUTORIEL** du lobby lance une course sur le circuit prédéfini, san
 5. un mur puis un arc adverses posés sur la route par le serveur ;
 6. un arc de deux piliers activés par l'opérateur Oz (facultative : à passer si Oz est absent).
 
-Si l'objet armé expire ou si le portail n'est pas traversé, l'équipe revient à POWER avec l'objet rendu ; la fenêtre d'armement est de 12 s au lieu de 5 s. Le mode (table ou PC) est déduit du pointeur qui touche le bouton ; les interrupteurs de test PC sont désactivés. À la fin des deux équipes, un écran renvoie à l'accueil. La logique est dans `server/Tutorial.ts`, l'affichage dans `client-table/TutorialOverlay.ts`.
+Un objet armé ne périme pas. Si un portail déjà créé n’est pas traversé, l’équipe peut recommencer la leçon avec un nouveau boost. Le mode (table ou PC) est déduit du pointeur qui touche le bouton ; les interrupteurs de test PC sont désactivés. À la fin des deux équipes, un écran renvoie à l'accueil. La logique est dans `server/Tutorial.ts`, l'affichage dans `client-table/TutorialOverlay.ts`.
 
 ## POWER et objets ramassés
 
 Les boutons nommés **FANTÔME** et **DÉTRUIRE** ont été retirés de la zone copilote. Le copilote possède un seul bouton d’action, **POWER**, et le pad de réparation.
 
 1. La voiture ramasse un objet lorsque son stock est vide. Son icône apparaît comme information dans le poste copilote.
-2. **Seul POWER du copilote de l’équipe propriétaire peut armer ce stock.** POWER adverse ne l’arme pas. Appuyer plusieurs fois ne prolonge pas la fenêtre.
-3. Pendant les **5 secondes** configurées, le geste correspondant est disponible sur la surface partagée : **3 doigts rapprochés, tirer l’un d’eux puis relâcher** pour le lance-pierre à élastique, **2 doigts espacés de 100 à 400 px** pour le portail de boost.
+2. **Seul POWER du copilote de l’équipe propriétaire peut armer ce stock.** POWER adverse ne l’arme pas. L’objet reste armé jusqu’au geste valide.
+3. Sans limite de temps après l’armement, le geste correspondant est disponible sur la surface partagée : **3 doigts rapprochés, tirer l’un d’eux puis relâcher** pour le lance-pierre à élastique, **2 doigts espacés de 100 à 400 px** pour le portail de boost.
 4. L’armement est **neutre et volable** : le premier geste valide consomme l’objet armé du propriétaire, et l’effet appartient à l’équipe qui a exécuté le geste. Un lance-pierre volé peut donc toucher son ancien propriétaire ; un portail volé aide l’équipe qui l’a créé.
-5. Sans geste dans la fenêtre, l’objet est perdu, comme dans la règle précédente du prototype. Si deux stocks du même type sont armés, celui du poste le plus proche du geste est consommé. Un stock ne peut être consommé qu’une fois.
+5. L’objet n’est jamais perdu par attente : il reste dans le stock avant armement, puis armé tant que personne ne réalise le geste. Si deux stocks du même type sont armés, celui du poste le plus proche du geste est consommé. Un stock ne peut être consommé qu’une fois.
 
 La table tactile ne reconnaît pas l’identité d’une personne : l’équipe qui fait le geste est celle du poste copilote le plus proche. Les gestes et le vol fonctionnent sans connexion Oz. Le magicien n’attribue plus les gestes et ne peut pas donner, armer ou déclencher de bonus.
 
@@ -103,8 +103,8 @@ Après `npm run build` puis `npm start`, ouvrir `http://localhost:3000/`.
 
 1. Choisir **TABLE** ou **PC**. Placer P1 puis P2 : les pastilles cyan et rose indiquent l’ordre. Essayer un P2 trop proche : un message bref apparaît et P1 reste en place.
 2. Relier les deux points dans la moitié éclairée, dans le sens de son choix ; dès le premier contact, l’autre point devient l’arrivée. L’arrivée devient verte au contact. Après le cyan, le rose prend la main. Les coches remplacent les messages de validation. Toucher le circuit, puis ▶ pour démarrer.
-3. Piloter avec la zone à volant. Basculer **AUTO / PÉDALE** près d’un pilote ; sa pédale apparaît sans changer le mode de l’autre équipe. Les tours se lisent près du drapeau de chaque pilote, le temps près du circuit.
-4. Ramasser un bonus : son icône se relie à POWER. Armer : le contour devient doré, l’anneau décompte les cinq secondes et les contacts indiquent le geste à deux ou trois doigts. Tester aussi le geste adverse, l’expiration et le lance-pierre (jauge de traction et cible).
+3. Piloter avec la zone à volant. Basculer **AUTO / PÉDALE** dans Paramètres → Conduite ; sa pédale apparaît dans un poste légèrement élargi, sans changer le mode de l’autre équipe. Les tours se lisent près du drapeau de chaque pilote, le temps près du circuit.
+4. Ramasser un bonus : son icône se relie à POWER. Armer : le contour devient doré, l’anneau reste plein et les contacts indiquent le geste à deux ou trois doigts. Tester aussi le geste adverse, une longue attente et le lance-pierre (jauge de traction et cible).
 5. Déposer un tangible depuis Oz : la zone à empreintes devient occupée (contour continu et pastilles), puis verte avec un éclair après activation par Oz. POWER n’intervient pas dans ce changement.
 6. En panne, chercher la clé près de la voiture et dans les postes. Maintenir les deux clés : les deux témoins s’allument et l’anneau se remplit. Relâcher un poste interrompt la progression.
 7. Toucher ⏸ puis le grand ▶ central pour reprendre. À la fin, le trophée et le cadre indiquent le gagnant ; les cartes montrent tours et points de passage. ↶ relance une partie ; la maison retourne à l’accueil.
@@ -112,32 +112,19 @@ Après `npm run build` puis `npm start`, ouvrir `http://localhost:3000/`.
 
 Vérifier les deux orientations de lecture sur la table réelle. Les pictogrammes des commandes sont partagés ; seuls les intitulés courts, le temps et les résultats utiles à chaque côté sont orientés pour leur lecteur. Le réglage système « réduire les animations » stabilise les halos, les chevrons et les clignotements décoratifs.
 
-## Console Oz : tangibles neutres et recharge
+## Console Oz : tangibles neutres et dépôt
 
-La console `/oz` gère **un mur** et **deux piliers** neutres. Leurs effets concernent les deux voitures. Le choix du mode de placement appartient à Oz ; il ne change ni le mode de course ni les thèmes. Oz ne lance pas la partie et ne gère pas les bonus.
+La console `/oz` gère **un mur** et **deux piliers** neutres. Ils sont disponibles immédiatement, sans recharge, cooldown ou limite de déplacement. Leurs effets concernent les deux voitures. Oz ne lance pas la partie et ne gère pas les bonus.
 
-### Pose tactile — deux doigts autour du tangible
+Dans **Pose tactile**, cliquer **Mur / M**, **Pilier 1 / 1 (&)** ou **Pilier 2 / 2 (é)**, puis déposer l’objet avec deux contacts neufs. Les chiffres du pavé numérique fonctionnent aussi ; les raccourcis sont ignorés dans les champs et sélecteurs. Le milieu fixe le centre ; le grand axe du mur est perpendiculaire à l’axe des doigts. Les dimensions LEGO restent fixes. Deux contacts valides sont confirmés après 90 ms ; lever les doigts ne retire pas l’objet.
 
-Dans Oz, choisir **Pose tactile**. Ce mode fonctionne dans une partie normale, le tutoriel et **TEST TANGIBLES**, avant le départ et pendant la course.
+La zone neutre **à gauche de Pause** présente les trois tangibles au début de la partie. Une pose dans cette zone les désactive : ni collision, ni champ, ni arc électrique. Ils peuvent être reposés sur le circuit immédiatement, après une nouvelle annonce d’Oz. Cliquer un objet sur la carte Oz signale aussi son retrait et le renvoie inactif au dépôt. Sélectionner directement un objet déjà posé prépare son replacement et coupe son ancien effet.
 
-1. Après le passage physique par une station copilote, Oz clique **Mur**, **Pilier 1** ou **Pilier 2** juste avant la pose. Cette annonce confirme aussi la recharge : elle donne un droit de pose unique, sans faire apparaître d’obstacle avant les contacts.
-2. Le copilote tient l’objet de part et d’autre et touche la table avec **deux doigts simultanément** en le déposant. Le centre est le milieu des deux contacts. Pour le mur, pincer les **deux grands côtés, à mi-longueur**, avec les doigts encadrant les 4 tenons de largeur, pas les extrémités des 10 tenons : le grand axe du mur est perpendiculaire à l’axe des doigts. Les dimensions LEGO restent fixes, indépendantes de l’écartement des doigts.
-3. Deux contacts valides sont confirmés après environ **90 ms**, puis la position est figée. Les doigts peuvent être retirés ; ils ne servent pas à suivre ou déplacer l’objet ensuite. Une empreinte et des cercles donnent le retour visuel, sans consigne répétée sur la table.
-4. Quand le joueur enlève un tangible, Oz clique cet objet sur sa carte : son effet est retiré immédiatement. Avant une nouvelle pose ailleurs, le tangible repasse physiquement par une station et Oz annonce à nouveau cet objet.
+L’attente d’Oz dure 20 secondes avec **Annuler / Échap** ; ce délai concerne seulement l’annonce de pose, pas un bonus armé. Pause, reset, déconnexion et changement de mode annulent cette attente. Les anciens contacts, paumes, prises ambiguës et paquets périmés sont rejetés. Pendant l’attente, les nouveaux contacts sur la carte servent uniquement à la pose ; le pilotage et la réparation continuent.
 
-L’attente dure **20 secondes**, avec **Annuler / Échap** dans Oz. Une pause, une déconnexion du dernier client Oz ou de la dernière table, un changement de mode ou un retour à l’accueil annulent l’annonce. Une annonce remplacée ne peut plus être utilisée par un ancien paquet réseau. Les doigts déjà posés avant l’annonce sont ignorés ; il faut les lever et les reposer. Trois contacts libres rendent la prise ambiguë et demandent également une nouvelle prise. Les paumes, les contacts hors table/postes et les écarts incohérents sont exclus.
+Le **Placement manuel** conserve les outils de Baptiste : deux points pour les piliers/arc ou pour le mur, déplacement au clic ou au glissement et rotation du mur à la molette. Aucun passage par un poste copilote n’est nécessaire.
 
-Pendant l’attente, les gestes sur la carte sont réservés à la pose : ni boost, ni lance-pierre, ni déformation ne sont déclenchés par ces contacts. Pilotage, POWER et réparation restent disponibles à leurs postes. Après la pose ou l’annulation, les gestes normaux reprennent avec de nouveaux contacts.
-
-**Essai à la souris :** après l’annonce d’Oz, deux clics successifs sur la table simulent les deux contacts. Sur la dalle, ce sont bien deux appuis simultanés. La géométrie et les règles serveur sont identiques.
-
-Le [briefing des copilotes et la recette sur dalle](docs/pose-tactile.md) sont prêts pour les essais.
-
-### Placement manuel conservé
-
-Le mode **Placement manuel** conserve la dernière console de Baptiste : **Arc électrique** place les deux piliers en deux clics ; **Mur** utilise deux points pour définir son centre et son orientation. Cliquer un objet déjà posé permet de le replacer ; pour le mur, les deux points et la molette règlent l’orientation. **Échap** annule l’outil, **Retirer les obstacles** vide la carte. Chaque nouvelle pose manuelle vaut validation de la recharge observée par Oz ; elle ne remplace pas le retour physique à une station.
-
-Un pilier seul produit déjà un champ électrique au sol. Les deux piliers actifs forment aussi un arc à une distance d’au plus **350 px logiques**, valeur de la dernière mise à jour du dépôt. Les collisions, les champs, le ralentissement et les dégâts restent calculés par le serveur. Le journal `/api/oz-log` conserve les poses effectives et les retraits.
+Un pilier seul produit un champ au sol ; deux piliers actifs forment un arc jusqu’à **350 px logiques**. Les dégâts, collisions et ralentissements restent calculés par le serveur. Le [briefing et la recette sur dalle](docs/pose-tactile.md) décrivent les essais.
 
 ### Échelle LEGO et tolérance de placement
 
@@ -158,7 +145,7 @@ Le module nominal est documenté par LEGO : brique 2 × 4 d’environ 32 × 16 m
 
 1. Afficher le jeu en plein écran sans marge, puis comparer le mur avec une base 10 × 4 et le socle avec une 4 × 4. Si la diagonale réelle diffère, régler `tableDiagonalInches`, puis relancer le serveur. Une fenêtre de navigateur réduite ne peut pas conserver les dimensions physiques.
 2. Dans **Pose tactile**, annoncer le mur, puis le poser avec deux contacts autour de sa largeur : comparer son centre et son orientation au LEGO. Vérifier les deux sens de prise, le retrait des doigts et une pose près d’un bord de piste.
-3. Enlever le mur physiquement et le cliquer sur la carte Oz : son effet doit disparaître. Sans nouvelle annonce, deux contacts ne doivent pas le replacer. Après retour dans une station et nouvelle annonce, essayer ailleurs. Les deux voitures doivent subir le même mur.
+3. Enlever le mur physiquement et le cliquer sur la carte Oz : son effet doit disparaître. Sans nouvelle annonce, deux contacts ne doivent pas le replacer. Après une nouvelle annonce, essayer ailleurs ou dans le dépôt neutre. Les deux voitures doivent subir le même mur.
 4. Poser un pilier : vérifier le champ au sol et le ralentissement des deux voitures. Poser le second à portée : vérifier l’arc. Désactiver un pilier ou le remettre en station : le champ et l’arc disparaissent.
 5. Décaler volontairement le LEGO de 5 à 10 mm et observer depuis les deux côtés. Au-delà de cette marge, corriger Oz ou refaire la pose après recharge. L’alignement et le confort restent à valider avec les objets sur la dalle réelle.
 
@@ -179,11 +166,13 @@ Un futur adaptateur mobile pourra convertir un gyroscope en direction normalisé
 | Cyan | `Q` / `D` | maintenir `Z` | `A` | maintenir `A` + `P` |
 | Rose | `←` / `→` | maintenir `↑` | `M` | maintenir `M` + `C` |
 
-Deux doigts proches saisissant le même bord de piste et glissant vers l’extérieur créent toujours une déformation locale temporaire. Les paramètres sont dans `config.json` ; relancer le serveur après modification.
+Deux doigts proches saisissant le même bord de piste déplacent sa section tant que la traction évolue. L’amplitude maximale est de **220 px**, avec une rampe de 0,18 s et une transition plus large ; la largeur de chaussée reste identique. Les déplacements sont limités pour garder la piste hors des contrôles et de l’écran. Les interventions successives se fondent sans additionner leurs amplitudes au-delà de la limite. Les paramètres sont dans `config.json` ; relancer le serveur après modification.
 
 ### Messages tangibles
 
-`TangibleMoved` reçoit `{ id, x, y, angle, active? }` : coordonnées normalisées, angle en degrés et présence facultative. Le champ `active` permet une pose et une activation atomiques ; son omission conserve la présence précédente (inactive pour un objet neuf). Le serveur impose le type selon l’identifiant et `team: null`. `TangibleControl` conserve `activate` / `deactivate` pour les objets déjà placés ; les anciennes actions `configure` / `dock` sont ignorées. `TangibleRemoved` efface l’état, notamment pour annuler une première pose. Le quatrième identifiant est refusé. Le journal `/api/oz-log` conserve la présence effective pour pouvoir rejouer les événements.
+`TangibleMoved` reçoit `{ id, x, y, angle, active? }` depuis Oz pour une pose manuelle. Les positions sont normalisées ; l’angle est en degrés. Une nouvelle pose sur le circuit est active par défaut ; dans le dépôt, elle est toujours inactive. `TangibleRemoved` replace l’objet inactif au dépôt. `TangibleControl` conserve l’activation/désactivation ; l’ancien `dock` est un alias de retour au dépôt. Les identifiants et types sont fixes et neutres.
+
+`TangiblePrepare` crée l’autorisation de pose tactile pour un objet ; seule la table peut confirmer `TangibleTouchPlaced` avec le jeton courant et ses deux contacts. Le serveur recalcule la géométrie, consomme l’autorisation une fois et vérifie le dépôt. Le journal `/api/oz-log` conserve les poses et retraits.
 
 ## Vérification
 

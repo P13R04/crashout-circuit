@@ -1,11 +1,11 @@
 /**
  * HUD — the four corner panels (REQ-6.2), each rotated towards its own table edge.
- * Pilot panel: HP, steering and repair. Copilot: POWER, tangible charging zone,
- * repair and neutral armed-item countdown.
+ * Pilot panel: HP over steering and repair. Copilot: POWER and repair.
+ * Armed items remain available without a countdown.
  */
 import type { GameState, Team, Car } from '../server/types.js';
 import {
-  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, CHARGE_ZONE_LOCAL,
+  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, steerArea,
   type PanelLayout,
 } from '../server/layout.js';
 import { TEAM_COLOR, type View } from './view.js';
@@ -66,7 +66,7 @@ export class HUD {
       ctx.save();
       ctx.translate(panel.cx, panel.cy);
       ctx.rotate(panel.rot);
-      this.drawFrame(ctx, panel, view.theme);
+      this.drawFrame(ctx, panel, view.theme, state);
       if (panel.role === 'pilot') this.drawPilot(ctx, panel, state, view, now);
       else this.drawCopilot(ctx, panel, state, view, now);
       this.drawPad(ctx, panel, state, view);
@@ -74,8 +74,8 @@ export class HUD {
     }
   }
 
-  private drawFrame(ctx: Ctx, panel: PanelLayout, theme: ThemeId): void {
-    const PANEL_W = panelWidth(panel.role);
+  private drawFrame(ctx: Ctx, panel: PanelLayout, theme: ThemeId, state: GameState): void {
+    const PANEL_W = panelWidth(panel.role,state.driveMode[panel.team]);
     const color = TEAM_COLOR[panel.team];
     const metal = ctx.createLinearGradient(0, -PANEL_H / 2, 0, PANEL_H / 2);
     metal.addColorStop(0, theme === 'scrap' ? '#35444b' : '#132039'); metal.addColorStop(.45, theme === 'scrap' ? '#1b282f' : '#0b1528'); metal.addColorStop(1, theme === 'scrap' ? '#101b21' : '#080e1c');
@@ -102,149 +102,86 @@ export class HUD {
     ctx.font = '600 13px system-ui';
     ctx.textAlign = 'left';
     const left = -PANEL_W / 2 + 18;
-    icon(ctx, panel.role === 'pilot' ? 'wheel' : 'power', left + 8, -77, 20, color);
-    ctx.fillText(panel.role === 'pilot' ? 'PILOTE' : 'COPILOTE', left + 28, -71);
+    icon(ctx, panel.role === 'pilot' ? 'wheel' : 'power', left + 8, -62, 20, color);
+    ctx.fillText(panel.role === 'pilot' ? 'PILOTE' : 'COPILOTE', left + 28, -57);
   }
 
   private drawPilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
-    const team = panel.team;
-    const car = state.cars[team];
-    const color = TEAM_COLOR[team];
-
-    // HP bar (animated towards the real value by the main loop)
-    const frac = Math.max(0, Math.min(1, view.hpShown[team] / state.params.hpMax));
-    const bx = -74, by = -65, bw = 108, bh = 18;
-    icon(ctx, 'heart', bx - 20, by + 9, 20, frac > .25 ? color : '#ff6060');
-    ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = frac > 0.5 ? '#61f4ba' : frac > 0.25 ? '#ffb020' : '#ff4040';
-    ctx.fillRect(bx, by, bw * frac, bh);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 16px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(`${Math.round(car.hp)}`, bx + 8, by + 15);
-
-    const automatic = state.sessionMode === 'tangibles-test';
-    if (automatic) {
-      const area = STEER_AREA_LOCAL;
-      ctx.fillStyle = '#081323'; ctx.strokeStyle = color+'66'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.roundRect(area.x-area.w/2,area.y-area.h/2,area.w,area.h,14);ctx.fill();ctx.stroke();
-      icon(ctx,'track',area.x,area.y-12,54,color);
-      ctx.fillStyle = color; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
-      ctx.fillText('PILOTE AUTO',area.x,area.y+39);
-    } else {
-      // Full-turn left/right strip: crossing its centre changes direction without lifting.
-      const stick = view.sticks[team];
-      const area = STEER_AREA_LOCAL;
-      ctx.fillStyle = stick.active ? `${color}19` : '#081323';
-      ctx.strokeStyle = stick.active ? color : '#3e6177';
-      ctx.lineWidth = stick.active ? 4 : 2;
-      ctx.beginPath(); ctx.roundRect(area.x - area.w / 2, area.y - area.h / 2, area.w, area.h, 14); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(area.x, area.y - area.h / 2 + 12); ctx.lineTo(area.x, area.y + area.h / 2 - 12); ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 28px monospace'; ctx.textAlign = 'center';
-      ctx.fillText('◀', area.x - area.w / 2 + 24, area.y + 10);
-      ctx.fillText('▶', area.x + area.w / 2 - 24, area.y + 10);
-      if (stick.active) {
-        const knobX = area.x + stick.x * (area.w / 2 - 18);
-        glow(ctx, knobX, area.y, 30, color, .6);
-        ctx.fillStyle = '#e8fcff';
-        ctx.beginPath(); ctx.arc(knobX, area.y, 12, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+    const team=panel.team,car=state.cars[team],color=TEAM_COLOR[team],mode=state.driveMode[team];
+    const area=steerArea(mode),actual=Math.max(0,car.hp/state.params.hpMax),shown=Math.max(actual,view.hpShown[team]/state.params.hpMax);
+    // Health is directly above the two steering pedals, with a short trailing damage trace.
+    const x=area.x-area.w/2,y=-43,w=area.w-34,h=15;
+    const health=actual>.5?'#61f4ba':actual>.25?'#ffb65b':'#ff7070';
+    ctx.fillStyle='#040b13';ctx.fillRect(x,y,w,h);
+    ctx.fillStyle='#f6ffff88';ctx.fillRect(x,y,w*shown,h);
+    ctx.fillStyle=health;ctx.fillRect(x,y,w*actual,h);
+    ctx.strokeStyle='#09141d';ctx.lineWidth=2;
+    for(let i=1;i<10;i++){ctx.beginPath();ctx.moveTo(x+w*i/10,y);ctx.lineTo(x+w*i/10,y+h);ctx.stroke();}
+    ctx.strokeStyle=color+'66';ctx.lineWidth=1;ctx.strokeRect(x,y,w,h);
+    ctx.fillStyle=health;ctx.font='bold 14px monospace';ctx.textAlign='right';ctx.fillText(`${Math.round(car.hp)}`,x+area.w,y+13);
+    const stick=view.sticks[team],automatic=state.sessionMode==='tangibles-test';
+    ctx.fillStyle=stick.active?color+'19':'#081323';ctx.strokeStyle=stick.active?color:'#3e6177';ctx.lineWidth=stick.active?3:2;
+    ctx.beginPath();ctx.roundRect(area.x-area.w/2,area.y-area.h/2,area.w,area.h,12);ctx.fill();ctx.stroke();
+    if(automatic)icon(ctx,'track',area.x,area.y,42,color);
+    else{
+      ctx.strokeStyle='#ffffff30';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(area.x,area.y-area.h/2+10);ctx.lineTo(area.x,area.y+area.h/2-10);ctx.stroke();
+      for(const side of [-1,1]){
+        const active=stick.active&&Math.sign(stick.x)===side;
+        if(active){ctx.fillStyle=color+'38';ctx.fillRect(area.x+(side<0?-area.w/2+3:3),area.y-area.h/2+3,area.w/2-6,area.h-6);}
+        ctx.fillStyle=active?'#fff':color;ctx.font='bold 28px monospace';ctx.textAlign='center';ctx.fillText(side<0?'◀':'▶',area.x+side*area.w/4,area.y+10);
       }
-      icon(ctx, 'wheel', area.x, area.y, 36, stick.active ? '#ffffff33' : color);
-
     }
-
-    // Each team keeps its own lap counter, facing its players.
-    icon(ctx, 'flag', -60, 28, 24, color);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 24px monospace'; ctx.textAlign = 'left';
-    ctx.fillText(automatic ? `${car.lap+1}` : `${Math.min(state.params.lapsToWin, car.lap + 1)}/${state.params.lapsToWin}`, -36, 36);
-    if (!automatic && state.driveMode[team] === 'pedal') {
-      const p = PEDAL_LOCAL;
-      const active = view.localPedals[team];
-      ctx.fillStyle = active ? `${color}66` : 'rgba(255,255,255,0.08)';
-      ctx.strokeStyle = active ? '#ffffff' : color; ctx.lineWidth = active ? 4 : 2;
-      ctx.beginPath(); ctx.roundRect(p.x - p.w / 2, p.y - p.h / 2, p.w, p.h, 14); ctx.fill(); ctx.stroke();
-      icon(ctx, 'pedal', p.x, p.y, 44, active ? '#fff' : color);
+    if(!automatic&&mode==='pedal'){
+      const p=PEDAL_LOCAL,active=view.localPedals[team];ctx.fillStyle=active?color+'55':'#ffffff09';ctx.strokeStyle=active?'#fff':color;ctx.lineWidth=active?3:2;
+      ctx.beginPath();ctx.roundRect(p.x-p.w/2,p.y-p.h/2,p.w,p.h,12);ctx.fill();ctx.stroke();icon(ctx,'pedal',p.x,p.y,32,active?'#fff':color);
     }
-
-    ctx.textAlign = 'left';
+    icon(ctx,'flag',55,-60,15,color);ctx.fillStyle='#dceef4';ctx.font='bold 14px monospace';ctx.textAlign='left';
+    ctx.fillText(state.sessionMode==='tangibles-test'?`${car.lap+1}`:`${Math.min(state.params.lapsToWin,car.lap+1)}/${state.params.lapsToWin}`,68,-55);
     void now;
   }
 
   private drawCopilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
-    const car = state.cars[panel.team];
-    const color = TEAM_COLOR[panel.team];
-    const armed = car.itemArmed && now < car.itemArmExpiry;
-    const canPower = !!car.heldItem;
-    const docked = Object.values(state.tangibles).filter(t => t.status === 'docked' && t.dockTeam === panel.team);
-    const ready = docked.some(t => t.active);
-    const b = POWER_BTN_LOCAL;
-    if (canPower) glow(ctx, b.x, b.y, 62, armed ? NEON.gold : color, armed ? .3 : .15);
-    ctx.fillStyle = armed ? '#ffce661f' : canPower ? `${color}14` : '#050d1c';
-    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
-    ring(ctx, b.x, b.y, b.r, armed ? (car.itemArmExpiry - now) / (state.params.armWindowS * 1000) : 1,
-      armed ? '#ffce66' : canPower ? color : '#586078', 4);
-    icon(ctx, 'power', b.x, b.y, 32, canPower ? armed ? '#ffce66' : '#fff' : '#586078');
-    // Inventory sits above POWER. A short connector makes their relationship visible.
-    if (car.heldItem) {
-      drawItemIcon(ctx, car.heldItem, b.x + 82, -78, 14, armed ? '#ffce66' : color);
-      ctx.strokeStyle = armed ? '#ffce66' : color; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(b.x + 70, -64); ctx.lineTo(b.x + 24, -25); ctx.stroke();
+    const car=state.cars[panel.team],color=TEAM_COLOR[panel.team],armed=car.itemArmed&&!!car.heldItem,b=POWER_BTN_LOCAL;
+    const ink=armed?NEON.gold:car.heldItem?color:'#586078';
+    if(car.heldItem)glow(ctx,b.x,b.y,52,ink,armed?.25:.12);
+    ctx.fillStyle=armed?'#ffce661f':car.heldItem?color+'14':'#050d1c';
+    ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();
+    ring(ctx,b.x,b.y,b.r,1,ink,armed?4:2);icon(ctx,'power',b.x,b.y,30,ink);
+    if(car.heldItem){
+      drawItemIcon(ctx,car.heldItem,b.x,-43,12,ink);
+      ctx.strokeStyle=ink;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(b.x,-30);ctx.lineTo(b.x,-25);ctx.stroke();
     }
-
-    const z = CHARGE_ZONE_LOCAL;
-    if (ready) glow(ctx, z.x, z.y, 65, NEON.mint, .17);
-    ctx.fillStyle = ready ? '#61f4ba1a' : '#ffffff06';
-    ctx.strokeStyle = ready ? '#61f4ba' : '#64748b';
-    ctx.setLineDash(docked.length ? [] : [6, 7]); ctx.lineWidth = ready ? 3 : 2;
-    ctx.beginPath(); ctx.roundRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h, 12); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
-    // Physical footprints distinguish the dock from the circular POWER / repair controls.
-    ctx.strokeStyle = ready ? '#61f4ba' : '#94a3b8'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.roundRect(z.x - 30, z.y - 22, 40, 12, 3); ctx.stroke();
-    ctx.beginPath(); ctx.arc(z.x + 21, z.y - 16, 8, 0, Math.PI * 2); ctx.stroke();
-    icon(ctx, ready ? 'bolt' : 'target', z.x, z.y + 16, 23, ready ? '#61f4ba' : '#94a3b8');
-    docked.forEach((tangible, i) => {
-      ctx.fillStyle = tangible.active ? '#61f4ba' : '#94a3b8';
-      ctx.beginPath(); ctx.arc(z.x + (i - (docked.length - 1) / 2) * 14, z.y + 40, 4, 0, Math.PI * 2); ctx.fill();
-    });
-
-    if (armed && car.heldItem) {
-      // Neutral gold: either team can complete the armed gesture.
-      if (state.testMode.allItems) {
-        ctx.save(); ctx.translate(b.x, 81); ctx.scale(.7, .7);
-        contacts(ctx, 2, -32, 0, '#ffce66'); contacts(ctx, 3, 32, 0, '#ffce66'); ctx.restore();
-      } else contacts(ctx, car.heldItem === 'slingshot' ? 3 : 2, b.x, 81, '#ffce66');
-      ctx.strokeStyle = '#ffce66'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.roundRect(-226, -96, 452, 192, 16); ctx.stroke();
+    if(armed){
+      contacts(ctx,car.heldItem==='slingshot'?3:2,b.x,67,NEON.gold);
+      const w=panelWidth('copilot');ctx.strokeStyle=NEON.gold+'80';ctx.lineWidth=2;
+      ctx.beginPath();ctx.roundRect(-w/2+4,-PANEL_H/2+4,w-8,PANEL_H-8,14);ctx.stroke();
     }
-    ctx.textAlign = 'left';
-    void view;
+    void view;void now;
   }
 
-  /** Repair pad (160 px disc) with a ring filling while both partners hold their pad. */
+  /** Repair pad (116 px disc) with a ring filling while both partners hold their pad. */
   private drawPad(ctx: Ctx, panel: PanelLayout, state: GameState, view: View): void {
     const key = `${panel.team}-${panel.role}`;
     const held = view.localPads[key] || state.repairPads[key]?.held;
     const car: Car = state.cars[panel.team];
     const color = TEAM_COLOR[panel.team];
-    const { x, y, r } = padLocal(panel.role);
+    const { x, y, r } = padLocal(panel.role,state.driveMode[panel.team]);
     if (held) glow(ctx, x, y, r + 12, NEON.mint, .25);
     ctx.fillStyle = held ? 'rgba(97,244,186,0.12)' : car.disabled ? 'rgba(255,64,64,0.2)' : 'rgba(255,255,255,0.05)';
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-    ring(ctx, x, y, r - 5, state.repairProgress[panel.team], '#61f4ba', 10);
+    ring(ctx, x, y, r - 5, state.repairProgress[panel.team], '#61f4ba', 6);
     ctx.strokeStyle = held ? '#61f4ba' : color;
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
-    icon(ctx, 'wrench', x, y - 9, 40, held ? '#61f4ba' : car.disabled ? '#ff7070' : '#a9b6cd');
+    icon(ctx, 'wrench', x, y - 8, 30, held ? '#61f4ba' : car.disabled ? '#ff7070' : '#a9b6cd');
     // The pair shows which partner is holding; the outer ring shows joint progress.
     const partner = panel.role === 'pilot' ? 'copilot' : 'pilot';
     const partnerKey = `${panel.team}-${partner}`;
     const partnerHeld = view.localPads[partnerKey] || state.repairPads[partnerKey]?.held;
-    for (const [dx, on] of [[-15, held], [15, partnerHeld]] as const) {
+    for (const [dx, on] of [[-11, held], [11, partnerHeld]] as const) {
       ctx.fillStyle = on ? '#61f4ba' : '#ffffff15';
       ctx.strokeStyle = on ? '#61f4ba' : '#8190aa'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(x + dx, y + 30, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x + dx, y + 24, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
     // One slow halo attracts attention only when repair is needed; no flashing text.
     if (car.disabled) {

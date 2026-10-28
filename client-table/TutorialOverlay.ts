@@ -10,7 +10,7 @@
 import type { GameState, Team, Vec2, TutorialStepId } from '../server/types.js';
 import {
   LOGICAL_W, LOGICAL_H, panelOf, localToWorld, worldToLocal, padLocal,
-  STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, type PanelLayout,
+  STEER_AREA_LOCAL, steerArea, PEDAL_LOCAL, POWER_BTN_LOCAL, type PanelLayout,
 } from '../server/layout.js';
 import { icon } from './icons.js';
 import { TEAM_COLOR, TEAM_NAME } from './view.js';
@@ -76,10 +76,10 @@ function lessonOf(id: TutorialStepId, sub: number, team: Team, pc: boolean): Les
       };
     case 'pedal':
       return sub === 0
-        ? { text: 'Passez votre pilote en PÉDALE.', hint: 'Bouton près du poste pilote.' }
+        ? { text: 'Passez votre pilote en PÉDALE.', hint: 'Paramètres → Conduite.' }
         : sub === 1
           ? { text: 'Maintenez la pédale.', hint: pc ? `clavier : maintenez ${KEYS.pedal[team]}` : undefined }
-          : { text: 'Repassez en AUTO.', hint: 'Bouton près du poste pilote.' };
+          : { text: 'Repassez en AUTO.', hint: 'Paramètres → Conduite.' };
     case 'pickup':
       return { text: 'Roulez sur un objet pour le ramasser.' };
     case 'power':
@@ -110,7 +110,7 @@ function lessonOf(id: TutorialStepId, sub: number, team: Team, pc: boolean): Les
     case 'arc':
       return { text: 'Traversez l’arc électrique.', hint: 'Ici, sans dégât' };
     case 'pylon':
-      return { text: 'Oz : chargez et posez les deux piliers.', hint: 'Sans Oz : passez cette étape.' };
+      return { text: 'Oz : posez les deux piliers.', hint: 'Sans Oz : passez cette étape.' };
   }
 }
 
@@ -212,7 +212,7 @@ function drawHighlights(ctx: Ctx, state: GameState, team: Team, pulse: number, d
 
   switch (id) {
     case 'steer':
-      inPanel('pilot', () => box(centred(STEER_AREA_LOCAL)));
+      inPanel('pilot', () => box(centred(steerArea(state.driveMode[team]))));
       break;
     case 'pedal':
       if (progress.sub === 1) inPanel('pilot', () => box(centred(PEDAL_LOCAL)));
@@ -226,7 +226,7 @@ function drawHighlights(ctx: Ctx, state: GameState, team: Team, pulse: number, d
       break;
     case 'repair':
       for (const role of ['pilot', 'copilot'] as const) {
-        const pad = padLocal(role);
+        const pad = padLocal(role,state.driveMode[team]);
         inPanel(role, () => circle(pad.x, pad.y, pad.r));
       }
       break;

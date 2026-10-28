@@ -60,7 +60,7 @@ try {
   table.send({type:'TangiblePrepare',id:1});await table.flush();assert.equal(game.getState().tangiblePlacement,null);
   oz.send({type:'TangiblePrepare',id:1});const waiting=await table.until(s=>s.tangiblePlacement?.id===1);
   const grant=waiting.tangiblePlacement!;
-  const observer=await client('table');assert.equal(observer.snapshots[0].tangiblePlacement?.token,grant.token,'new table gets the same single-use grant');observer.ws.terminate();
+  const observer=await client('table');await observer.until(s=>s.tangiblePlacement?.token===grant.token);assert.equal(observer.snapshots[0].tangiblePlacement?.token,grant.token,'new table gets the same single-use grant');observer.ws.terminate();
   const placement={type:'TangibleTouchPlaced',id:1,token:grant.token,a:{x:900,y:500},b:{x:900,y:580}};
   oz.send(placement);await oz.flush();assert.equal(game.getState().walls.length,0,'Oz cannot impersonate table contacts');
   table.send({type:'TangiblePlacementCancel'});await table.flush();assert.equal(game.getState().tangiblePlacement?.token,grant.token,'table cannot cancel Oz’s grant');
@@ -70,33 +70,22 @@ try {
   table.send({type:'TangibleRemoved',id:1});table.send({type:'TangibleControl',id:1,action:'deactivate'});await table.flush();
   assert.equal(game.getState().tangibles[1].active,true,'only Oz controls removal and activation');
   oz.send({type:'TangibleRemoved',id:1});oz.send({type:'TangiblePlacementMode',mode:'manual'});
-  await table.until(s=>s.tangiblePlacementMode==='manual'&&!s.tangibles[1]);
+  await table.until(s=>s.tangiblePlacementMode==='manual'&&s.tangibles[1]?.status==='parked');
 
-  // Only Oz can atomically place and activate the fixed neutral objects.
-  table.send({ type: 'TangibleMoved', id: 1, x: .5, y: .5, angle: 90, active: true });
-  await table.flush(); assert.equal(game.getState().tangibles[1], undefined);
-  oz.send({ type: 'TangibleMoved', id: 1, x: .5, y: .5, angle: 90, active: true });
-  await oz.flush(); assert.equal(game.getState().tangibles[1], undefined, 'uncharged direct placement is refused');
-  table.send({type:'TangibleControl',id:1,action:'dock',team:'A'});
-  await table.flush();assert.equal(game.getState().tangibles[1],undefined);
-  oz.send({type:'TangibleControl',id:1,action:'dock',team:'B'});
-  oz.send({type:'TangibleControl',id:1,action:'activate'});
-  oz.send({ type: 'TangibleMoved', id: 1, x: .5, y: .5, angle: 90, active: true });
-  await table.until(s => s.walls.length === 1 && s.walls[0].angle === 90);
-  assert.equal(game.getState().walls[0].team, null);
-  assert.ok(game.getState().params.wallWidthPx > 50, 'physical wall width is shared with clients');
+  // Only Oz can place/reposition objects; no recharge or cooldown stands between poses.
+  table.send({type:'TangibleMoved',id:1,x:.5,y:.5,angle:90,active:true});
+  await table.flush();assert.equal(game.getState().tangibles[1].status,'parked');
+  oz.send({type:'TangibleMoved',id:1,x:.5,y:.5,angle:90,active:true});
+  await table.until(s=>s.walls.length===1&&s.walls[0].angle===90);
+  assert.equal(game.getState().walls[0].team,null);
+  assert.ok(game.getState().params.wallWidthPx>50,'physical wall width is shared with clients');
   oz.send({type:'TangibleMoved',id:1,x:.7,y:.5,angle:90,active:true});
-  await oz.flush();assert.equal(game.getState().tangibles[1].x,.5,'distant placement requires recharge');
-  oz.send({type:'TangibleControl',id:1,action:'dock',team:'A'});
-  await table.until(s=>s.tangibles[1]?.status==='docked'&&!s.tangibles[1].active);
-  assert.equal(game.getState().walls.length,0,'dock removes the effect');
-  oz.send({type:'TangibleMoved',id:1,x:.5,y:.5,angle:90,active:true});
-  await oz.flush();assert.equal(game.getState().tangibles[1].status,'docked','activation flag cannot substitute for charging');
-  oz.send({type:'TangibleControl',id:1,action:'activate'});
-  oz.send({type:'TangibleMoved',id:1,x:.5,y:.5,angle:90,active:true});
-  await table.until(s=>s.tangibles[1]?.status==='placed');
-  oz.send({ type: 'TangibleControl', id: 1, action: 'configure', team: 'B', kind: 'pylon' });
-  await oz.flush(); assert.equal(game.getState().tangibles[1].kind, 'wall');
+  await oz.flush();assert.equal(game.getState().tangibles[1].x,.7,'repositioning needs no charge');
+  oz.send({type:'TangibleRemoved',id:1});await table.until(s=>s.tangibles[1]?.status==='parked');
+  assert.equal(game.getState().walls.length,0,'return to depot removes the effect');
+  oz.send({type:'TangibleMoved',id:1,x:.5,y:.5,angle:90,active:true});await table.until(s=>s.tangibles[1]?.status==='placed');
+  oz.send({type:'TangibleControl',id:1,action:'configure',team:'B',kind:'pylon'});
+  await oz.flush();assert.equal(game.getState().tangibles[1].kind,'wall');
   for (const type of ['BeginRace', 'Pause', 'NewGame', 'Reset', 'StartGame']) oz.send({ type });
   oz.send({ type: 'OzTrigger', kind: 'fallbackTrack', params: {} });
   await oz.flush(); assert.equal(game.getState().phase, 'READY', 'Oz cannot change game phase');
@@ -144,7 +133,7 @@ try {
   await table.until(s=>s.tangiblePlacement?.id===2);
   oz.ws.terminate(); reconnected.ws.terminate();
   await table.until(s=>s.tangiblePlacement===null);
-  assert.equal(game.getState().tangibles[2],undefined,'last Oz disconnect cancels the unplaced grant');
+  assert.equal(game.getState().tangibles[2].status,'parked','last Oz disconnect leaves the unplaced object inactive in the depot');
   // Continue pickup + arming with no Oz client connected.
   car.heldItem = null; car.itemArmed = false; pickup.respawnAt = 0;
   game.rules.afterMove('A', car.pos, Date.now());

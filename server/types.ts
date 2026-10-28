@@ -19,9 +19,9 @@ export interface Tangible {
   kind: 'wall' | 'pylon';
   team: Team | null;
   active: boolean;
-  dockTeam: Team | null; // charging station, never ownership
-  status: 'docked' | 'placed';
-  placementOrigin?: { x: number; y: number; angle: number }; // immutable until recharge
+  dockTeam: Team | null; // legacy wire field, null; tangibles use the neutral depot
+  status: 'docked' | 'parked' | 'placed';
+  placementOrigin?: { x: number; y: number; angle: number }; // last authoritative pose; no movement budget
 }
 
 export interface Car {
@@ -38,7 +38,7 @@ export interface Car {
   checkpointIndex: number;
   heldItem: ItemKind | null;
   itemArmed: boolean;
-  itemArmExpiry: number; // timestamp ms
+  itemArmExpiry: number; // legacy wire field; 0, armed stock has no deadline
   speed: number;         // signed forward speed, px/s (server-internal, broadcast for HUD)
   slowUntil: number;     // arc slow-down expiry
   boostUntil: number;    // boost gate effect expiry
@@ -133,6 +133,8 @@ export interface TrackDeformation {
   /** Set when a newer deformation takes over, then the old one eases back. */
   releaseAt: number | null;
   strength: number;
+  holdUntil?: number;
+  gestureEnded?: boolean;
 }
 
 export interface MapTargets {
@@ -174,6 +176,7 @@ export interface GameParams {
   destroyDisableS: number;
   /** Retained for compatible clients; local deformation no longer has a cooldown. */
   borderPullCooldownS: number;
+  trackDeformMaxShiftPx: number;
   trackDeformHoldS: number;
   trackDeformRelaxS: number;
   stoneTelegraphS: number;
@@ -309,6 +312,8 @@ export interface AbilityMsg extends BaseMsg {
 
 export interface BorderPullMsg extends BaseMsg {
   type: 'BorderPull';
+  gestureId?: string;
+  end?: boolean;
   x: number;
   y: number;
   dx: number;
@@ -387,7 +392,7 @@ export interface TangibleTouchPlacedMsg extends BaseMsg {
 export interface TangibleControlMsg extends BaseMsg {
   type: 'TangibleControl';
   id: TangibleId;
-  /** Only Oz: dock at either station, then activate to charge. */
+  /** Only Oz: activation; legacy dock returns the object to the neutral depot. */
   action: 'configure' | 'dock' | 'activate' | 'deactivate';
   team?: Team;
   kind?: Tangible['kind'];

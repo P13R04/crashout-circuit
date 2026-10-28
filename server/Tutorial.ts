@@ -18,7 +18,7 @@ import { nearestOnTrack } from './geometry.js';
 /** Ids of the obstacles the tutorial places itself; the pylon rebuild must keep them. */
 export const TUTORIAL_OBSTACLE_PREFIX = 'tut-';
 /** Learners get more time than the real 5 s to read the hint and make the gesture. */
-export const TUTORIAL_ARM_WINDOW_S = 12;
+export const TUTORIAL_ARM_WINDOW_S = 0;
 /** Taking a pickup must not leave the other team without one for 15 s. */
 export const TUTORIAL_PICKUP_RESPAWN_S = 3;
 
@@ -190,7 +190,7 @@ export class Tutorial {
         break;
       case 'sling': case 'boost':
         car.heldItem = item!;
-        if (!car.itemArmed) { car.itemArmed = true; car.itemArmExpiry = this.ctx.now() + TUTORIAL_ARM_WINDOW_S * 1000; }
+        if (!car.itemArmed) { car.itemArmed = true; car.itemArmExpiry = 0; }
         break;
       case 'boostCross':
         if (!this.state.boostGates.some(g => g.team === team)) this.complete(team); // skipped portal: nothing to cross

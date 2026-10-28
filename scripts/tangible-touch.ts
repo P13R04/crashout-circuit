@@ -40,7 +40,7 @@ await test('a grant requires Oz’s explicit touch mode, a valid object and a re
   const r=rig();r.rules.setTangiblePlacementMode('manual');r.rules.prepareTangiblePlacement(1);assert.equal(r.s.tangiblePlacement,null);
   r.rules.setTangiblePlacementMode('touch');r.rules.prepareTangiblePlacement(4);assert.equal(r.s.tangiblePlacement,null);
   r.s.phase='PAUSED';r.rules.prepareTangiblePlacement(1);assert.equal(r.s.tangiblePlacement,null);
-  r.s.phase='READY';r.rules.prepareTangiblePlacement(1);assert.equal(r.pending()?.id,1);assert.deepEqual(r.s.tangibles,{});
+  r.s.phase='READY';r.rules.prepareTangiblePlacement(1);assert.equal(r.pending()?.id,1);assert.ok(Object.values(r.s.tangibles).every(t=>t.status==='parked'&&!t.active),'starting stock is parked, not charged');
   r.rules.onTangibleControl({type:'TangibleControl',id:1,t:0,action:'configure'});assert.equal(r.pending()?.id,1,'obsolete configure packet cannot cancel a valid grant');
 });
 await test('midpoint and orthogonal wall direction stay exact, order-independent and physically sized',()=>{
@@ -58,7 +58,7 @@ await test('invalid contacts, stale tokens and wrong ids cannot consume or forge
   for(const [a,b] of [[{x:NaN,y:540},{x:980,y:540}],[{x:900,y:540},{x:901,y:540}],[{x:600,y:540},{x:1500,y:540}],[{x:-20,y:540},{x:80,y:540}],[{x:100,y:100},{x:200,y:100}]])r.place(1,a,b);
   assert.equal(r.pending()?.token,token);assert.equal(r.s.walls.length,0);
   r.place(1);assert.equal(r.s.tangiblePlacement,null);const before=JSON.stringify(r.s.tangibles);
-  r.place(1,{x:1000,y:600},{x:1100,y:600},token);r.rules.prepareTangiblePlacement(1);
+  r.place(1,{x:1000,y:600},{x:1100,y:600},token);
   assert.equal(JSON.stringify(r.s.tangibles),before);assert.equal(r.s.tangiblePlacement,null);
   r.rules.onTangibleRemoved({type:'TangibleRemoved',id:1,t:0});assert.equal(r.s.walls.length,0);
   r.rules.prepareTangiblePlacement(1);assert.notEqual(r.pending()?.token,token);
@@ -119,6 +119,25 @@ await test('READY accepts contact placement; mouse testing uses two clicks with 
   assert.equal(r.sent[0]?.type,'TangibleTouchPlaced');r.g.releaseAll();
   r.s.phase='RACE';r.announce(1);r.down(3,880,400,'mouse');r.up(3,880,400);r.down(3,980,400,'mouse');r.up(3,980,400);
   assert.equal(r.sent.filter(m=>m.type==='TangibleTouchPlaced').length,2);r.g.releaseAll();
+});
+await test('dropping into the neutral depot disables the object and it can be placed again immediately',()=>{
+  const r=rig();r.rules.prepareTangiblePlacement(1);r.place(1);assert.equal(r.s.walls.length,1);
+  r.rules.prepareTangiblePlacement(1);assert.equal(r.s.walls.length,0,'announcing a reposition takes the object off the road');
+  r.place(1,{x:662,y:48},{x:662,y:116});assert.equal(r.s.tangibles[1].status,'parked');assert.equal(r.s.tangibles[1].active,false);
+  r.rules.onTangibleControl({type:'TangibleControl',id:1,t:0,action:'activate'});assert.equal(r.s.walls.length,0,'depot is always neutral');
+  r.rules.prepareTangiblePlacement(1);r.place(1);assert.equal(r.s.walls.length,1,'no charge or cooldown is needed');
+});
+await test('one continuous pull grows past a wall length, remains bounded and gives real clearance around a crosswise wall',()=>{
+  const r=rig();r.s.phase='RACE';const track=r.s.track!,index=Math.floor(track.centerline.length/4),at=track.outerEdge[index],base=track.baseCenterline[index],distance=Math.hypot(at.x-base.x,at.y-base.y),out={x:(at.x-base.x)/distance,y:(at.y-base.y)/distance};
+  const widths=[...track.widths];
+  for(const amount of [25,70,140,220]){r.rules.onBorderPull({type:'BorderPull',t:0,team:'A',x:at.x,y:at.y,dx:out.x*amount,dy:out.y*amount,gestureId:'continuous',end:amount===220});r.clock.now+=300;}
+  r.clock.now+=500;r.rules.updateTrackDeformations(r.clock.now);
+  assert.equal(r.s.deformations.length,1);const point=track.centerline[index],shift=Math.hypot(point.x-base.x,point.y-base.y);
+  assert.ok(shift>r.s.params.wallLengthPx+20,'enough displacement to steer around the crosswise wall');assert.ok(shift<=r.s.params.trackDeformMaxShiftPx+1e-6,'bounded shift');
+  assert.deepEqual(track.widths,widths,'the road moves without inflating');
+  const before=JSON.stringify(r.s.deformations);r.rules.onBorderPull({type:'BorderPull',t:0,team:'A',x:at.x,y:at.y,dx:out.x*30,dy:out.y*30,gestureId:'continuous'});assert.equal(JSON.stringify(r.s.deformations),before,'a released gesture cannot be resumed by a delayed packet');
+  for(let k=0;k<5;k++){r.rules.onBorderPull({type:'BorderPull',t:0,team:'A',x:at.x,y:at.y,dx:out.x*220,dy:out.y*220,gestureId:`repeat-${k}`});r.clock.now+=100;r.rules.updateTrackDeformations(r.clock.now);}
+  for(let i=0;i<track.centerline.length;i++)assert.ok(Math.hypot(track.centerline[i].x-track.baseCenterline[i].x,track.centerline[i].y-track.baseCenterline[i].y)<=r.s.params.trackDeformMaxShiftPx+1e-5,'repeated pulls cannot stack beyond the maximum');
 });
 console.log(`\n${passed} touch-placement scenarios passed`);
 process.exit(0);

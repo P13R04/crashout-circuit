@@ -6,7 +6,7 @@
  * Only local energy paths, bounded trails and feedback change every frame.
  */
 import type { GameState, Team, Vec2 } from '../server/types.js';
-import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PLAY_AREA } from '../server/layout.js';
+import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PLAY_AREA, TANGIBLE_DEPOT, NEUTRAL_RIGHT, HOME_BUTTON, SETTINGS_BUTTON, inTangibleDepot } from '../server/layout.js';
 import { HUD, drawItemIcon } from './HUD.js';
 import { TEAM_COLOR, type View, type SlingPreview } from './view.js';
 import { icon, type Icon } from './icons.js';
@@ -32,13 +32,13 @@ export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 68, 
 export const START_TUTORIAL_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 8, w: 520, h: 60 };
 export const START_TANGIBLE_TEST_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 84, w: 520, h: 60 };
 export const RESULT_BUTTON = { x: LOGICAL_W / 2 - 200, y: LOGICAL_H / 2 - 45, w: 400, h: 90 };
-export const PAUSE_BUTTON = { x: LOGICAL_W / 2 - 58, y: 14, w: 116, h: 38 };
-export const DRIVE_MODE_BUTTONS = { A: { x: 240, y: 810, w: 260, h: 38 }, B: { x: 240, y: 232, w: 260, h: 38 } };
+export const PAUSE_BUTTON = { x: LOGICAL_W / 2 - 58, y: 35, w: 116, h: 76 };
+export const DRIVE_MODE_BUTTONS = { A: SETTINGS_BUTTON, B: SETTINGS_BUTTON };
 export const DRIVE_MODE_BUTTON = DRIVE_MODE_BUTTONS.A;
 export const MAP_GENERATE_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 export const RACE_START_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 /** Reset button located in the vertical middle on the far right edge of the screen. */
-export const RESET_BUTTON = { x: LOGICAL_W - 134, y: LOGICAL_H / 2 - 32, w: 118, h: 64 };
+export const RESET_BUTTON = HOME_BUTTON;
 
 export class Renderer {
   private hud = new HUD();
@@ -100,12 +100,31 @@ export class Renderer {
     drawTangibleTouchPreview(ctx, view);
     this.hud.draw(ctx, state, view);
     this.drawDisabledAlerts(ctx, state);
-    if (state.phase === 'READY') { this.drawRaceReady(ctx, state); this.drawDriveModeButtons(ctx, state); }
-    if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); this.drawDriveModeButtons(ctx, state); }
-    if (state.phase === 'PAUSED') { this.drawPaused(ctx); this.drawPauseButton(ctx, 'REPRENDRE'); this.drawDriveModeButtons(ctx, state); }
+    this.drawNeutralZones(ctx,state);
+    if (state.phase === 'READY') { this.drawRaceReady(ctx, state); }
+    if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); }
+    if (state.phase === 'PAUSED') { this.drawPaused(ctx); this.drawPauseButton(ctx, 'REPRENDRE'); }
     if (state.phase === 'RESULT') this.drawResult(ctx, state);
     drawTutorial(ctx, state, this.reducedMotion ? 0 : this.time, DRIVE_MODE_BUTTONS);
     this.drawResetButton(ctx);
+  }
+
+  private drawNeutralZones(ctx: Ctx,state: GameState): void {
+    ctx.save();
+    for(const r of [TANGIBLE_DEPOT,NEUTRAL_RIGHT]){
+      ctx.fillStyle='#09131ddd';ctx.strokeStyle='#7d909b55';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.roundRect(r.x,r.y,r.w,r.h,14);ctx.fill();ctx.stroke();
+    }
+    for(const t of Object.values(state.tangibles))if(t.status==='parked'){
+      const at={x:t.x*LOGICAL_W,y:t.y*LOGICAL_H};if(!inTangibleDepot(at))continue;
+      ctx.save();ctx.translate(at.x,at.y);ctx.rotate(t.angle*Math.PI/180);ctx.strokeStyle='#a0b7bf';ctx.fillStyle='#798e9814';ctx.setLineDash([4,5]);ctx.lineWidth=2;
+      const l=t.kind==='wall'?state.params.wallLengthPx:state.params.pylonBasePx,w=t.kind==='wall'?state.params.wallWidthPx:state.params.pylonBasePx;
+      ctx.beginPath();ctx.roundRect(-l/2,-w/2,l,w,5);ctx.fill();ctx.stroke();ctx.setLineDash([]);
+      if(t.kind==='pylon')icon(ctx,'bolt',0,0,20,'#8fa5ad');
+      else{ctx.beginPath();for(let x=-l/2+12;x<l/2;x+=16){ctx.moveTo(x,-w/2+5);ctx.lineTo(x-8,w/2-5);}ctx.stroke();}
+      ctx.restore();
+    }
+    ctx.restore();
   }
 
   private drawResetButton(ctx: Ctx): void {
@@ -330,17 +349,6 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawDriveModeButtons(ctx: Ctx, state: GameState): void {
-    if (state.sessionMode === 'tangibles-test') return;
-    for (const team of ['A', 'B'] as const) {
-      const b = DRIVE_MODE_BUTTONS[team], pedal = state.driveMode[team] === 'pedal', color = TEAM_COLOR[team];
-      ctx.save(); ctx.translate(b.x + b.w / 2, b.y + b.h / 2); if (team === 'B') ctx.rotate(Math.PI);
-      plate(ctx, -b.w / 2, -b.h / 2, b.w, b.h, 10, '#080f26ee', color);
-      icon(ctx, pedal ? 'pedal' : 'wheel', -76, 0, 24, color);
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
-      ctx.fillText(pedal ? 'PÉDALE' : 'AUTO', 10, 5); ctx.restore();
-    }
-  }
 
   private drawAction(ctx: Ctx, b: { x: number; y: number; w: number; h: number }, glyph: Icon, color = '#00e5ff'): void {
     ctx.save(); ctx.fillStyle = '#080f26f5'; ctx.strokeStyle = color; ctx.lineWidth = 4;
