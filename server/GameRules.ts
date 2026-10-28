@@ -9,20 +9,23 @@
  * Time comes from an injectable clock so sessions can be replayed in tests (T-11).
  */
 import type {
-  GameState, Team, Vec2, Phase, ItemKind, Car, Wall, MapTargets, TrackGeometry,
+  GameState, Team, Vec2, Phase, ItemKind, Car, Wall, MapTargets, TrackGeometry, Tangible,
   StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg,
   PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg,
+  TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg,
 } from './types.js';
 import { orientBoostGate, hitsBoostGate } from './boostGeometry.js';
+import { armedPickup, RESPAWN_COUNTDOWN_MS } from './armedPickup.js';
 import { AutomaticPilot } from './AutomaticPilot.js';
 import { config } from './config.js';
-import { dist, distToSegment, nearestOnTrack, segmentsIntersect, slingshotShot, wrapAngle, clampToTrackRibbon } from './geometry.js';
+import { dist, distToSegment, nearestOnTrack, trackTangent, segmentsIntersect, slingshotShot, wrapAngle, clampToTrackRibbon } from './geometry.js';
 import { generate, generatePreset, validateStroke, rebuildEdges } from './MapGenerator.js';
-import { nearestStationTeam, LOGICAL_W, checkDivider, chargeZoneTeam, localToWorld, panelOf, CHARGE_ZONE_LOCAL } from './layout.js';
+import { nearestStationTeam, LOGICAL_W, checkDivider, insidePanel, inTangibleDepot, depotPose, TANGIBLE_DEPOT, rectContains } from './layout.js';
 import { activeMapTeam, mapEndpointError, mapStrokeEndpoints } from './mapCreation.js';
 import { Tutorial, TUTORIAL_ARM_WINDOW_S, TUTORIAL_PICKUP_RESPAWN_S, TUTORIAL_OBSTACLE_PREFIX } from './Tutorial.js';
-import { withinCorrection, wallContact } from './tangibleGeometry.js';
+import { wallContact } from './tangibleGeometry.js';
 import { tangibleArc, tangibleDefinition, validTangiblePose } from './tangibles.js';
+import { tangibleTouchPose, TANGIBLE_WAIT_MS } from './tangibleTouch.js';
 
 export const CAR_RADIUS = 10;
 export const WALL_HALF_THICKNESS = 4;
@@ -63,6 +66,7 @@ export function makeCar(team: Team): Car {
     velocity: { x: 0, y: 0 },
     hp: config.hpMax,
     disabled: false,
+    respawnUntil: 0,
     invulnUntil: 0,
     stunUntil: 0,
     ghostUntil: 0,
@@ -70,6 +74,7 @@ export function makeCar(team: Team): Car {
     checkpointIndex: 1,
     heldItem: null,
     itemArmed: false,
+    itemArmVersion: 0,
     itemArmExpiry: 0,
     speed: 0,
     slowUntil: 0,
@@ -104,6 +109,7 @@ export function createInitialState(): GameState {
     deformations: [],
     winner: null,
     sessionStartAt: Date.now(),
+    raceDeadline: 0,
     pausedAt: 0,
     mapTargets: null,
     mapDivider: null,
@@ -113,9 +119,12 @@ export function createInitialState(): GameState {
     repairProgress: { A: 0, B: 0 },
     trackVersion: 0,
     tangibles: {},
+    tangiblePlacementMode: 'manual',
+    tangiblePlacement: null,
     testMode: { invincible: false, allItems: false },
     tutorial: null,
     params: {
+      difficulty: 'easy',
       hpMax: config.hpMax,
       lapsToWin: config.lapsToWin,
       sessionMaxSeconds: config.sessionMaxSeconds,
@@ -125,6 +134,7 @@ export function createInitialState(): GameState {
       destroyCooldownS: config.destroyCooldownS,
       destroyDisableS: config.destroyDisableS,
       borderPullCooldownS: 0,
+      trackDeformMaxShiftPx: config.trackDeformMaxShiftPx,
       trackDeformHoldS: config.trackDeformHoldS,
       trackDeformRelaxS: config.trackDeformRelaxS,
       stoneTelegraphS: config.stoneTelegraphS,
@@ -152,6 +162,7 @@ export function createInitialState(): GameState {
 }
 
 export class GameRules {
+  private placementToken = 0;
   readonly inputs: Record<Team, { throttle: number; steer: number }> = {
     A: { throttle: 1, steer: 0 },
     B: { throttle: 1, steer: 0 },
@@ -192,11 +203,6 @@ export class GameRules {
 
   private get now(): number {
     return this.clock();
-  }
-
-  /** How long a pickup stays armed: learners get longer than the real rule. */
-  private get armWindowMs(): number {
-    return (this.state.tutorial ? TUTORIAL_ARM_WINDOW_S : config.armWindowS) * 1000;
   }
 
   private nextId(prefix: string): string {
@@ -324,6 +330,7 @@ export class GameRules {
   // ─── RACE start ────────────────────────────────────────────────────────────
 
   startRace(track = generatePreset(), waitForPlayers = false): void {
+    this.state.tangiblePlacement = null;
     const s = this.state;
     this.generating = true;
     this.automaticPilot.reset();
@@ -351,6 +358,8 @@ export class GameRules {
     }));
     s.winner = null;
     s.sessionStartAt = waitForPlayers ? 0 : this.now + COUNTDOWN_MS;
+    s.raceDeadline=!waitForPlayers&&s.params.sessionMaxSeconds>0?s.sessionStartAt+s.params.sessionMaxSeconds*1000:0;
+    for(const id of [1,2,3])this.state.tangibles[id]=this.parkedTangible(id);
     this.rebuildTangibles();
     this.host.transition(waitForPlayers ? 'READY' : 'RACE', { startsAt: s.sessionStartAt });
     this.host.broadcastFull();
@@ -360,6 +369,7 @@ export class GameRules {
   beginRace(): void {
     if (this.state.phase !== 'READY') return;
     this.state.sessionStartAt = this.now + COUNTDOWN_MS;
+    this.state.raceDeadline=this.state.params.sessionMaxSeconds>0?this.state.sessionStartAt+this.state.params.sessionMaxSeconds*1000:0;
     this.host.transition('RACE', { startsAt: this.state.sessionStartAt });
     this.host.broadcastFull();
   }
@@ -394,6 +404,7 @@ export class GameRules {
     s.mapMode = mode;
     s.params.armWindowS = TUTORIAL_ARM_WINDOW_S;
     this.tutorial = new Tutorial(s, {
+      arm:team=>this.onPower(team),
       now: () => this.now,
       breakDown: (team) => {
         const car = s.cars[team];
@@ -406,6 +417,7 @@ export class GameRules {
       restore: (team) => {
         const car = s.cars[team];
         car.disabled = false;
+        car.respawnUntil = 0;
         car.stunUntil = 0;
         car.invulnUntil = this.now + config.invulnAfterHitS * 1000;
         this.respawnAtCheckpoint(car);
@@ -440,6 +452,7 @@ export class GameRules {
 
   /** Pause freezes physics and timers; resuming shifts the race clock accordingly. */
   togglePause(): void {
+    this.cancelTangiblePlacement();
     const s = this.state;
     if (s.phase === 'RACE') {
       this.pausedAt = this.now;
@@ -451,8 +464,9 @@ export class GameRules {
       const delta = this.now - this.pausedAt;
       const shift = (value: number) => value > this.pausedAt ? value + delta : value;
       s.sessionStartAt += delta;
+      if(s.raceDeadline)s.raceDeadline+=delta;
       for (const car of Object.values(s.cars)) {
-        for (const key of ['itemArmExpiry', 'invulnUntil', 'stunUntil', 'ghostUntil', 'slowUntil', 'boostUntil'] as const) car[key] = shift(car[key]);
+        for (const key of ['respawnUntil', 'invulnUntil', 'stunUntil', 'ghostUntil', 'slowUntil', 'boostUntil'] as const) car[key] = shift(car[key]);
       }
       for (const cd of Object.values(s.cooldowns)) { cd.ghost = shift(cd.ghost); cd.destroy = shift(cd.destroy); }
       for (const wall of s.walls) { wall.disabledUntil = shift(wall.disabledUntil); if (wall.expiresAt) wall.expiresAt = shift(wall.expiresAt); }
@@ -460,7 +474,7 @@ export class GameRules {
       for (const pickup of s.pickups) pickup.respawnAt = shift(pickup.respawnAt);
       for (const gate of s.boostGates) { gate.expiresAt = shift(gate.expiresAt); if (gate.createdAt !== undefined) gate.createdAt += delta; }
       for (const stone of s.stones) { stone.launchedAt += delta; stone.impactAt = shift(stone.impactAt); }
-      for (const d of s.deformations) { d.createdAt += delta; if (d.releaseAt !== null) d.releaseAt += delta; }
+      for (const d of s.deformations) { d.createdAt += delta; if(d.holdUntil)d.holdUntil+=delta; if (d.releaseAt !== null) d.releaseAt += delta; }
       this.pausedAt = 0;
       s.pausedAt = 0;
       this.host.transition('RACE');
@@ -479,11 +493,13 @@ export class GameRules {
     s.trackVersion++;
     s.walls = []; s.arcs = []; s.boostGates = []; s.stones = []; s.pickups = [];
     s.tangibles = {};
+    s.tangiblePlacement = null;
     s.mapTargets = null;
     s.mapDivider = null;
     s.mapStrokes = { A: false, B: false };
     s.mapMode = null;
     s.sessionMode = 'race';
+    s.raceDeadline=0;
     this.automaticPilot.reset();
     s.testMode = { invincible: false, allItems: false };
     s.tutorial = null;
@@ -522,6 +538,22 @@ export class GameRules {
     if (this.now >= this.state.sessionStartAt) this.tutorial?.onPilotInput(team, steer, this.inputs[team].throttle);
   }
 
+  /** Table settings are shared by all clients and persist across races/reset. */
+  updateRaceSettings(msg: RaceSettingsMsg): void {
+    const s=this.state;if(s.tutorial||s.phase==='RESULT')return;
+    if(msg.difficulty!==undefined&&!['easy','medium','hard'].includes(msg.difficulty))return;
+    if(msg.lapsToWin!==undefined&&(!Number.isInteger(msg.lapsToWin)||msg.lapsToWin<1||msg.lapsToWin>99))return;
+    if(msg.sessionMaxSeconds!==undefined&&(!Number.isInteger(msg.sessionMaxSeconds)||msg.sessionMaxSeconds<0||msg.sessionMaxSeconds>7200))return;
+    if(msg.difficulty!==undefined)s.params.difficulty=msg.difficulty;
+    if(msg.lapsToWin!==undefined)s.params.lapsToWin=msg.lapsToWin;
+    if(msg.sessionMaxSeconds!==undefined){
+      s.params.sessionMaxSeconds=msg.sessionMaxSeconds;
+      const now=s.phase==='PAUSED'?s.pausedAt:this.now;
+      s.raceDeadline=msg.sessionMaxSeconds>0&&['RACE','PAUSED'].includes(s.phase)?Math.max(now,s.sessionStartAt)+msg.sessionMaxSeconds*1000:0;
+    }
+    this.host.broadcastFull();
+  }
+
   /** Each pilot chooses continuous acceleration or a held pedal. */
   toggleDriveMode(team?: Team): void {
     if (this.state.phase === 'RESULT' || this.state.sessionMode === 'tangibles-test') return;
@@ -549,11 +581,12 @@ export class GameRules {
 
   /** POWER only arms the copilot team’s pickup; tangible activation belongs to Oz. */
   onPower(team: Team, _msg?: PowerMsg): void {
-    if (this.state.phase !== 'RACE') return;
+    if (this.state.phase !== 'RACE' || this.state.tangiblePlacement || armedPickup(this.state)) return;
     const car = this.state.cars[team];
     if (car.heldItem !== null && !car.itemArmed) {
       car.itemArmed = true;
-      car.itemArmExpiry = this.now + this.armWindowMs;
+      car.itemArmVersion++;
+      car.itemArmExpiry = 0; // Armed until a valid gesture consumes the stock.
       this.host.feedback('itemArmed', car.pos.x, car.pos.y, team);
     }
   }
@@ -562,14 +595,9 @@ export class GameRules {
 
   /** Resolve the armed stock owner; the gesturing team may steal that stock. */
   private resolveArmedTeam(kind: ItemKind, at: Vec2): Team | null {
-    const now = this.now;
-    const ok = TEAMS.filter(t => {
-      const c = this.state.cars[t];
-      return c.itemArmed && (this.state.testMode.allItems || c.heldItem === kind) && now < c.itemArmExpiry;
-    });
-    if (ok.length === 0) return null;
-    if (ok.length === 1) return ok[0];
-    return nearestStationTeam(at);
+    const armed=armedPickup(this.state);
+    void at;
+    return armed && (armed.kind===kind || this.state.testMode.allItems) ? armed.team : null;
   }
 
   private gestureTeam(at: Vec2, reported?: Team): Team {
@@ -588,6 +616,8 @@ export class GameRules {
    * nothing and keeps the item armed, so the copilot can simply try again.
    */
   onSlingshot(msg: SlingshotMsg): void {
+    this.tickTangiblePlacement(this.now);
+    if (this.state.tangiblePlacement) return;
     if (this.state.phase !== 'RACE' || !msg.anchor || !msg.pouch) return;
     const anchor = { x: msg.anchor.x, y: msg.anchor.y };
     const pouch = { x: msg.pouch.x, y: msg.pouch.y };
@@ -616,14 +646,12 @@ export class GameRules {
     const remaining = [];
     for (const stone of s.stones) {
       if (stone.impactAt > now) { remaining.push(stone); continue; }
-      const victim = s.cars[other(stone.team)];
       this.host.feedback('stoneImpact', stone.target.x, stone.target.y, stone.team);
-      if (!victim.disabled && !s.testMode.invincible && dist(victim.pos, stone.target) <= config.stoneRadiusPx) {
-        this.damage(victim, config.dmgStone, now);
-        victim.stunUntil = now + config.stunStoneS * 1000;
-        victim.speed = 0;
-        // Cartoon "POW" on the car that was hit (the impact itself is already announced)
-        this.host.feedback('stoneHit', victim.pos.x, victim.pos.y, victim.team);
+      for(const victim of Object.values(s.cars)){
+        if(victim.disabled||s.testMode.invincible||victim.respawnUntil>now||dist(victim.pos,stone.target)>config.stoneRadiusPx+CAR_RADIUS)continue;
+        this.damage(victim,config.dmgStone,now);
+        victim.stunUntil=now+config.stunStoneS*1000;victim.speed=0;victim.velocity={x:0,y:0};
+        this.host.feedback('stoneHit',victim.pos.x,victim.pos.y,victim.team);
       }
     }
     s.stones = remaining;
@@ -632,6 +660,8 @@ export class GameRules {
   // ─── Boost gate (C-02) ─────────────────────────────────────────────────────
 
   onBoostGate(msg: BoostGateMsg): void {
+    this.tickTangiblePlacement(this.now);
+    if (this.state.tangiblePlacement) return;
     if (this.state.phase !== 'RACE' || !msg.a || !msg.b) return;
     const a = { x: msg.a.x, y: msg.a.y };
     const b = { x: msg.b.x, y: msg.b.y };
@@ -734,7 +764,9 @@ export class GameRules {
     car.hp = Math.max(car.hp, config.repairHpRestore);
     car.disabled = false;
     car.stunUntil = 0;
-    car.invulnUntil = now + config.invulnAfterHitS * 1000;
+    car.respawnUntil=now+RESPAWN_COUNTDOWN_MS;
+    car.speed=0;car.velocity={x:0,y:0};
+    car.invulnUntil = car.respawnUntil + config.invulnAfterHitS * 1000;
     if (wasDisabled && s.track) {
       this.respawnAtCheckpoint(car);
       this.automaticPilot.forget(team);
@@ -794,40 +826,87 @@ export class GameRules {
 
   // ─── Tangible pylons (C-05) ────────────────────────────────────────────────
 
-  /** Neutral inventory; only Oz can acknowledge the physical charging cycle. */
+  setTangiblePlacementMode(mode: TangiblePlacementMode): void {
+    if (mode !== 'manual' && mode !== 'touch') return;
+    this.state.tangiblePlacementMode = mode;
+    this.cancelTangiblePlacement();
+    this.host.broadcastFull();
+  }
+
+  private parkedTangible(id:number): Tangible {
+    return {...depotPose(id),kind:tangibleDefinition(id)!.kind,team:null,active:false,status:'parked',dockTeam:null};
+  }
+
+  /** Oz identifies the next object; no charging cycle or cooldown is required. */
+  prepareTangiblePlacement(id: number): void {
+    if (this.state.tangiblePlacementMode !== 'touch' || !tangibleDefinition(id)
+      || !['READY','RACE'].includes(this.state.phase)) return;
+    this.state.tangibles[id]=this.parkedTangible(id);
+    this.rebuildTangibles();
+    this.state.tangiblePlacement = {id:id as 1|2|3, token:++this.placementToken, expiresAt:this.now+TANGIBLE_WAIT_MS};
+    this.host.broadcastFull();
+  }
+
+  cancelTangiblePlacement(): void {
+    if (!this.state.tangiblePlacement) return;
+    this.state.tangiblePlacement = null;
+    this.host.broadcastFull();
+  }
+
+  tickTangiblePlacement(now: number): void {
+    const pending=this.state.tangiblePlacement;
+    if (pending && (now>=pending.expiresAt || !['READY','RACE'].includes(this.state.phase))) this.cancelTangiblePlacement();
+  }
+
+  onTangibleTouchPlaced(msg: TangibleTouchPlacedMsg): void {
+    this.tickTangiblePlacement(this.now);
+    const s=this.state, pending=s.tangiblePlacement, definition=tangibleDefinition(msg.id);
+    if(s.tangiblePlacementMode!=='touch'||!pending||!definition||pending.id!==msg.id||pending.token!==msg.token
+)return;
+    const pose=tangibleTouchPose(definition.kind,msg.a,msg.b,s.params);
+    if(!pose)return;
+    // The single-use grant is consumed atomically; delayed/replayed packets cannot move it.
+    s.tangiblePlacement=null;
+    const parked=inTangibleDepot({x:pose.x*s.params.logicalWidth,y:pose.y*s.params.logicalHeight});
+    s.tangibles[msg.id]={...pose,kind:definition.kind,team:null,active:!parked,status:parked?'parked':'placed',dockTeam:null,placementOrigin:{...pose}};
+    this.tangibleLog.push({t:this.now,type:'TangibleMoved',id:msg.id,...pose,active:!parked});
+    this.rebuildTangibles();
+    this.host.broadcastFull();
+  }
+
+  /** Only Oz changes tangible activation and removal. */
   onTangibleControl(msg: TangibleControlMsg): void {
     const id = Number(msg.id), definition = tangibleDefinition(id);
     if (!definition || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
+    if (!['dock','activate','deactivate'].includes(msg.action)) return;
+    if (this.state.tangiblePlacement?.id === id) this.cancelTangiblePlacement();
     if (msg.action === 'dock') {
-      if (msg.team !== 'A' && msg.team !== 'B') return;
-      const at = localToWorld(panelOf(msg.team, 'copilot'), CHARGE_ZONE_LOCAL.x, CHARGE_ZONE_LOCAL.y);
-      this.state.tangibles[id] = { x: at.x / config.logicalWidth, y: at.y / config.logicalHeight,
-        angle: 0, kind: definition.kind, team: null, dockTeam: msg.team, status: 'docked', active: false };
+      // Compatibility for older consoles: bringing an object back simply removes it.
+      this.onTangibleRemoved({type:'TangibleRemoved',t:msg.t,id:msg.id});
+      return;
     } else if (msg.action === 'activate' || msg.action === 'deactivate') {
       const t = this.state.tangibles[id];
       if (!t) return;
-      t.active = msg.action === 'activate';
+      t.active = msg.action === 'activate' && t.status === 'placed';
     } else return;
-    this.tangibleLog.push({ t: this.now, type: 'TangibleControl', id, action: msg.action, team: msg.action === 'dock' ? msg.team : undefined });
+    this.tangibleLog.push({ t: this.now, type: 'TangibleControl', id, action: msg.action });
     this.rebuildTangibles();
   }
 
   onTangibleMoved(msg: TangibleMovedMsg): void {
+    if (this.state.tangiblePlacementMode === 'touch') return;
     const id = Number(msg.id), definition = tangibleDefinition(id);
     if (!definition || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)
-      || ![msg.x, msg.y, msg.angle].every(Number.isFinite)
+      || ![msg.x, msg.y, msg.angle].every(Number.isFinite) || msg.x<0 || msg.x>1 || msg.y<0 || msg.y>1
       || (msg.active !== undefined && typeof msg.active !== 'boolean')) return;
-    const dock = chargeZoneTeam({ x: msg.x * config.logicalWidth, y: msg.y * config.logicalHeight });
-    if (dock) { this.onTangibleControl({ ...msg, type: 'TangibleControl', action: 'dock', team: dock }); return; }
     if (!validTangiblePose(definition.kind, msg, config)) return;
     const old = this.state.tangibles[id];
-    if (!old || (old.status === 'docked' && !old.active)) return;
-    if (old.status === 'placed' && (!old.placementOrigin || !withinCorrection(old.placementOrigin, msg, config))) return;
     const { x, y } = msg, angle = ((msg.angle % 360) + 360) % 360;
-    const active = msg.active ?? old.active;
-    const placementOrigin = old.status === 'placed' ? old.placementOrigin : { x, y, angle };
+    const parked=inTangibleDepot({x:x*config.logicalWidth,y:y*config.logicalHeight});
+    const active = parked ? false : msg.active ?? (old?.status==='placed'?old.active:true);
+    const placementOrigin = { x, y, angle };
     this.state.tangibles[id] = { x, y, angle, active, kind: definition.kind, team: null,
-      dockTeam: null, status: 'placed', placementOrigin };
+      dockTeam: null, status: parked?'parked':'placed', placementOrigin };
     this.tangibleLog.push({ t: this.now, type: 'TangibleMoved', id, x, y, angle, active });
     this.rebuildTangibles();
   }
@@ -835,8 +914,9 @@ export class GameRules {
   onTangibleRemoved(msg: TangibleRemovedMsg): void {
     const id = Number(msg.id);
     if (!tangibleDefinition(id) || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
+    if (this.state.tangiblePlacement?.id === id) this.cancelTangiblePlacement();
     this.tangibleLog.push({ t: this.now, type: 'TangibleRemoved', id });
-    delete this.state.tangibles[id];
+    this.state.tangibles[id]=this.parkedTangible(id);
     this.rebuildTangibles();
   }
 
@@ -865,13 +945,18 @@ export class GameRules {
   // ─── Local border pull (C-07) ──────────────────────────────────────────────
 
   onBorderPull(msg: BorderPullMsg): void {
+    this.tickTangiblePlacement(this.now);
+    if (this.state.tangiblePlacement) return;
     const s = this.state;
     const track = s.track;
     if (s.phase !== 'RACE' || !track || ![msg.x, msg.y, msg.dx, msg.dy].every(Number.isFinite)) return;
     const pull = Math.hypot(msg.dx, msg.dy);
     if (pull < 20 || pull > config.trackDeformMaxShiftPx * 1.8) return;
+    if(msg.gestureId!==undefined && (typeof msg.gestureId!=='string'||!/^[-\w]{1,80}$/.test(msg.gestureId)))return;
+    if(msg.end!==undefined&&typeof msg.end!=='boolean')return;
     const team = msg.team ?? nearestStationTeam({ x: msg.x, y: msg.y });
-    this.deformTrack({ x: msg.x, y: msg.y }, { x: msg.dx, y: msg.dy }, team);
+    if(msg.index!==undefined&&(!Number.isInteger(msg.index)||msg.index<0||msg.index>=track.centerline.length))return;
+    this.deformTrack({ x: msg.x, y: msg.y }, { x: msg.dx, y: msg.dy }, team,msg.gestureId,msg.end,msg.index);
   }
 
   /**
@@ -879,19 +964,43 @@ export class GameRules {
    * displacement, so this creates a temporary double chicane rather than a
    * wider road. A new pull starts immediately while the prior one reforms.
    */
-  private deformTrack(at: Vec2, drag: Vec2, team: Team): void {
+  private deformTrack(at: Vec2, drag: Vec2, team: Team, gestureId?:string, ended=false, indexHint?:number): void {
     const track = this.state.track;
     if (!track) return;
-    const hit = nearestOnTrack(at, track);
-    // Keep only the component that goes out through the grabbed edge.
-    const edge = { x: at.x - hit.closest.x, y: at.y - hit.closest.y };
-    const edgeLen = Math.hypot(edge.x, edge.y);
-    if (edgeLen < 1e-6) return;
-    const outward = { x: edge.x / edgeLen, y: edge.y / edgeLen };
-    const projected = drag.x * outward.x + drag.y * outward.y;
-    if (projected < 20) return;
-    const amount = Math.min(config.trackDeformMaxShiftPx, projected);
-    const now = this.now;
+    const id=gestureId?`deform-${team}-${gestureId}`:`deform-${++this.deformCounter}`;
+    const existing=this.state.deformations.find(d=>d.id===id);
+    if(existing?.gestureEnded || existing?.releaseAt)return;
+    const hit=nearestOnTrack(at,track);
+    const index=existing?.index??indexHint??hit.index;
+    if(!existing&&indexHint!==undefined&&Math.min(dist(at,track.innerEdge[indexHint]),dist(at,track.outerEdge[indexHint]))>80)return;
+    if(!existing&&dist(at,indexHint!==undefined?track.centerline[index]:hit.closest)<1e-6)return;
+    const tangent=trackTangent(track,index),normal={x:-tangent.y,y:tangent.x};
+    const origin=indexHint!==undefined?track.centerline[index]:hit.closest;
+    const side=(at.x-origin.x)*normal.x+(at.y-origin.y)*normal.y<0?-1:1;
+    const edge=existing?{x:existing.dx,y:existing.dy}:{x:normal.x*side,y:normal.y*side};
+    const edgeLen=Math.hypot(edge.x,edge.y);if(edgeLen<1e-6)return;
+    const outward={x:edge.x/edgeLen,y:edge.y/edgeLen},projected=drag.x*outward.x+drag.y*outward.y;
+    if(projected<20)return;
+    let amount=Math.min(config.trackDeformMaxShiftPx,projected);
+    // One uniform limit preserves the requested shape and clears the screen/UI.
+    const safe=(shift:number)=>{
+      const n=track.baseCenterline.length,radius=config.trackDeformRadiusPoints;
+      for(let offset=-radius;offset<=radius;offset++){
+        const i=(index+offset+n)%n,base=track.baseCenterline[i],f=Math.cos(offset/(radius+1)*Math.PI/2);
+        const p={x:base.x+outward.x*shift*f,y:base.y+outward.y*shift*f},margin=track.widths[i]/2+12;
+        if(p.x<margin||p.x>config.logicalWidth-margin||p.y<margin||p.y>config.logicalHeight-margin||insidePanel(p,margin)
+          ||rectContains({x:TANGIBLE_DEPOT.x-margin,y:TANGIBLE_DEPOT.y-margin,w:TANGIBLE_DEPOT.w+2*margin,h:TANGIBLE_DEPOT.h+2*margin},p))return false;
+      }
+      return true;
+    };
+    if(!safe(amount)){let low=0,high=amount;for(let i=0;i<10;i++){const mid=(low+high)/2;if(safe(mid))low=mid;else high=mid;}amount=low;}
+    if(amount<20)return;
+    const now=this.now;
+    if(existing){
+      const moved=Math.abs(existing.dx-outward.x*amount)+Math.abs(existing.dy-outward.y*amount)>1e-6;
+      existing.dx=outward.x*amount;existing.dy=outward.y*amount;existing.holdUntil=now+config.trackDeformHoldS*1000;existing.gestureEnded=ended;
+      this.updateTrackDeformations(now,moved);return;
+    }
 
     // There is one active gesture only. Older local shifts remain briefly as
     // they ease home, which makes repeated interventions continuous.
@@ -899,29 +1008,31 @@ export class GameRules {
       if (deformation.releaseAt === null) deformation.releaseAt = now;
     }
     this.state.deformations.push({
-      id: `deform-${++this.deformCounter}`,
-      index: hit.index,
+      id,
+      index,
       dx: outward.x * amount,
       dy: outward.y * amount,
       createdAt: now,
       releaseAt: null,
       strength: 0,
+      holdUntil:now+(config.trackDeformRampS+config.trackDeformHoldS)*1000,
+      gestureEnded:ended,
     });
     this.updateTrackDeformations(now);
     this.host.feedback('trackDeformed', hit.closest.x, hit.closest.y, team);
   }
 
   /** Rebuild the transient road from the immutable centerline every simulation step. */
-  updateTrackDeformations(now: number): void {
+  updateTrackDeformations(now: number, force = false): void {
     const track = this.state.track;
     if (!track || this.state.deformations.length === 0) return;
     const rampMs = config.trackDeformRampS * 1000;
     const holdMs = config.trackDeformHoldS * 1000;
     const relaxMs = config.trackDeformRelaxS * 1000;
-    let changed = false;
+    let changed = force;
 
     for (const d of this.state.deformations) {
-      if (d.releaseAt === null && now >= d.createdAt + rampMs + holdMs) d.releaseAt = now;
+      if (d.releaseAt === null && now >= (d.holdUntil ?? d.createdAt + rampMs + holdMs)) d.releaseAt = now;
       const next = d.releaseAt === null
         ? clamp((now - d.createdAt) / rampMs, 0, 1)
         : clamp(1 - (now - d.releaseAt) / relaxMs, 0, 1);
@@ -938,16 +1049,15 @@ export class GameRules {
     const n = track.baseCenterline.length;
     const radius = config.trackDeformRadiusPoints;
     track.centerline = track.baseCenterline.map((base, i) => {
-      let x = base.x, y = base.y;
+      let x = base.x, y = base.y, shiftX=0, shiftY=0, weight=0;
       for (const d of this.state.deformations) {
         const delta = Math.abs(i - d.index);
         const circular = Math.min(delta, n - delta);
         if (circular > radius) continue;
         const falloff = Math.cos((circular / (radius + 1)) * Math.PI / 2);
-        x += d.dx * d.strength * falloff;
-        y += d.dy * d.strength * falloff;
+        const w=d.strength*falloff;shiftX+=d.dx*w;shiftY+=d.dy*w;weight+=w;
       }
-      return { x, y };
+      return { x:x+shiftX/Math.max(1,weight), y:y+shiftY/Math.max(1,weight) };
     });
     rebuildEdges(track);
     this.alignTrackFeatures(track);
@@ -1004,18 +1114,9 @@ export class GameRules {
     for (const team of TEAMS) {
       const car = s.cars[team];
       if (s.testMode.allItems) {
-        // Test mode: no pickup needed, the item is armed again as soon as it is used
+        // Test mode refills stock, but POWER still uses the shared reservation.
         car.heldItem ??= 'slingshot';
-        car.itemArmed = true;
-        car.itemArmExpiry = now + config.armWindowS * 1000;
-        continue;
-      }
-      if (car.itemArmed && now >= car.itemArmExpiry) {
-        // T-05: armed item that was not used in time is lost
-        car.heldItem = null;
-        car.itemArmed = false;
         car.itemArmExpiry = 0;
-        this.host.feedback('itemLost', car.pos.x, car.pos.y, team);
       }
     }
     this.tutorial?.tick();
@@ -1026,7 +1127,7 @@ export class GameRules {
     const s = this.state;
     const car = s.cars[team];
     const track = s.track;
-    if (!track || car.disabled) return;
+    if (!track || car.disabled || car.respawnUntil>now) return;
 
     // Pickups (R-11): picked up only when the stock is empty
     if (car.heldItem === null) {
@@ -1150,8 +1251,8 @@ export class GameRules {
     if (s.phase !== 'RACE' || s.tutorial || s.sessionMode === 'tangibles-test' || now < s.sessionStartAt) return;
     const progress = (c: Car) => c.lap * 8 + c.checkpointIndex;
     let winner: Team | 'draw' | null = null;
-    for (const t of TEAMS) if (s.cars[t].lap >= config.lapsToWin) { winner = t; break; }
-    if (!winner && now - s.sessionStartAt >= config.sessionMaxSeconds * 1000) {
+    for (const t of TEAMS) if (s.cars[t].lap >= s.params.lapsToWin) { winner = t; break; }
+    if (!winner && s.raceDeadline>0 && now >= s.raceDeadline) {
       const a = progress(s.cars.A), b = progress(s.cars.B);
       winner = a === b ? 'draw' : a > b ? 'A' : 'B';
     }

@@ -3,9 +3,10 @@ import { createControls } from '../client-shared/controls.js';
 import { StateSync, connectWs } from '../client-shared/net.js';
 import { createView, showDividerRefusal, showMapError } from './view.js';
 import { Renderer } from './Renderer.js';
+import { SETTINGS_BUTTON } from '../server/layout.js';
 import { GestureRecognizer } from './GestureRecognizer.js';
 import { playFeedback, unlock } from './Sound.js';
-import { THEMES, loadTheme, saveTheme, type ThemeId } from './themes.js';
+import { THEMES, themeLook, loadTheme, saveTheme, type ThemeId } from './themes.js';
 import { advanceVisualTime } from './VisualMotion.js';
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -24,7 +25,11 @@ function resizeCanvas(): void {
   canvas.style.height = `${LOGICAL_H * fit}px`;
   const left = (window.innerWidth - LOGICAL_W * fit) / 2;
   const top = (window.innerHeight - LOGICAL_H * fit) / 2;
-  document.documentElement.style.setProperty('--tools-x', `${left + LOGICAL_W * fit * .5625}px`);
+  document.documentElement.style.setProperty('--tools-x', `${left + SETTINGS_BUTTON.x * fit}px`);
+  document.documentElement.style.setProperty('--tools-y', `${top + SETTINGS_BUTTON.y * fit}px`);
+  document.documentElement.style.setProperty('--tools-w', `${SETTINGS_BUTTON.w * fit}px`);
+  document.documentElement.style.setProperty('--tools-h', `${SETTINGS_BUTTON.h * fit}px`);
+  document.documentElement.style.setProperty('--tools-scale', `${fit}`);
   document.documentElement.style.setProperty('--tools-bottom', `${top + 8}px`);
   document.documentElement.style.setProperty('--table-top', `${top + 18}px`);
 }
@@ -53,6 +58,8 @@ for (const theme of THEMES) {
 function selectTheme(id: ThemeId): void {
   view.theme = id; try { saveTheme(window.localStorage, id); } catch { /* Display preference still applies. */ }
   document.body.dataset.theme = id; canvas.dataset.theme = id;
+  const look=themeLook(id);
+  for(const [key,value] of Object.entries(look))document.body.style.setProperty(`--look-${key}`,typeof value==='number'?`${value}px`:value);
   for (const button of themeOptions.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.theme === id));
 }
 // Access to localStorage itself can be denied in embedded/private contexts.
@@ -69,6 +76,33 @@ const conn = connectWs('/ws', {
 });
 const controls = createControls(m => conn.send(m));
 const gestures = new GestureRecognizer(canvas, view, (m) => conn.send(m));
+
+document.getElementById('settings-home')!.addEventListener('click',()=>{conn.send({type:'Reset'});pcTools.open=false;});
+const difficultyInput=document.getElementById('race-difficulty') as HTMLSelectElement;
+const lapsInput=document.getElementById('race-laps') as HTMLInputElement;
+const timerInput=document.getElementById('race-timer') as HTMLInputElement;
+const minutesInput=document.getElementById('race-minutes') as HTMLInputElement;
+difficultyInput.addEventListener('change',()=>conn.send({type:'RaceSettings',difficulty:difficultyInput.value}));
+lapsInput.addEventListener('change',()=>{if(lapsInput.checkValidity())conn.send({type:'RaceSettings',lapsToWin:Number(lapsInput.value)});});
+const sendTimer=()=>{if(!timerInput.checked||minutesInput.checkValidity())conn.send({type:'RaceSettings',sessionMaxSeconds:timerInput.checked?Math.round(Number(minutesInput.value)*60):0});};
+timerInput.addEventListener('change',sendTimer);minutesInput.addEventListener('change',()=>{if(timerInput.checked)sendTimer();});
+function syncRaceOptions(): void {
+  const s=view.state;if(!s)return;
+  const editable=!s.tutorial&&s.phase!=='RESULT';
+  difficultyInput.disabled=!editable;lapsInput.disabled=!editable||s.sessionMode==='tangibles-test';timerInput.disabled=lapsInput.disabled;
+  if(document.activeElement!==difficultyInput)difficultyInput.value=s.params.difficulty;
+  if(document.activeElement!==lapsInput)lapsInput.value=String(s.params.lapsToWin);
+  timerInput.checked=s.params.sessionMaxSeconds>0;minutesInput.disabled=!timerInput.checked||timerInput.disabled;
+  if(s.params.sessionMaxSeconds>0&&document.activeElement!==minutesInput)minutesInput.value=String(s.params.sessionMaxSeconds/60);
+}
+
+const driveOptions=document.getElementById('drive-options')!;
+const driveButtons={A:document.getElementById('drive-A')!,B:document.getElementById('drive-B')!};
+for(const team of ['A','B'] as const)driveButtons[team].addEventListener('click',()=>conn.send({type:'ToggleDriveMode',team}));
+function syncDriveOptions(): void {
+  const s=view.state;driveOptions.hidden=!s||!['READY','RACE','PAUSED'].includes(s.phase)||s.sessionMode==='tangibles-test';
+  for(const team of ['A','B'] as const){const mode=s?.driveMode[team]??'auto';driveButtons[team].textContent=`${team==='A'?'Cyan':'Rose'} · ${mode==='auto'?'AUTO':'PÉDALE'}`;driveButtons[team].setAttribute('aria-pressed',String(mode==='pedal'));}
+}
 
 // PC testing: buttons that stand in for the 3- and 2-finger gestures (shown with a mouse or ?sim=1)
 const pcTools = document.getElementById('pc-tools') as HTMLDetailsElement;
@@ -226,6 +260,9 @@ function handleMessage(msg: ServerMessage): void {
     case 'State': {
       const prev = view.state;
       view.state = sync.apply(msg.state, msg.t);
+      gestures.syncState();
+      syncDriveOptions();
+      syncRaceOptions();
       if (view.state.mapTargets) {
         if (!prev?.mapTargets) view.mapNotice = null;
         view.pendingDivider = [];

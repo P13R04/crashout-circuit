@@ -4,11 +4,12 @@ import { tangibleDefinition, validTangiblePose, type TangibleId } from '../serve
 import { distToSegment, nearestOnTrack } from '../server/geometry.js';
 import { visibleTrackEdges } from '../client-shared/trackVisibility.js';
 import { viewTransform, viewToWorld } from './ozView.js';
-import { PANELS, PANEL_H, panelWidth, chargeZoneTeam, CHARGE_ZONE_LOCAL, localToWorld } from '../server/layout.js';
+import { PANELS, PANEL_H, panelWidth, localToWorld, TANGIBLE_DEPOT, NEUTRAL_CONTROLS } from '../server/layout.js';
 
 export type OzTool = 'arc' | 'wall' | null;
 
 export interface OzMapHandlers {
+  onRemove?(id: TangibleId): void;
   onMove(id: TangibleId, x: number, y: number, angle: number): boolean;
   onDock(team: Team): void;
   onPlace(pose: TangiblePose): boolean;
@@ -144,6 +145,7 @@ export class OzMap {
   }
 
   setState(state: GameState): void {
+    if(this.state && this.state.tangiblePlacementMode!==state.tangiblePlacementMode)this.cancel();
     if (this.drag && (!state.tangibles[this.drag.id] || !this.h.enabled() || (this.drag.mode !== 'place' && (state.tangibles[this.drag.id].status !== 'placed' || this.state?.tangibles[this.drag.id]?.active !== state.tangibles[this.drag.id].active)))) this.cancel();
     if (this.movingTangibleId && (!state.tangibles[this.movingTangibleId] || !state.tangibles[this.movingTangibleId].active)) {
       this.cancel();
@@ -176,6 +178,11 @@ export class OzMap {
     if (!this.h.enabled() || !this.state || (e.button !== undefined && e.button !== 0)) return;
     e.preventDefault();
     const s = this.state, p = this.point(e);
+    if(s.tangiblePlacementMode==='touch'){
+      const hit=this.tangibleAt(p);
+      if(hit)this.h.onRemove?.(hit);
+      return;
+    }
     this.hover = p;
     this.downClientPos = { x: e.clientX, y: e.clientY };
 
@@ -286,8 +293,6 @@ export class OzMap {
     }
 
     // ── Legacy handlers / direct dragging (kept for unit test compatibility) ──
-    const dock = chargeZoneTeam(p);
-    if (dock) { this.h.onDock(dock); return; }
     if (this.h.preparing() && this.h.selectedKind() === 'wall') {
       const angle = this.h.draftAngle();
       this.drag = {
@@ -338,6 +343,10 @@ export class OzMap {
   private move(e: PointerEvent): void {
     if (!this.state || !this.h.enabled()) return;
     const p = this.point(e);
+    if(this.state.tangiblePlacementMode==='touch'){
+      this.canvas.style.cursor=this.tangibleAt(p)?'pointer':'default';
+      return;
+    }
     this.hover = p;
     const s = this.state;
     const W = s.params.logicalWidth, H = s.params.logicalHeight;
@@ -372,6 +381,19 @@ export class OzMap {
     this.draw();
   }
 
+  private tangibleAt(p: Vec2): TangibleId | null {
+    const s=this.state;if(!s)return null;
+    const transform=viewTransform(this.canvas.width,this.canvas.height,s.params.logicalWidth,s.params.logicalHeight,this.quarter);
+    const radius=20*this.canvas.width/Math.max(1,this.canvas.getBoundingClientRect().width)/transform.scale;
+    let hit: TangibleId|null=null,best=Infinity;
+    for(const [id,t] of this.visibleTangibles())if(t.status==='placed'||t.status==='parked'){
+      const center={x:t.x*s.params.logicalWidth,y:t.y*s.params.logicalHeight};
+      const distance=t.kind==='wall'?distToSegment(p,...wallEndpoints(center,t.angle,s.params.wallLengthPx)):Math.hypot(p.x-center.x,p.y-center.y);
+      if(distance<=Math.max(radius,s.params.pylonBasePx/2)&&distance<best){hit=id as TangibleId;best=distance;}
+    }
+    return hit;
+  }
+
   draw(): void {
     const ctx = this.ctx, s = this.state;
     ctx.fillStyle = '#04081f';
@@ -402,6 +424,9 @@ export class OzMap {
     ctx.strokeStyle = '#33405a';
     ctx.lineWidth = unit;
     ctx.strokeRect(0, 0, W, H);
+
+    ctx.strokeStyle='#78929a66';ctx.lineWidth=unit;
+    for(const r of [TANGIBLE_DEPOT,NEUTRAL_CONTROLS])ctx.strokeRect(r.x,r.y,r.w,r.h);
 
     // Player HUD stations in corners
     for (const panel of PANELS) {
@@ -514,7 +539,7 @@ export class OzMap {
 
     // ── Active Tangibles (Walls & Pylons) ──
     for (const [id, t] of this.visibleTangibles()) {
-      if (t.status !== 'placed') continue;
+      if (t.status !== 'placed' && t.status !== 'parked') continue;
       const center = { x: t.x * W, y: t.y * H };
       const selected = id === this.h.selectedId();
       const isBeingMoved = id === this.movingTangibleId;
@@ -540,7 +565,7 @@ export class OzMap {
         ctx.stroke();
         ctx.shadowBlur = 0;
         // Endpoints
-        for (const pt of [a, b]) {
+        for (const pt of s.tangiblePlacementMode==='touch'?[]:[a, b]) {
           ctx.fillStyle = '#ff6a6a';
           ctx.beginPath();
           ctx.arc(pt.x, pt.y, 6 * unit, 0, Math.PI * 2);
@@ -557,9 +582,9 @@ export class OzMap {
         ctx.fill();
         ctx.stroke();
         const base = s.params.pylonBasePx;
-        ctx.fillStyle = '#ffe14a';
+        ctx.fillStyle = t.active ? '#ffe14a' : '#7a8498';
         ctx.fillRect(center.x - base / 2, center.y - base / 2, base, base);
-        textAt('PYLÔNE', center.x, center.y, 10, '#ffe14a', -22);
+        textAt(s.tangiblePlacementMode==='touch'?`P${id-1}`:'PYLÔNE', center.x, center.y, 10, '#ffe14a', -22);
       }
       ctx.restore();
 

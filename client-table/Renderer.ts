@@ -6,21 +6,25 @@
  * Only local energy paths, bounded trails and feedback change every frame.
  */
 import type { GameState, Team, Vec2 } from '../server/types.js';
-import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PLAY_AREA } from '../server/layout.js';
+import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PLAY_AREA, TANGIBLE_DEPOT, NEUTRAL_CONTROLS, SETTINGS_BUTTON, inTangibleDepot } from '../server/layout.js';
 import { HUD, drawItemIcon } from './HUD.js';
 import { TEAM_COLOR, type View, type SlingPreview } from './view.js';
-import { icon, type Icon } from './icons.js';
+import { icon, contacts, type Icon } from './icons.js';
 import { drawTutorial } from './TutorialOverlay.js';
 import { TangibleTransitions } from './TangibleTransitions.js';
 import { playFeedback } from './Sound.js';
 import { ScrapBackdrop } from './ScrapBackdrop.js';
 import { ScrapTrack } from './ScrapTrack.js';
-import type { ThemeId } from './themes.js';
+import { themeLook, type ThemeId, type CircuitTheme } from './themes.js';
+import { CircuitTrack } from './CircuitTrack.js';
+import { ThemeWorld } from './ThemeWorld.js';
 import { VoidBackdrop } from './VoidBackdrop.js';
 import { NeonTrack } from './NeonTrack.js';
 import { NeonVehicles } from './NeonVehicles.js';
 import { NeonObjects } from './NeonObjects.js';
 import { NeonEffects } from './NeonEffects.js';
+import { armedPickup, RESPAWN_COUNTDOWN_MS } from '../server/armedPickup.js';
+import { drawTangibleTouchPreview } from './TangibleTouchPreview.js';
 import { glow, NEON, plate } from './neon.js';
 import { activeMapTeam, inMapAnchor, mapStrokeEndpoints, MAP_ANCHOR_RADIUS } from '../server/mapCreation.js';
 
@@ -31,13 +35,12 @@ export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 68, 
 export const START_TUTORIAL_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 8, w: 520, h: 60 };
 export const START_TANGIBLE_TEST_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 84, w: 520, h: 60 };
 export const RESULT_BUTTON = { x: LOGICAL_W / 2 - 200, y: LOGICAL_H / 2 - 45, w: 400, h: 90 };
-export const PAUSE_BUTTON = { x: LOGICAL_W / 2 - 58, y: 14, w: 116, h: 38 };
-export const DRIVE_MODE_BUTTONS = { A: { x: 240, y: 810, w: 260, h: 38 }, B: { x: 240, y: 232, w: 260, h: 38 } };
+export const PAUSE_BUTTON = { x: LOGICAL_W / 2 - 58, y: 35, w: 116, h: 76 };
+export const DRIVE_MODE_BUTTONS = { A: SETTINGS_BUTTON, B: SETTINGS_BUTTON };
 export const DRIVE_MODE_BUTTON = DRIVE_MODE_BUTTONS.A;
 export const MAP_GENERATE_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 export const RACE_START_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 /** Reset button located in the vertical middle on the far right edge of the screen. */
-export const RESET_BUTTON = { x: LOGICAL_W - 134, y: LOGICAL_H / 2 - 32, w: 118, h: 64 };
 
 export class Renderer {
   private hud = new HUD();
@@ -50,6 +53,12 @@ export class Renderer {
   private fallen = new Set<Team>();
   private scrapVehicles = new NeonVehicles('scrap', this.fallen);
   private scrapObjects = new NeonObjects('scrap');
+  private worlds = new Map<CircuitTheme, { track:CircuitTrack; backdrop:ThemeWorld; vehicles:NeonVehicles; objects:NeonObjects }>();
+  private world(id:CircuitTheme) {
+    let world=this.worlds.get(id);
+    if(!world){world={track:new CircuitTrack(id),backdrop:new ThemeWorld(id),vehicles:new NeonVehicles(id,this.fallen),objects:new NeonObjects(id)};this.worlds.set(id,world);}
+    return world;
+  }
   private theme: ThemeId = 'neon';
   private vehicles = new NeonVehicles('neon', this.fallen);
   private objects = new NeonObjects();
@@ -60,26 +69,29 @@ export class Renderer {
   constructor(private ctx: Ctx) {}
 
   get stats(): { trackBuilds: number; trailPoints: number } {
-    return { trackBuilds: this.track.builds + this.scrapTrack.builds, trailPoints: this.theme === 'scrap' ? this.scrapVehicles.trailPoints : this.vehicles.trailPoints };
+    return { trackBuilds: this.track.builds + this.scrapTrack.builds + [...this.worlds.values()].reduce((n,w)=>n+w.track.builds,0), trailPoints: this.theme === 'scrap' ? this.scrapVehicles.trailPoints : this.theme === 'neon' ? this.vehicles.trailPoints : this.world(this.theme).vehicles.trailPoints };
   }
 
   /** Complete table frame; the caller owns the logical-to-device transform. */
   render(view: View): void {
     const state = view.state;
     const ctx = this.ctx;
-    if (this.theme !== view.theme) { this.vehicles.clearTrails(); this.scrapVehicles.clearTrails(); this.theme = view.theme; }
+    if (this.theme !== view.theme) { this.vehicles.clearTrails(); this.scrapVehicles.clearTrails(); for(const w of this.worlds.values())w.vehicles.clearTrails(); this.theme = view.theme; }
     const industrial = this.theme === 'scrap';
-    const vehicles = industrial ? this.scrapVehicles : this.vehicles;
-    const objects = industrial ? this.scrapObjects : this.objects;
-    const track = industrial ? this.scrapTrack : this.track;
+    const world = this.theme !== 'neon' && this.theme !== 'scrap' ? this.world(this.theme) : null;
+    const look = themeLook(this.theme);
+    const vehicles = world?.vehicles ?? (industrial ? this.scrapVehicles : this.vehicles);
+    const objects = world?.objects ?? (industrial ? this.scrapObjects : this.objects);
+    const track = world?.track ?? (industrial ? this.scrapTrack : this.track);
     if (state) this.transitions.update(state, view.visualTime);
     this.reducedMotion = view.reducedMotion;
     this.time = view.visualTime;
-    (industrial ? this.scrapBackdrop : this.backdrop).draw(ctx, this.time, view.reducedMotion, state?.phase === 'MAP');
+    if(world)world.backdrop.draw(ctx,this.time,view.reducedMotion,state?.phase==='MAP',state?.track??null,state?.phase==='LOBBY'?'lobby':state?.phase==='MAP'?'map':'race');
+    else (industrial?this.scrapBackdrop:this.backdrop).draw(ctx,this.time,view.reducedMotion,state?.phase==='MAP');
     if (!state) return;
 
     if (state.phase === 'LOBBY') { vehicles.clear(); this.drawLobby(ctx); return; }
-    if (state.phase === 'MAP') { vehicles.clear(); this.drawMap(ctx, state, view); this.drawResetButton(ctx); return; }
+    if (state.phase === 'MAP') { vehicles.clear(); this.drawMap(ctx, state, view);  return; }
     if (state.phase !== 'READY' && state.phase !== 'RACE' && state.phase !== 'PAUSED' && state.phase !== 'RESULT') return;
     const now = state.phase === 'PAUSED' ? state.pausedAt : view.now();
 
@@ -87,38 +99,72 @@ export class Renderer {
     vehicles.drawTrails(ctx, state, this.time, now, this.reducedMotion);
     objects.drawPickups(ctx, state, this.time, this.reducedMotion);
     objects.drawGates(ctx, state, now, this.time, this.reducedMotion);
-    this.transitions.draw(ctx, this.time, this.reducedMotion, industrial ? '#79e3ef' : '#ffce66');
+    this.transitions.draw(ctx, this.time, this.reducedMotion, look.electric);
     objects.drawWalls(ctx, state, now, this.time, this.reducedMotion);
     objects.drawArcs(ctx, state, now, this.time, this.reducedMotion);
     objects.drawPylons(ctx, state, this.time, this.reducedMotion);
-    this.transitions.drawActivation(ctx, this.time, this.reducedMotion, industrial ? '#79e3ef' : '#ffce66');
+    this.transitions.drawActivation(ctx, this.time, this.reducedMotion, look.electric);
     this.drawStones(ctx, state, now);
     for (const t of ['A', 'B'] as Team[]) vehicles.draw(ctx, state.cars[t], this.time, now, this.reducedMotion, view.effects);
+    this.drawRespawnLights(ctx,state,now);
     this.effects.draw(ctx, view);
     this.drawSling(ctx, state, view.sling);
+    drawTangibleTouchPreview(ctx, view);
+    this.drawExpectedBonus(ctx,state);
     this.hud.draw(ctx, state, view);
     this.drawDisabledAlerts(ctx, state);
-    if (state.phase === 'READY') { this.drawRaceReady(ctx, state); this.drawDriveModeButtons(ctx, state); }
-    if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); this.drawDriveModeButtons(ctx, state); }
-    if (state.phase === 'PAUSED') { this.drawPaused(ctx); this.drawPauseButton(ctx, 'REPRENDRE'); this.drawDriveModeButtons(ctx, state); }
+    this.drawNeutralZones(ctx,state);
+    if (state.phase === 'READY') { this.drawRaceReady(ctx, state); }
+    if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); }
+    if (state.phase === 'PAUSED') { this.drawPaused(ctx); this.drawPauseButton(ctx, 'REPRENDRE'); }
     if (state.phase === 'RESULT') this.drawResult(ctx, state);
     drawTutorial(ctx, state, this.reducedMotion ? 0 : this.time, DRIVE_MODE_BUTTONS);
-    this.drawResetButton(ctx);
+
   }
 
-  private drawResetButton(ctx: Ctx): void {
-    const b = RESET_BUTTON;
-    ctx.save(); ctx.fillStyle = '#080f26dd'; ctx.strokeStyle = '#8795af'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 14); ctx.fill(); ctx.stroke();
-    icon(ctx, 'home', b.x + b.w / 2, b.y + b.h / 2, 32, '#b7c2da');
+  private drawRespawnLights(ctx: Ctx,state: GameState,now:number):void {
+    for(const car of Object.values(state.cars)){
+      const until=car.respawnUntil;if(!until||car.disabled||now>until+650)continue;
+      const remaining=until-now,green=remaining<=0,lit=Math.max(1,Math.min(3,Math.ceil((RESPAWN_COUNTDOWN_MS-remaining)/1000)));
+      ctx.save();ctx.translate(car.pos.x,car.pos.y-48);
+      ctx.fillStyle='#07121dee';ctx.strokeStyle='#a4becb88';ctx.lineWidth=1.5;ctx.beginPath();ctx.roundRect(-34,-14,68,28,8);ctx.fill();ctx.stroke();
+      for(let i=0;i<3;i++){ctx.fillStyle=green?'#61f4ba':i<lit?'#ff8664':'#273342';ctx.beginPath();ctx.arc((i-1)*20,0,6,0,Math.PI*2);ctx.fill();}
+      ctx.restore();
+    }
+  }
+
+  private drawExpectedBonus(ctx: Ctx,state: GameState):void {
+    if(state.tangiblePlacement||!['RACE','PAUSED'].includes(state.phase))return;
+    const expected=armedPickup(state);if(!expected)return;
+    ctx.save();ctx.translate(960,170);ctx.fillStyle=themeLook(this.theme).panel+'ed';ctx.strokeStyle=themeLook(this.theme).accent+'90';ctx.lineWidth=2;
+    ctx.beginPath();ctx.roundRect(-45,-32,90,64,12);ctx.fill();ctx.stroke();
+    drawItemIcon(ctx,expected.kind,0,-8,14,'#ffce66');contacts(ctx,expected.kind==='boost'?2:3,0,18,'#ffce66');ctx.restore();
+  }
+
+  private drawNeutralZones(ctx: Ctx,state: GameState): void {
+    ctx.save();
+    for(const r of [TANGIBLE_DEPOT,NEUTRAL_CONTROLS]){
+      const look=themeLook(this.theme);ctx.fillStyle=look.panel+'ee';ctx.strokeStyle=look.line+'88';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.roundRect(r.x,r.y,r.w,r.h,themeLook(this.theme).radius);ctx.fill();ctx.stroke();
+    }
+    for(const t of Object.values(state.tangibles))if(t.status==='parked'){
+      const at={x:t.x*LOGICAL_W,y:t.y*LOGICAL_H};if(!inTangibleDepot(at))continue;
+      ctx.save();ctx.translate(at.x,at.y);ctx.rotate(t.angle*Math.PI/180);ctx.strokeStyle='#a0b7bf';ctx.fillStyle='#798e9814';ctx.setLineDash([4,5]);ctx.lineWidth=2;
+      const l=t.kind==='wall'?state.params.wallLengthPx:state.params.pylonBasePx,w=t.kind==='wall'?state.params.wallWidthPx:state.params.pylonBasePx;
+      ctx.beginPath();ctx.roundRect(-l/2,-w/2,l,w,5);ctx.fill();ctx.stroke();ctx.setLineDash([]);
+      if(t.kind==='pylon')icon(ctx,'bolt',0,0,20,'#8fa5ad');
+      else{ctx.beginPath();for(let x=-l/2+12;x<l/2;x+=16){ctx.moveTo(x,-w/2+5);ctx.lineTo(x-8,w/2-5);}ctx.stroke();}
+      ctx.restore();
+    }
     ctx.restore();
   }
+
 
   private drawLobby(ctx: Ctx): void {
     ctx.save(); ctx.textAlign = 'center';
     for (const rot of [0, Math.PI]) {
       ctx.save(); ctx.translate(LOGICAL_W / 2, LOGICAL_H / 2); ctx.rotate(rot);
-      icon(ctx, 'track', 0, -295, 110, '#00e5ff');
+      icon(ctx, 'track', 0, -295, 110, themeLook(this.theme).accent);
       ctx.fillStyle = '#fff'; glow(ctx, 0, -230, 330, '#5988c5', .2, .4);
       ctx.fillStyle = NEON.white; ctx.font = '800 64px system-ui';
       ctx.fillText('CRASHOUT', 0, -202);
@@ -307,8 +353,9 @@ export class Renderer {
       ctx.restore(); return;
     }
     if (state.tutorial || state.sessionMode === 'tangibles-test') return;
-    // Team laps live in their pilot panels. Only the shared clock is repeated.
-    const remaining = Math.max(0, state.params.sessionMaxSeconds - (now - state.sessionStartAt) / 1000);
+    if(state.params.sessionMaxSeconds<=0)return;
+    // Team laps live in their pilot panels. Only the enabled clock is repeated.
+    const remaining = Math.max(0, (state.raceDeadline - now) / 1000);
     const mm = Math.floor(remaining / 60), ss = String(Math.floor(remaining % 60)).padStart(2, '0');
     ctx.save(); ctx.textAlign = 'center'; ctx.font = 'bold 24px monospace';
     for (const [y, rotation] of [[255, Math.PI], [825, 0]]) {
@@ -322,26 +369,15 @@ export class Renderer {
 
   private drawPauseButton(ctx: Ctx, label: string): void {
     const b = PAUSE_BUTTON;
-    ctx.save(); ctx.fillStyle = '#080f26ee'; ctx.strokeStyle = '#b7c2da'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10); ctx.fill(); ctx.stroke();
+    const look=themeLook(this.theme);ctx.save();ctx.fillStyle=look.panel+'ee';ctx.strokeStyle=look.line;ctx.lineWidth=2;
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, Math.min(18,look.radius)); ctx.fill(); ctx.stroke();
     icon(ctx, label === 'PAUSE' ? 'pause' : 'play', b.x + b.w / 2, b.y + b.h / 2, 24);
     ctx.restore();
   }
 
-  private drawDriveModeButtons(ctx: Ctx, state: GameState): void {
-    if (state.sessionMode === 'tangibles-test') return;
-    for (const team of ['A', 'B'] as const) {
-      const b = DRIVE_MODE_BUTTONS[team], pedal = state.driveMode[team] === 'pedal', color = TEAM_COLOR[team];
-      ctx.save(); ctx.translate(b.x + b.w / 2, b.y + b.h / 2); if (team === 'B') ctx.rotate(Math.PI);
-      plate(ctx, -b.w / 2, -b.h / 2, b.w, b.h, 10, '#080f26ee', color);
-      icon(ctx, pedal ? 'pedal' : 'wheel', -76, 0, 24, color);
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
-      ctx.fillText(pedal ? 'PÉDALE' : 'AUTO', 10, 5); ctx.restore();
-    }
-  }
 
   private drawAction(ctx: Ctx, b: { x: number; y: number; w: number; h: number }, glyph: Icon, color = '#00e5ff'): void {
-    ctx.save(); ctx.fillStyle = '#080f26f5'; ctx.strokeStyle = color; ctx.lineWidth = 4;
+    ctx.save();ctx.fillStyle=themeLook(this.theme).button+'f5';ctx.strokeStyle=color;ctx.lineWidth=4;
     glow(ctx, b.x + b.w / 2, b.y + b.h / 2, b.w * .7, color, .16, .35);
     ctx.shadowBlur = 0;
     ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, b.h / 2); ctx.fill(); ctx.stroke();

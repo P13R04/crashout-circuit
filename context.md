@@ -9,13 +9,35 @@ Cette fiche conserve les décisions de conception et leurs identifiants (R-xx, C
 
 ---
 
+## Réservation des gestes et reprise (28 octobre 2026)
+
+Un seul stock peut être armé via POWER sur toute la table ; son propriétaire le conserve jusqu’au geste valide, neutre et volable. La version d’armement distingue les réservations successives, même si le réseau saute l’état intermédiaire. Un tangible annoncé a la priorité absolue et se désélectionne par A ou Échap dans Oz. Sinon le type du bonus armé détermine le geste attendu : boost tolérant aux appuis décalés et au doigt parasite, lance-pierre avec fourche temporellement tolérante et reprise brève d’un appui. La déformation reste possible par traction sur le bord rendu, avec ancrage explicite de la section dans les coudes. Les bonus ne périment pas.
+
+La pierre inflige ses dégâts aux deux couleurs dans son impact, tireur inclus. Une réparation provoque un feu local de 3 s au-dessus du modèle, puis vert et mouvement ; pause, physique et protection respectent ce délai.
+
+## Ajustements de prise et réglages de course (28 octobre 2026)
+
+Raccourcis Oz : 1 mur, 2 pilier 1, 3 pilier 2 (rangée AZERTY ou pavé numérique). Dépôt neutre vertical à droite entre les copilotes ; engrenage à gauche entre les pilotes ; Accueil uniquement dans ce menu. Deux contacts tangibles peuvent être décalés de 1,6 s avec levée du premier doigt ; un appui isolé est oublié ensuite. La prise de bord tolère 50 px de part et d’autre et se base sur la tangente locale dans les coudes, sans bloquer un boost posé immobile.
+
+Course : Easy à 50 % par défaut, Medium à 75 %, Hard à 100 %, y compris pour pédales et voitures de test. Tours configurables ; chrono désactivé par défaut. Les paramètres sont partagés et conservés au reset. Le chrono démarre avec le départ, ou à sa nouvelle durée si changé pendant la course, et se fige en pause.
+
+## Commandes et tangibles — simplification après essais (28 octobre 2026)
+
+Les postes compacts conservent le partenariat en diagonale. Pilote : gauche/droite, vie au-dessus et réparation ; copilote : POWER et réparation. AUTO/PÉDALE se choisit uniquement dans **Paramètres → Conduite** ; AUTO n’affiche ni bouton ni espace d’accélérateur. Le cadre fait 420 × 160 pour le pilote AUTO, 520 × 160 en PÉDALE et 280 × 160 pour le copilote. Les paramètres se trouvent à gauche entre les pilotes, avec Accueil dans le menu ; le dépôt neutre se trouve à droite entre les copilotes. La création de circuit dispose d’une surface élargie.
+
+Aucune expiration du stock, avant ou après armement. POWER appartient au copilote propriétaire ; le geste armé reste neutre et volable. Seul un geste valide consomme le bonus. Le champ `itemArmExpiry` vaut 0 pour compatibilité réseau, sans compte à rebours.
+
+Les trois tangibles sont prêts au dépôt dès le début, sans recharge, délai ou correction bornée. Les anciennes stations copilote sont supprimées. Une pose dans le dépôt est inactive ; une nouvelle annonce permet de la remettre sur la piste immédiatement. Oz annonce via **1 (&) / 2 (é) / 3 (")** ou les boutons, puis deux nouveaux contacts fixent la position ; le mur est orthogonal à leur axe. Cliquer l’objet dans Oz le retire vers le dépôt. Les effets, l’échelle LEGO, les deux thèmes et les voitures automatiques restent conservés. La fenêtre de 20 s d’une annonce Oz est distincte des bonus, qui ne périment pas.
+
+La déformation suit les deux doigts pendant la traction, jusqu’à 220 px. Le serveur met à jour une seule déformation par geste, sur une transition de 22 échantillons, avec une rampe de 0,18 s. Les interventions se fondent sans dépasser l’amplitude maximale ; les postes, le dépôt et les contrôles sont protégés. Voir [le briefing actuel](docs/pose-tactile.md). Les anciennes règles de recharge, de budget de correction et d’expiration ci-dessous sont historiques.
+
 ## Intégration de l’équipe (28 octobre 2026)
 
 Les branches #30, #31, #32, #34, #41 et `baptiste` sont réunies avec les thèmes et le test à pilotes automatiques. Le boost s’oriente selon la piste (la branche transversale au geste à un croisement), les contacts règlent sa largeur et sa puissance. Les bonus restent liés à leur point de piste pendant les déformations et leur délai de réapparition. Le dessin reste séquentiel cyan puis rose, mais accepte les deux sens ; les traits sont normalisés avant génération. Les zones pilotes ne sont pas ré-inversées. Voir [le bilan et le protocole de recette](docs/integration-equipe.md).
 
-## Règles actuelles des tangibles LEGO (octobre 2026)
+## Échelle actuelle des tangibles LEGO
 
-Un mur neutre 10 × 4 et deux piliers neutres 4 × 4. Effets identiques pour les deux équipes. Avant chaque nouvelle pose, retour physique à l’une des deux stations copilote ; Oz constate le dépôt puis charge l’objet. POWER concerne seulement les bonus ramassés. Une désactivation ne recharge pas. Après la pose, seules des corrections de 15 mm / 15° autour de l’origine immuable sont permises. L’échelle est calculée pour l’image active 16:9 sur 55 pouces, réglable via `tableDiagonalInches`. Mur 80 × 32 mm + frange de 10 mm ; pilier 32 × 32 mm, champ de diamètre 84 mm, arc entre piliers à portée. Le [README](README.md#console-oz--tangibles-neutres-et-recharge) décrit le protocole actuel et les essais. Les spécifications historiques ci-dessous concernant quatre objets par équipe, les murs plats et les secours Oz sont dépassées.
+Mur neutre 10 × 4 (80 × 32 mm) avec frange de 10 mm ; deux piliers 4 × 4 (32 × 32 mm), champs de diamètre 84 mm, arc à 350 px logiques. Échelle pour l’image active 16:9 d’une table 55 pouces, réglable via `tableDiagonalInches`. Les règles actuelles de dépôt et d’activation sont décrites plus haut et dans le README ; les anciennes règles de recharge ci-dessous sont dépassées.
 
 ## Évolution intégrée — console Oz (22 octobre 2026)
 
@@ -430,7 +452,7 @@ Les états de réparation sont représentés par les deux contacts et un anneau 
 | `repairHoldS` / `repairHpRestore` | 2 / 60 |
 | `pickupRespawnS` / `armWindowS` | 15 / 5 |
 | `stoneTelegraphS` / `stoneRadiusPx` | 0,8 / 60 |
-| `boostLenMinPx` / `boostLenMaxPx` | 100 / 400 |
+| `boostLenMinPx` / `boostLenMaxPx` | 0 / 400 (empreinte minimale 110 px) |
 | `boostGateLifeS` / `boostDurationS` / `boostGain` | 8 / 2 / 0,8 |
 | `ghostS` / `ghostCooldownS` | 3 / 20 |
 | `destroyDisableS` / `destroyCooldownS` | 10 / 15 |

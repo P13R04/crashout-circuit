@@ -18,7 +18,7 @@ import { nearestOnTrack, slingshotShot, isInsideTrackRibbon, clampToTrackRibbon 
 import { mock } from 'node:test';
 import { GestureRecognizer } from '../client-table/GestureRecognizer.js';
 import { createView } from '../client-table/view.js';
-import { panelOf, localToWorld, chargeZoneTeam, nearestStationTeam, rotationTowardsTeam, CHARGE_ZONE_LOCAL } from '../server/layout.js';
+import { panelOf, localToWorld, chargeZoneTeam, nearestStationTeam, rotationTowardsTeam, CHARGE_ZONE_LOCAL, PLAY_AREA, depotPose } from '../server/layout.js';
 import { START_TUTORIAL_BUTTON } from '../client-table/Renderer.js';
 import { TUTORIAL_END_BUTTON, tutorialSkipCenter } from '../client-table/TutorialOverlay.js';
 
@@ -33,6 +33,7 @@ interface Rig { state: GameState; rules: GameRules; physics: PhysicsLoop; clock:
 function rig(seed = 1): Rig {
   const clock = { now: 1_000_000 };
   const state = createInitialState();
+  state.params.difficulty='hard';
   const feedback: string[] = [];
   const phases: Phase[] = [];
   const host: RulesHost = {
@@ -114,7 +115,7 @@ test('100 random stroke pairs → valid circuit, no self-intersection, each < 3 
     assert.equal(geo.outerEdge.length, 256);
     assert.equal(geo.innerEdge.length, 256);
     // Free of the corner HUD panels (R-22)
-    for (const p of geo.outerEdge.concat(geo.innerEdge)) assert.ok(p.y > 215 && p.y < 865, `edge y=${p.y}`);
+    for (const p of geo.outerEdge.concat(geo.innerEdge)) assert.ok(p.y > PLAY_AREA.y0 - 85 && p.y < PLAY_AREA.y1 + 85, `edge y=${p.y}`);
   }
   assert.ok(worst < 3000, `worst generation ${worst.toFixed(0)} ms`);
   console.log(`      worst case ${worst.toFixed(0)} ms; strategies: ${JSON.stringify(methods)}`);
@@ -662,7 +663,7 @@ test('pause preserves the armed gesture window and temporary obstacle lifetimes'
   const armAt = r.state.cars.A.itemArmExpiry, wallAt = r.state.walls[0].expiresAt!;
   r.rules.togglePause(); r.advance(8000); const duration = r.clock.now - r.state.pausedAt;
   r.rules.togglePause();
-  assert.equal(r.state.cars.A.itemArmExpiry, armAt + duration);
+  assert.equal(r.state.cars.A.itemArmExpiry, armAt);
   assert.equal(r.state.walls[0].expiresAt, wallAt + duration);
   r.rules.expire(r.clock.now); assert.equal(r.state.cars.A.itemArmed, true);
 });
@@ -701,6 +702,8 @@ test('victory at lapsToWin → RESULT', () => {
 });
 test('timeout → RESULT, leader wins', () => {
   const r = raceRig();
+  r.rules.updateRaceSettings({type:'RaceSettings',t:0,sessionMaxSeconds:60});
+  r.state.raceDeadline=r.clock.now-1;
   r.state.cars.A.checkpointIndex = 4;
   r.state.sessionStartAt = r.clock.now - config.sessionMaxSeconds * 1000 - 1;
   r.advance(50);
@@ -741,7 +744,7 @@ test('the tutorial is a race on the preset circuit with nothing at stake', () =>
   assert.equal(r.state.track?.preset, true);
   assert.deepEqual(r.state.tutorial!.teams, { A: { step: 0, sub: 0 }, B: { step: 0, sub: 0 } });
   assert.equal(r.state.tutorial!.finished, false);
-  assert.equal(r.state.params.armWindowS, 12, 'learners get a longer arming window');
+  assert.equal(r.state.params.armWindowS, 0, 'armed inventory has no deadline, including in the tutorial');
   // the end of a race never interrupts a lesson
   r.state.cars.A.lap = config.lapsToWin;
   r.state.sessionStartAt = r.clock.now - config.sessionMaxSeconds * 1000 - 1;
@@ -827,7 +830,7 @@ test('every lesson is completed by its real event, team B keeps its own pace', (
   assert.equal(lesson(r, 'A'), 'power');
   r.rules.onPower('A');
   assert.equal(lesson(r, 'A'), 'sling');
-  assert.equal(A.itemArmExpiry - r.clock.now, 12_000);
+  assert.equal(A.itemArmExpiry, 0);
 
   // a short pull keeps the lesson, a real shot completes it and is harmless to the invincible target
   r.rules.onSlingshot(msg({ type: 'Slingshot' as const, team: 'A' as Team, ...aim(r.state.cars.B.pos, 10) }));
@@ -868,7 +871,7 @@ test('every lesson is completed by its real event, team B keeps its own pace', (
   assert.equal(A.hp, config.hpMax);
 
   // a hostile wall is placed on the road ahead; touching it completes the lesson, then it disappears
-  r.advance(config.invulnAfterHitS * 1000 + 100);
+  r.advance(Math.max(config.invulnAfterHitS*1000,A.invulnUntil-r.clock.now)+100);
   const wall = r.state.walls.find(w => w.id === 'tut-wall-A')!;
   assert.equal(wall.team, 'B', 'hostile to team A');
   driveTo(r, 'A', wall.pos);
@@ -895,15 +898,15 @@ test('every lesson is completed by its real event, team B keeps its own pace', (
   assert.equal(r.state.phase, 'RACE');
 });
 
-test('an item that expires, or a portal nobody crosses, sends the team back to POWER with the item', () => {
+test('tutorial stock stays armed indefinitely; a portal nobody crosses can still be retried', () => {
   const r = tutorialRig();
   skipTo(r, 'A', 'sling');
   assert.equal(r.state.cars.A.itemArmed, true);
   r.advance(12_500);
-  assert.ok(r.feedback.includes('itemLost'));
-  assert.equal(lesson(r, 'A'), 'power');
+  assert.equal(r.feedback.includes('itemLost'),false);
+  assert.equal(lesson(r, 'A'), 'sling');
   assert.equal(r.state.cars.A.heldItem, 'slingshot');
-  assert.equal(r.state.cars.A.itemArmed, false);
+  assert.equal(r.state.cars.A.itemArmed, true);
   r.rules.onPower('A');
   assert.equal(lesson(r, 'A'), 'sling');
 
@@ -1084,20 +1087,16 @@ test(`arc includes exactly ${config.arcMaxDistPx} px, breaks beyond range, and u
   assert.equal(r.state.walls.length, 0);
   assert.equal(r.state.tangibles[2].kind, 'pylon');
 });
-test('physical dock at either copilot requires Oz charging and never creates ownership; reset clears objects', () => {
-  const r = raceRig();
-  const at=localToWorld(panelOf('B','copilot'),CHARGE_ZONE_LOCAL.x,CHARGE_ZONE_LOCAL.y);
-  r.rules.onTangibleMoved(msg({type:'TangibleMoved',id:2,x:at.x/1920,y:at.y/1080,angle:0}));
-  assert.equal(r.state.tangibles[2].dockTeam, 'B');assert.equal(r.state.tangibles[2].team,null);
-  r.rules.onPower('B');assert.equal(r.state.tangibles[2].active,false);
-  place(r,2);assert.equal(r.state.tangibles[2].status,'docked','uncharged cannot leave dock');
-  r.rules.onTangibleControl(msg({type:'TangibleControl',id:2,action:'activate'}));place(r,2);
-  assert.equal(r.state.tangibles[2].status,'placed');
-  r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 2, action: 'dock', team: 'A' }));
-  assert.equal(r.state.tangibles[2].dockTeam, 'A'); assert.equal(r.state.tangibles[2].active, false);
-  r.rules.resetToLobby(); assert.deepEqual(r.state.tangibles, {});
-  r.rules.enterMap(); r.rules.startRace(); assert.equal(r.state.walls.length, 0);
+test('objects start inactive in the neutral depot and can be reused immediately without a copilot charging zone',()=>{
+  const r=raceRig();
+  for(const id of [1,2,3]){assert.equal(r.state.tangibles[id].status,'parked');assert.equal(r.state.tangibles[id].active,false);}
+  for(const team of ['A','B'] as const){const p=panelOf(team,'copilot');assert.equal(chargeZoneTeam({x:p.cx,y:p.cy}),null);}
+  place(r,2);assert.equal(r.state.tangibles[2].active,true);assert.equal(r.state.tangibles[2].team,null);
+  r.rules.onTangibleRemoved(msg({type:'TangibleRemoved',id:2}));assert.equal(r.state.tangibles[2].status,'parked');
+  place(r,2,.6);assert.equal(r.state.tangibles[2].status,'placed');assert.equal(r.state.tangibles[2].active,true);
+  r.rules.resetToLobby();assert.deepEqual(r.state.tangibles,{});r.rules.startRace();assert.equal(r.state.walls.length,0);
 });
+
 test('invalid ids, phases, coordinates and activation are ignored; omitted activation is preserved', () => {
   const r = raceRig(); place(r, 2); place(r, 3, .6);
   r.rules.onTangibleRemoved(msg({ type: 'TangibleRemoved', id: 2 })); assert.equal(r.state.arcs.length, 0);
@@ -1109,7 +1108,7 @@ test('invalid ids, phases, coordinates and activation are ignored; omitted activ
   r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 3, action: 'deactivate' }));
   r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 3, x: .605, y: .5, angle: 0 }));
   assert.equal(r.state.tangibles[3].active, false);
-  r.state.phase = 'RESULT'; place(r, 1); assert.equal(r.state.tangibles[1], undefined);
+  r.state.phase = 'RESULT'; place(r, 1); assert.equal(r.state.tangibles[1].status,'parked');
 });
 
 section('LEGO scale and recharge');
@@ -1151,25 +1150,12 @@ test('a single neutral pillar has an electrical ground field that slows either c
     assert.equal(car.speed,200*config.arcSlowFactor);
   }
 });
-test('one recharge buys one placement; bounded corrections cannot walk an object across the table', () => {
+test('manual repositioning is unlimited and parking disables all effects without charging or cooldown',()=>{
   const r=raceRig();place(r,1);
-  const origin=structuredClone(r.state.tangibles[1].placementOrigin);
-  for(let i=1;i<8;i++)r.rules.onTangibleMoved(msg({type:'TangibleMoved',id:1,x:.5+i*.004,y:.5,angle:0}));
-  assert.ok((r.state.tangibles[1].x-.5)*1920<=config.tangibleCorrectionPx);
-  assert.deepEqual(r.state.tangibles[1].placementOrigin,origin);
-  const before=structuredClone(r.state.tangibles[1]);
-  r.rules.onTangibleMoved(msg({type:'TangibleMoved',id:1,x:.5,y:.5,angle:30}));
-  assert.deepEqual(r.state.tangibles[1],before);
-  r.rules.onTangibleControl(msg({type:'TangibleControl',id:1,action:'deactivate'}));
-  r.rules.onTangibleControl(msg({type:'TangibleControl',id:1,action:'activate'}));
-  place(r,1,.7);assert.equal(r.state.tangibles[1].x,before.x,'power cycling buys no placement');
-  r.rules.onTangibleControl(msg({type:'TangibleControl',id:1,action:'dock',team:'B'}));
-  place(r,1,.7);assert.equal(r.state.tangibles[1].status,'docked');
-  r.rules.onTangibleControl(msg({type:'TangibleControl',id:1,action:'activate'}));place(r,1,.7,.5,90);
-  assert.equal(r.state.tangibles[1].x,.7);assert.equal(r.state.tangibles[1].team,null);
-  r.rules.onTangibleRemoved(msg({type:'TangibleRemoved',id:1}));
-  r.rules.onTangibleMoved(msg({type:'TangibleMoved',id:1,x:.4,y:.5,angle:0,active:true}));
-  assert.equal(r.state.tangibles[1],undefined,'removal does not mint a charge');
+  for(const x of [.55,.6,.7,.4]){place(r,1,x,.5,30);assert.equal(r.state.tangibles[1].x,x);assert.equal(r.state.tangibles[1].active,true);}
+  r.rules.onTangibleMoved(msg({type:'TangibleMoved',id:1,...depotPose(1),active:true}));
+  assert.equal(r.state.tangibles[1].status,'parked');assert.equal(r.state.tangibles[1].active,false);assert.equal(r.state.walls.length,0);
+  place(r,1,.7,.5,90);assert.equal(r.state.walls.length,1);assert.equal(r.state.tangibles[1].team,null);
 });
 
 // ─── Items: T-05, T-06, T-07 ─────────────────────────────────────────────────
@@ -1190,7 +1176,7 @@ test('pickup: grabbed when stock empty, respawns after 15 s', () => {
   r.advance(config.pickupRespawnS * 1000 + 100);
   assert.equal(pk.respawnAt, 0);
 });
-test('T-05 armed item without gesture within 5 s is lost', () => {
+test('armed inventory survives indefinite delay until a valid gesture consumes it', () => {
   const r = raceRig();
   const car = r.state.cars.A;
   car.heldItem = 'slingshot';
@@ -1198,11 +1184,12 @@ test('T-05 armed item without gesture within 5 s is lost', () => {
   assert.equal(car.itemArmed, true);
   r.advance(4900);
   assert.equal(car.itemArmed, true);
-  r.advance(300);
-  assert.equal(car.heldItem, null);
-  assert.equal(car.itemArmed, false);
+  r.clock.now+=3_600_000;r.rules.expire(r.clock.now);
+  assert.equal(car.heldItem,'slingshot');assert.equal(car.itemArmed,true);
+  assert.equal(r.feedback.includes('itemLost'),false);
+  r.rules.onSlingshot(msg({type:'Slingshot',team:'A',...aim({x:900,y:500},120)}));assert.equal(car.heldItem,null);
 });
-test('T-06 slingshot: 0.8 s telegraph, then a full-HP car is put out of order (+ stun, "stoneHit" feedback), opponent only', () => {
+test('T-06 slingshot: 0.8 s telegraph, then a full-HP car is put out of order (+ stun, "stoneHit" feedback), any car inside the impact', () => {
   const r = raceRig();
   const A = r.state.cars.A, B = r.state.cars.B;
   A.heldItem = 'slingshot';
@@ -1321,11 +1308,11 @@ test('T-07 boost zone affects allied car only, opponent ignores it', () => {
   assert.equal(carB.boostUntil, 0, 'opponent car does not receive allied boost');
   assert.equal(carB.speed, 200);
 });
-test('boost gate rejects lengths outside 100–400 px and expires after 8 s', () => {
+test('boost gate rejects contacts over 400 px apart and expires after 8 s', () => {
   const r = raceRig();
   r.state.cars.A.heldItem = 'boost';
   r.rules.onPower('A');
-  r.rules.onBoostGate(msg({ type: 'BoostGate' as const, team: 'A' as Team, a: { x: 0, y: 0 }, b: { x: 50, y: 0 } }));
+  r.rules.onBoostGate(msg({ type: 'BoostGate' as const, team: 'A' as Team, a: { x: 0, y: 0 }, b: { x: 450, y: 0 } }));
   assert.equal(r.state.boostGates.length, 0);
   assert.ok(r.state.cars.A.itemArmed, 'item stays armed after a rejected gesture');
   r.rules.onBoostGate(msg({ type: 'BoostGate' as const, team: 'A' as Team, a: { x: 0, y: 0 }, b: { x: 200, y: 0 } }));
@@ -1333,33 +1320,31 @@ test('boost gate rejects lengths outside 100–400 px and expires after 8 s', ()
   r.advance(config.boostGateLifeS * 1000 + 100);
   assert.equal(r.state.boostGates.length, 0);
 });
-test('R-03 both teams armed → team of the nearest station wins the gesture', () => {
+test('only the first stock arms globally; either nearby copilot may use it', () => {
   for (const [team, y] of [['A', 350], ['B', 750]] as const) {
     const r = raceRig();
     for (const t of ['A', 'B'] as Team[]) { r.state.cars[t].heldItem = 'slingshot'; r.rules.onPower(t); }
     r.rules.onSlingshot(msg({ type: 'Slingshot', anchor: { x: 1600, y }, pouch: { x: 1600, y: y + 100 } }));
     assert.equal(r.state.stones[0].team, team);
-    assert.equal(r.state.cars[team].heldItem, null);
-    assert.equal(r.state.cars[team === 'A' ? 'B' : 'A'].heldItem, 'slingshot');
+    assert.equal(r.state.cars.A.heldItem,null);assert.equal(r.state.cars.B.heldItem,'slingshot');assert.equal(r.state.cars.B.itemArmed,false);
   }
 });
 
 test('diagonal teammates: corners, docking, gesture ownership and feedback orientation agree', () => {
-  assert.deepEqual(panelOf('A', 'copilot'), { team: 'A', role: 'copilot', cx: 1670, cy: 120, rot: Math.PI });
-  assert.deepEqual(panelOf('B', 'copilot'), { team: 'B', role: 'copilot', cx: 1670, cy: 960, rot: 0 });
+  assert.deepEqual(panelOf('A', 'copilot'), { team: 'A', role: 'copilot', cx: 1760, cy: 90, rot: Math.PI });
+  assert.deepEqual(panelOf('B', 'copilot'), { team: 'B', role: 'copilot', cx: 1760, cy: 990, rot: 0 });
   for (const team of ['A', 'B'] as const) {
     const pilot = panelOf(team, 'pilot'), copilot = panelOf(team, 'copilot');
     assert.notEqual(pilot.cy, copilot.cy);
     assert.notEqual(pilot.cx, copilot.cx);
     const zone = localToWorld(copilot, CHARGE_ZONE_LOCAL.x, CHARGE_ZONE_LOCAL.y);
-    assert.equal(chargeZoneTeam(zone), team);
+    assert.equal(chargeZoneTeam(zone), null);
     assert.equal(nearestStationTeam(zone), team);
     assert.equal(rotationTowardsTeam(team, zone), copilot.rot);
     assert.equal(rotationTowardsTeam(team, { x: pilot.cx, y: pilot.cy }), pilot.rot);
     const r = raceRig();
     r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 1, action: 'dock', team, kind: 'wall' }));
-    assert.equal(r.state.tangibles[1].x * 1920, zone.x);
-    assert.ok(Math.abs(r.state.tangibles[1].y * 1080 - zone.y) < 1e-6);
+    assert.equal(r.state.tangibles[1].status,'parked');assert.equal(r.state.tangibles[1].team,null);
   }
 });
 
@@ -1476,20 +1461,20 @@ test('invincible: no damage from walls, arcs or stones, and a fall just respawns
   r.rules.damage(A, 10, r.clock.now);
   assert.equal(A.hp, config.hpMax - 10);
 });
-test('allItems: every item is armed and usable without pickup, repeatedly, with no cooldown', () => {
+test('allItems: free stock still needs POWER and respects the shared reservation', () => {
   const r = raceRig();
   r.state.mapMode = 'pc';
   toggle(r, 'allItems', true);
   r.advance(50);
   const A = r.state.cars.A;
-  assert.equal(A.itemArmed, true);
+  assert.equal(A.itemArmed,false);r.rules.onPower('A');assert.equal(A.itemArmed,true);
   // a boost gate works although the stocked item is a "slingshot"
   assert.equal(A.heldItem, 'slingshot');
   const c = { x: A.pos.x + 60, y: A.pos.y };
   r.rules.onBoostGate(msg({ type: 'BoostGate' as const, a: { x: c.x, y: c.y - 100 }, b: { x: c.x, y: c.y + 100 } }));
   assert.equal(r.state.boostGates.length, 1);
   r.advance(50);
-  assert.equal(A.itemArmed, true, 're-armed right after use');
+  assert.equal(A.itemArmed,false,'refill does not auto-arm');r.rules.onPower('A');assert.equal(A.itemArmed,true);
   r.rules.onSlingshot(msg({ type: 'Slingshot' as const, anchor: { x: 900, y: 700 }, pouch: { x: 900, y: 800 } }));
   assert.equal(r.state.stones.length, 1);
   // abilities have no cooldown
@@ -1553,7 +1538,7 @@ test('POWER cannot arm enemy stock, and repeated POWER cannot extend the window'
   r.rules.onPower('A'); const expiry = r.state.cars.A.itemArmExpiry;
   r.clock.now += 1000; r.rules.onPower('A'); assert.equal(r.state.cars.A.itemArmExpiry, expiry);
 });
-test('a stolen slingshot consumes only the owner stock and targets the owner team', () => {
+test('a stolen slingshot consumes only the owner stock and can hit either colour', () => {
   const r = raceRig(); r.state.cars.A.heldItem = 'slingshot'; r.rules.onPower('A');
   r.state.cars.B.heldItem = 'boost';
   r.rules.onSlingshot(msg({ type: 'Slingshot', team: 'B', ...aim(r.state.cars.A.pos, 120) }));
@@ -1561,7 +1546,7 @@ test('a stolen slingshot consumes only the owner stock and targets the owner tea
   assert.equal(r.state.stones[0].team, 'B');
   r.clock.now += 1000; r.rules.updateStones(r.clock.now);
   assert.equal(r.state.cars.A.hp, Math.max(0, config.hpMax - config.dmgStone));
-  assert.equal(r.state.cars.B.hp, config.hpMax);
+  assert.equal(r.state.cars.B.hp,0,'both starting cars are inside this impact');
   r.rules.onSlingshot(msg({ type: 'Slingshot', team: 'A', ...aim({ x: 900, y: 500 }, 120) }));
   assert.equal(r.state.stones.length, 0, 'same stock cannot be consumed twice');
 });
@@ -1591,7 +1576,7 @@ test('server preserves the rotation anchor and rejects walls over the table cont
   const [a] = GameRules.wallEnds(r.state.walls[0]);
   assert.ok(Math.hypot(a.x - anchor.x, a.y - anchor.y) < 1e-8);
   const before = { ...r.state.tangibles[1] };
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 1, x: 730 / 1920, y: 960 / 1080, angle: 0 }));
+  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 1, x: 450 / 1920, y: 990 / 1080, angle: 0 }));
   assert.deepEqual(r.state.tangibles[1], before, 'wall endpoint cannot overlap pilot controls');
 });
 test('deactivating either pillar cuts its arc; reactivation restores the same pair', () => {
@@ -1666,10 +1651,11 @@ test('moving a wall with pick & drop supports 2-click positioning and orientatio
 section('Fast Oz console');
 function operatorRig() {
   const r = raceRig(), sent: Array<{ type: string } & Record<string, unknown>> = [];
+  r.state.tangibles[1].angle=0; // This console geometry fixture starts horizontally.
   let time = 0;
   const c = new OzController((type, params) => { sent.push({ type, ...params }); return true; }, () => {}, () => time);
   c.setConnected(true); c.applyState(structuredClone(r.state));
-  const ready = (id:1|2|3) => { c.select(id); c.dock('A'); c.presence(true); sent.length=0; };
+  const ready = (id:1|2|3) => { c.select(id); sent.length=0; };
   return { c, sent, ready, source: r.state, tick: (ms: number) => { time += ms; } };
 }
 test('preparation and preview rotation are local; invalid placement stays prepared and is not sent', () => {
@@ -1686,14 +1672,14 @@ test('one placement atomically activates; rapid edits and undo use optimistic po
   c.applyState(structuredClone(source)); assert.equal(c.state!.tangibles[1].x, .4);
   c.move(1,{ x: .405, y: .5, angle: 15 }); c.undo();
   assert.equal(c.state!.tangibles[1].x, .4); assert.equal(c.state!.tangibles[1].active, true);
-  c.undo(); assert.equal(c.state!.tangibles[1], undefined); assert.equal(c.canUndo, false);
+  c.undo(); assert.equal(c.state!.tangibles[1].status, 'parked'); assert.equal(c.canUndo, false);
 });
 test('first pylon prepares the second only on its first placement', () => {
   const { c, ready } = operatorRig(); ready(2); ready(3); c.prepare(2); c.place({ x: .4, y: .5, angle: 0 });
   assert.equal(c.selectedId, 3); assert.equal(c.preparing, true);
   c.place({ x: .4 + (config.arcMaxDistPx - 10) / 1920, y: .5, angle: 0 }); assert.equal(c.preparing, false);
   assert.equal(c.state!.arcs.length, 1, 'arc preview follows optimistic pylons before a network reply');
-  c.prepare(2); assert.equal(c.place({ x: .45, y: .5, angle: 0 }),false);
+  c.prepare(2); assert.equal(c.place({ x: .45, y: .5, angle: 0 }),true);
   assert.equal(c.selectedId, 2); assert.equal(c.preparing, false);
 });
 test('temporary removal preserves pose and type; restore and undo do not need configuration', () => {
@@ -1715,7 +1701,7 @@ test('disconnect cancels preparation and queued previews; reconnect never replay
   const { c, sent, source, ready } = operatorRig(); ready(1); c.prepare(1); c.place({ x: .5, y: .5, angle: 0 }); c.prepare(2);
   const count = sent.length; c.setConnected(false); c.place({ x: .4, y: .5, angle: 0 });
   c.setConnected(true); assert.equal(c.enabled, false, 'wait for the full reconnect snapshot'); c.applyState(structuredClone(source));
-  assert.equal(sent.length, count); assert.equal(c.preparing, false); assert.equal(c.state!.tangibles[1], undefined);
+  assert.equal(sent.length, count); assert.equal(c.preparing, false); assert.equal(c.state!.tangibles[1].status, 'parked');
   c.prepare(1); c.place({ x: .5, y: .5, angle: 0 }); c.applyState({ ...source, phase: 'LOBBY', tangibles: {} });
   assert.equal(c.canUndo, false); assert.equal(c.preparing, false); assert.equal(c.enabled, false);
 });
@@ -1724,15 +1710,16 @@ test('confirmed snapshots reconcile pending edits; rejected or reset state canno
   const confirmed = structuredClone(c.state!); c.applyState(confirmed);
   c.applyState({ ...source, tangibles: {} }); assert.equal(c.state!.tangibles[1], undefined);
   ready(1); c.prepare(1); c.place({ x: .5, y: .5, angle: 0 }); tick(1600); c.applyState(structuredClone(source));
-  assert.equal(c.state!.tangibles[1], undefined); assert.equal(c.canUndo, false); assert.ok(c.notice.includes('resynchronisée'));
+  assert.equal(structuredClone(c.state!).tangibles[1].status, 'parked'); assert.equal(c.canUndo, false); assert.ok(c.notice.includes('resynchronisée'));
 });
 test('shortcuts support AZERTY, numpad and modifiers without hijacking other browser shortcuts', () => {
   const event = (key: string, code = '', extra = {}) => ({ key, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...extra });
-  assert.equal(ozShortcut(event('M')), 'wall');
-  assert.equal(ozShortcut(event('&', 'Digit1')), 'pylon1');
-  assert.equal(ozShortcut(event('é', 'Digit2')), 'pylon2');
-  assert.equal(ozShortcut(event('1', 'Numpad1')), 'pylon1');
-  assert.equal(ozShortcut(event('2', 'Numpad2')), 'pylon2');
+  assert.equal(ozShortcut(event('M')), null);
+  assert.equal(ozShortcut(event('&', 'Digit1')), 'wall');
+  assert.equal(ozShortcut(event('é', 'Digit2')), 'pylon1');
+  assert.equal(ozShortcut(event('1', 'Numpad1')), 'wall');
+  assert.equal(ozShortcut(event('2', 'Numpad2')), 'pylon1');
+  assert.equal(ozShortcut(event('3', 'Numpad3')), 'pylon2');
   for (const [key, action] of [['ArrowLeft', 'left'], ['ArrowRight', 'right'], [' ', 'presence'], ['Delete', 'remove'], ['Escape', 'cancel'], ['r', 'view']]) assert.equal(ozShortcut(event(key)), action);
   assert.equal(ozShortcut(event('z', '', { ctrlKey: true })), 'undo');
   assert.equal(ozShortcut(event('r', '', { ctrlKey: true })), null);
@@ -1763,13 +1750,13 @@ test('map placement, body dragging and rotation-handle picking work in all four 
     map.setQuarter(q); rig.ready(1); map.setState(c.state!); c.prepare(1);
     pointer('pointermove', { x: 960, y: 540 }); assert.equal(rig.sent.length, 0);
     pointer('pointerdown', { x: 960, y: 540 }); pointer('pointerup', { x: 960, y: 540 }); map.setState(c.state!);
-    assert.ok(Math.abs(c.state!.tangibles[1].x - .5) < 1e-10);
+    assert.ok(Math.abs(c.state!.tangibles[1].x - .5) < 1e-10,'placement keeps the expected centre');
     pointer('pointerdown', { x: 930, y: 540 }); pointer('pointermove', { x: 945, y: 545 }); pointer('pointerup', { x: 945, y: 545 });
-    assert.ok(Math.abs(c.state!.tangibles[1].x - 975 / 1920) < 1e-10);
+    assert.ok(Math.abs(c.state!.tangibles[1].x - 975 / 1920) < 1e-10,'body drag preserves its offset');
     map.setState(c.state!); const before = { ...c.state!.tangibles[1] };
     pointer('pointerdown', { x: 975+config.wallLengthPx/2, y: 545 }); pointer('pointermove', { x: 975+config.wallLengthPx/2, y: 550 }); pointer('pointerup', { x: 975+config.wallLengthPx/2, y: 550 });
     const [anchor] = wallEndpoints({ x: c.state!.tangibles[1].x * 1920, y: c.state!.tangibles[1].y * 1080 }, c.state!.tangibles[1].angle, config.wallLengthPx);
-    assert.ok(Math.hypot(anchor.x - (before.x * 1920 - config.wallLengthPx/2), anchor.y - before.y * 1080) < 1e-8);
+    assert.ok(Math.hypot(anchor.x - (before.x * 1920 - config.wallLengthPx/2), anchor.y - before.y * 1080) < 1e-8,'rotation preserves the fixed endpoint');
   }
 });
 

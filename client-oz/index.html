@@ -154,6 +154,13 @@
       min-height: 0;
       overflow: hidden;
     }
+    #toolbar { flex-wrap: wrap; gap: 8px; }
+    #placement-mode { background:#172638; color:#e2e8f0; border:1px solid #475569; border-radius:8px; padding:10px; font:inherit; }
+    #touch-tools { display:flex; gap:8px; }
+    #touch-tools[hidden], [hidden] { display:none !important; }
+    #touch-tools .active { border-color:#67e8f9; background:#164e63; }
+    #touch-cancel { padding:8px 12px; }
+    @media(max-width:900px) { #hint { flex-basis:100%; margin-left:0; } .tool-btn { padding:8px 12px; } }
     canvas {
       display: block;
       width: 100%;
@@ -168,6 +175,16 @@
     <span id="status">Connexion…</span>
   </header>
   <div id="toolbar">
+    <select id="placement-mode" aria-label="Mode de placement des tangibles">
+      <option value="manual">Placement manuel</option>
+      <option value="touch">Pose tactile</option>
+    </select>
+    <div id="touch-tools" hidden>
+      <button type="button" class="tool-btn" data-tangible="1" aria-keyshortcuts="1">▰ Mur · 1</button>
+      <button type="button" class="tool-btn" data-tangible="2" aria-keyshortcuts="2">⚡ Pilier 1 · 2</button>
+      <button type="button" class="tool-btn" data-tangible="3" aria-keyshortcuts="3">⚡ Pilier 2 · 3</button>
+      <button type="button" class="tool-btn" id="touch-cancel" hidden>Annuler</button>
+    </div>
     <button type="button" id="btn-arc" class="tool-btn">⚡ Arc électrique</button>
     <button type="button" id="btn-wall" class="tool-btn">🧱 Mur</button>
     <span id="hint">Cliquez sur un bouton, puis 2 fois sur la carte pour placer l'obstacle</span>

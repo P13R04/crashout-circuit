@@ -17,7 +17,7 @@ export function glow(ctx: CanvasRenderingContext2D, x: number, y: number, radius
   ctx.save(); ctx.globalAlpha *= alpha;
   ctx.drawImage(light, x - radius, y - radius * squash, radius * 2, radius * 2 * squash); ctx.restore();
 }
-export function plate(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number, fill: string, stroke?: string): void {
+export function plate(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number, fill: string | CanvasGradient, stroke?: string): void {
   ctx.beginPath(); ctx.roundRect(x, y, w, h, radius); ctx.fillStyle = fill; ctx.fill();
   if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
 }

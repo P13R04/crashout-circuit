@@ -10,16 +10,19 @@ export interface Vec2 {
 export type Team = 'A' | 'B';
 export type Phase = 'LOBBY' | 'MAP' | 'READY' | 'RACE' | 'PAUSED' | 'RESULT';
 export type ItemKind = 'slingshot' | 'boost';
+export type Difficulty = 'easy' | 'medium' | 'hard';
 export type DriveMode = 'auto' | 'pedal';
+export type TangiblePlacementMode = 'manual' | 'touch';
+export interface TangiblePlacementRequest { id: TangibleId; token: number; expiresAt: number }
 
 export interface Tangible {
   x: number; y: number; angle: number; // normalized position, angle in degrees
   kind: 'wall' | 'pylon';
   team: Team | null;
   active: boolean;
-  dockTeam: Team | null; // charging station, never ownership
-  status: 'docked' | 'placed';
-  placementOrigin?: { x: number; y: number; angle: number }; // immutable until recharge
+  dockTeam: Team | null; // legacy wire field, null; tangibles use the neutral depot
+  status: 'docked' | 'parked' | 'placed';
+  placementOrigin?: { x: number; y: number; angle: number }; // last authoritative pose; no movement budget
 }
 
 export interface Car {
@@ -29,6 +32,7 @@ export interface Car {
   velocity: Vec2;
   hp: number;           // 0–100
   disabled: boolean;    // hp === 0
+  respawnUntil: number; // repaired, waiting for the local restart lights
   invulnUntil: number;  // timestamp ms
   stunUntil: number;
   ghostUntil: number;
@@ -36,7 +40,8 @@ export interface Car {
   checkpointIndex: number;
   heldItem: ItemKind | null;
   itemArmed: boolean;
-  itemArmExpiry: number; // timestamp ms
+  itemArmVersion: number;
+  itemArmExpiry: number; // legacy wire field; 0, armed stock has no deadline
   speed: number;         // signed forward speed, px/s (server-internal, broadcast for HUD)
   slowUntil: number;     // arc slow-down expiry
   boostUntil: number;    // boost gate effect expiry
@@ -131,6 +136,8 @@ export interface TrackDeformation {
   /** Set when a newer deformation takes over, then the old one eases back. */
   releaseAt: number | null;
   strength: number;
+  holdUntil?: number;
+  gestureEnded?: boolean;
 }
 
 export interface MapTargets {
@@ -162,6 +169,7 @@ export interface TutorialState {
 
 /** Subset of config.json the clients need to draw rings, timers and thresholds. */
 export interface GameParams {
+  difficulty: Difficulty;
   hpMax: number;
   lapsToWin: number;
   sessionMaxSeconds: number;
@@ -172,6 +180,7 @@ export interface GameParams {
   destroyDisableS: number;
   /** Retained for compatible clients; local deformation no longer has a cooldown. */
   borderPullCooldownS: number;
+  trackDeformMaxShiftPx: number;
   trackDeformHoldS: number;
   trackDeformRelaxS: number;
   stoneTelegraphS: number;
@@ -216,6 +225,7 @@ export interface GameState {
   deformations: TrackDeformation[];
   winner: Team | 'draw' | null;
   sessionStartAt: number;
+  raceDeadline: number; // 0 when the race timer is disabled
   pausedAt: number;
   /** Ordered start/end targets for each team, set after the two anchor placements. */
   mapTargets: MapTargets | null;
@@ -232,6 +242,8 @@ export interface GameState {
   trackVersion: number;
   /** Operator-reported pylons currently on the table, keyed by tangible id. */
   tangibles: Record<number, Tangible>;
+  tangiblePlacementMode: TangiblePlacementMode;
+  tangiblePlacement: TangiblePlacementRequest | null;
   params: GameParams;
   /** PC test switches (only honoured in the PC mode, see `TestToggleMsg`). */
   testMode: { invincible: boolean; allItems: boolean };
@@ -247,6 +259,9 @@ export interface BaseMsg {
 }
 
 // Table → Server
+export interface RaceSettingsMsg extends BaseMsg {
+  type: 'RaceSettings'; difficulty?: Difficulty; lapsToWin?: number; sessionMaxSeconds?: number;
+}
 export interface StrokeDrawMsg extends BaseMsg {
   type: 'StrokeDraw';
   creator: Team;
@@ -305,6 +320,9 @@ export interface AbilityMsg extends BaseMsg {
 
 export interface BorderPullMsg extends BaseMsg {
   type: 'BorderPull';
+  index?: number;
+  gestureId?: string;
+  end?: boolean;
   x: number;
   y: number;
   dx: number;
@@ -371,11 +389,19 @@ export interface TangibleRemovedMsg extends BaseMsg {
   id: TangibleId;
 }
 
+/** Oz grants exactly one placement; the table supplies contact geometry, never activation. */
+export interface TangiblePlacementModeMsg extends BaseMsg { type: 'TangiblePlacementMode'; mode: TangiblePlacementMode }
+export interface TangiblePrepareMsg extends BaseMsg { type: 'TangiblePrepare'; id: TangibleId }
+export interface TangiblePlacementCancelMsg extends BaseMsg { type: 'TangiblePlacementCancel' }
+export interface TangibleTouchPlacedMsg extends BaseMsg {
+  type: 'TangibleTouchPlaced'; id: TangibleId; token: number; a: Vec2; b: Vec2;
+}
+
 /** Semantic lifecycle, shared by Oz and a future tangible sensor adapter. */
 export interface TangibleControlMsg extends BaseMsg {
   type: 'TangibleControl';
   id: TangibleId;
-  /** Only Oz: dock at either station, then activate to charge. */
+  /** Only Oz: activation; legacy dock returns the object to the neutral depot. */
   action: 'configure' | 'dock' | 'activate' | 'deactivate';
   team?: Team;
   kind?: Tangible['kind'];
@@ -429,6 +455,7 @@ export interface PhaseChangeMsg extends BaseMsg {
 }
 
 export type ClientMessage =
+  | RaceSettingsMsg
   | StrokeDrawMsg
   | GenerateTrackMsg
   | BeginRaceMsg
@@ -449,6 +476,10 @@ export type ClientMessage =
   | TangibleMovedMsg
   | TangibleRemovedMsg
   | TangibleControlMsg
+  | TangiblePlacementModeMsg
+  | TangiblePrepareMsg
+  | TangiblePlacementCancelMsg
+  | TangibleTouchPlacedMsg
   | PingMsg
   | NewGameMsg
   | ResetMsg

@@ -131,12 +131,13 @@ await test('whichever finger is pulled is the pouch (roles do not depend on the 
   near(m.anchor, { x: (F1.x + F3.x) / 2, y: (F1.y + F3.y) / 2 }, 'fork');
 });
 
-await test('lifting a fork finger first still fires the shot', async () => {
+await test('a fork lift stays latched and never fires before the pouch release', async () => {
   const r = rig();
   await land(r);
   await pullDown(r, 3, F3, 150);
   r.up(1, F1.x, F1.y);
-  assert.equal(r.sent.length, 1);
+  assert.equal(r.sent.length,0);await sleep(300);
+  assert.equal(r.sent.length, 0);
   r.up(2, F2.x, F2.y);
   r.up(3, F3.x, F3.y + 150);
   assert.equal(r.sent.length, 1, 'the other fingers do not fire anything else');
@@ -190,7 +191,7 @@ await test('only the copilot POWER button emits activation, the former pilot ite
     r.sent.length = 0;
     const former = localToWorld(panelOf(team, 'pilot'), -20, 45);
     r.down(2, former.x, former.y); r.up(2, former.x, former.y);
-    assert.deepEqual(r.sent, []);
+    assert.equal(r.sent.filter(m=>m.type==='Power').length,0,'pilot controls never arm stock');
   }
 });
 
@@ -211,10 +212,10 @@ await test('two repair contacts in opposite corners belong to the same team', as
 });
 
 await test('the shared control adapter preserves held-pedal throttle across steering and releases', async () => {
-  const { localToWorld, panelOf, PEDAL_LOCAL, STEER_AREA_LOCAL } = await import('../server/layout.js');
+  const { localToWorld, panelOf, PEDAL_LOCAL, STEER_AREA_LOCAL, steerArea } = await import('../server/layout.js');
   const r = rig(); r.view.state!.driveMode.A = 'pedal';
   const pedal = localToWorld(panelOf('A', 'pilot'), PEDAL_LOCAL.x, PEDAL_LOCAL.y);
-  const steer = localToWorld(panelOf('A', 'pilot'), STEER_AREA_LOCAL.x - 30, STEER_AREA_LOCAL.y);
+  const steer = localToWorld(panelOf('A', 'pilot'), steerArea('pedal').x - 30, steerArea('pedal').y);
   r.down(1, pedal.x, pedal.y);
   assert.equal(r.sent.at(-1)!.throttle, 1);
   r.down(2, steer.x, steer.y);
@@ -237,29 +238,9 @@ await test('the central resume icon works only while paused, and consumes the to
   assert.equal(r.view.sling, null);
 });
 
-await test('tapping a pilot drive mode button toggles the drive mode for that team', async () => {
-  const { DRIVE_MODE_BUTTONS } = await import('../client-table/Renderer.js');
-  const r = rig();
-  const btnA = DRIVE_MODE_BUTTONS.A;
-
-  // In LOBBY (title screen), buttons are inert
-  r.view.state!.phase = 'LOBBY';
-  r.down(1, btnA.x + btnA.w / 2, btnA.y + btnA.h / 2);
-  r.up(1, btnA.x + btnA.w / 2, btnA.y + btnA.h / 2);
-  assert.equal(r.sent.length, 0);
-
-  // In READY, Pilot A button toggles
-  r.view.state!.phase = 'READY';
-  r.down(1, btnA.x + btnA.w / 2, btnA.y + btnA.h / 2);
-  r.up(1, btnA.x + btnA.w / 2, btnA.y + btnA.h / 2);
-  assert.deepEqual(r.sent.at(-1), { type: 'ToggleDriveMode', team: 'A' });
-
-  // In RACE, Pilot B button toggles
-  r.view.state!.phase = 'RACE';
-  const btnB = DRIVE_MODE_BUTTONS.B;
-  r.down(2, btnB.x + btnB.w / 2, btnB.y + btnB.h / 2);
-  r.up(2, btnB.x + btnB.w / 2, btnB.y + btnB.h / 2);
-  assert.deepEqual(r.sent.at(-1), { type: 'ToggleDriveMode', team: 'B' });
+await test('former mode buttons and neutral settings space never toggle drive mode on the canvas',async()=>{
+  const {SETTINGS_BUTTON}=await import('../server/layout.js');
+  for(const phase of ['LOBBY','READY','RACE'] as const){const r=rig(null);r.view.state!.phase=phase;r.down(1,SETTINGS_BUTTON.x+30,SETTINGS_BUTTON.y+30);r.up(1,SETTINGS_BUTTON.x+30,SETTINGS_BUTTON.y+30);assert.equal(r.sent.length,0);}
 });
 
 await test('the tangible-test lobby entry starts its own mode without changing the other entries', async () => {
@@ -282,6 +263,94 @@ await test('automatic test consumes pilot touches while copilot POWER and repair
   const pad=padLocal('copilot'),at=localToWorld(panel,pad.x,pad.y);
   r.down(4,at.x,at.y);r.up(4,at.x,at.y);
   assert.deepEqual(r.sent.filter(m=>m.type==='PadHold').map(m=>[m.role,m.on]),[['copilot',true],['copilot',false]]);
+});
+
+await test('a border pull follows the two fingers through a full wall-sized drag instead of consuming the first movement',async()=>{
+  const {generatePreset}=await import('../server/MapGenerator.js');
+  const r=rig('boost'),track=generatePreset();r.view.state!.track=track;
+  const index=Math.floor(track.centerline.length/4),at=track.outerEdge[index],centre=track.centerline[index],d=Math.hypot(at.x-centre.x,at.y-centre.y),out={x:(at.x-centre.x)/d,y:(at.y-centre.y)/d};
+  // Adjacent samples on the same edge supply actual, nearby grab points.
+  const b=track.outerEdge[(index+1)%track.outerEdge.length];r.down(1,at.x,at.y);r.down(2,b.x,b.y);
+  for(let amount=30;amount<=220;amount+=30){r.move(1,at.x+out.x*amount,at.y+out.y*amount);r.move(2,b.x+out.x*amount,b.y+out.y*amount);await sleep(35);}
+  r.up(1,at.x+out.x*220,at.y+out.y*220);r.up(2,b.x+out.x*220,b.y+out.y*220);
+  const pulls=r.sent.filter(m=>m.type==='BorderPull');assert.ok(pulls.length>=4,'one gesture streams its growing displacement');
+  assert.equal(new Set(pulls.map(m=>m.gestureId)).size,1);assert.equal(pulls.at(-1)!.end,true);
+  assert.ok(Math.hypot(pulls.at(-1)!.dx as number,pulls.at(-1)!.dy as number)>150,'the final pull is much larger than its first 20 px');
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,0);
+});
+
+await test('bend grabs accept fingers inside and outside the edge and drag perpendicular to the local tangent',async()=>{
+  const {generatePreset}=await import('../server/MapGenerator.js');const {trackTangent}=await import('../server/geometry.js');
+  const r=rig('boost'),track=generatePreset();r.view.state!.track=track;
+  const index=42;
+  const point=(i:number,offset:number)=>{const t=trackTangent(track,i),edge=track.outerEdge[i],centre=track.centerline[i],side=(edge.x-centre.x)*(-t.y)+(edge.y-centre.y)*t.x<0?-1:1;return{x:edge.x-t.y*side*offset,y:edge.y+t.x*side*offset};};
+  const a=point(index,35),b=point(index+2,-35),t=trackTangent(track,index+1),edge=track.outerEdge[index+1],centre=track.centerline[index+1],side=(edge.x-centre.x)*(-t.y)+(edge.y-centre.y)*t.x<0?-1:1,out={x:-t.y*side,y:t.x*side};
+  r.down(1,a.x,a.y);r.down(2,b.x,b.y);r.move(1,a.x+out.x*100,a.y+out.y*100);r.move(2,b.x+out.x*100,b.y+out.y*100);r.up(1,a.x+out.x*100,a.y+out.y*100);r.up(2,b.x+out.x*100,b.y+out.y*100);
+  const pull=r.sent.find(m=>m.type==='BorderPull');assert.ok(pull,'the curved edge is grabbable on either side of its outline');
+  assert.ok(Math.abs((pull.dx as number)*t.x+(pull.dy as number)*t.y)<20,'the pull follows the normal to the local tangent');
+});
+
+await test('stationary boost contacts still work on the ribbon edges despite the wider drag grab margin',async()=>{
+  const {generatePreset}=await import('../server/MapGenerator.js');const r=rig('boost'),track=generatePreset();r.view.state!.track=track;
+  const i=42,a=track.outerEdge[i],b=track.innerEdge[i];r.down(1,a.x,a.y);r.down(2,b.x,b.y);await sleep(240);
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1);r.recognizer.releaseAll();
+});
+
+await test('an expected boost accepts delayed taps and ignores a third finger instead of forming a sling',async()=>{
+  const r=rig('boost');r.down(1,800,500);r.up(1,800,500);await sleep(400);
+  r.down(2,1000,500);r.down(3,812,510);await sleep(240);
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1);assert.equal(r.view.sling,null);r.recognizer.releaseAll();
+});
+await test('a slingshot accepts delayed fork contacts and a brief lost/replaced anchor',async()=>{
+  const r=rig();r.down(1,F1.x,F1.y);await sleep(450);r.down(2,F2.x,F2.y);r.down(3,F3.x,F3.y);
+  await pullDown(r,3,F3,150);r.up(1,F1.x,F1.y);await sleep(80);assert.equal(r.sent.length,0);
+  r.down(4,F1.x+6,F1.y+4);r.up(3,F3.x,F3.y+150);assert.equal(r.sent.filter(m=>m.type==='Slingshot').length,1);r.recognizer.releaseAll();
+});
+await test('a slingshot fork may be tapped before the pulling finger is held',async()=>{
+  const r=rig();r.down(1,F1.x,F1.y);r.up(1,F1.x,F1.y);await sleep(350);
+  r.down(2,F2.x,F2.y);r.down(3,F3.x,F3.y);await pullDown(r,3,F3,150);r.up(3,F3.x,F3.y+150);
+  assert.equal(r.sent.filter(m=>m.type==='Slingshot').length,1);r.recognizer.releaseAll();
+});
+
+await test('two held fingers can grab the folded inner bank of a right-angle elbow',async()=>{
+  const {generatePreset,rebuildEdges}=await import('../server/MapGenerator.js');const r=rig(null),track=generatePreset();
+  const corners=[{x:600,y:400},{x:1200,y:400},{x:1200,y:700},{x:600,y:700}];
+  track.centerline=corners.flatMap((p,i)=>Array.from({length:20},(_,j)=>({x:p.x+(corners[(i+1)%4].x-p.x)*j/20,y:p.y+(corners[(i+1)%4].y-p.y)*j/20})));
+  track.baseCenterline=track.centerline.map(p=>({...p}));track.widths=track.centerline.map(()=>140);rebuildEdges(track);r.view.state!.track=track;
+  const a=track.innerEdge[19],b=track.innerEdge[21];r.down(1,a.x,a.y);r.down(2,b.x,b.y);
+  r.move(1,a.x-70,a.y+70);r.move(2,b.x-70,b.y+70);r.up(1,a.x-70,a.y+70);r.up(2,b.x-70,b.y+70);
+  assert.ok(r.sent.some(m=>m.type==='BorderPull'),'the concave elbow is a grabbable rendered bank');r.recognizer.releaseAll();
+});
+
+for(const delayed of [false,true])await test(`boost accepts close ${delayed?'one-second delayed':'simultaneous'} contacts`,async()=>{
+  const r=rig('boost');r.down(1,900,500);
+  if(delayed){r.up(1,900,500);await sleep(1000);}
+  r.down(2,930,500);r.up(2,930,500);await sleep(210);
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1,'close touches form a pair');r.recognizer.releaseAll();
+});
+await test('a repeated tap with the same pointerId is a second boost contact',async()=>{
+  const r=rig('boost');r.down(1,900,500);r.up(1,900,500);await sleep(220);
+  r.down(1,902,500);r.up(1,902,500);await sleep(210);
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1,'a second tap is not an anchor replacement');r.recognizer.releaseAll();
+});
+await test('fingers landing before the POWER state echo are retained',async()=>{
+  const r=rig('boost');r.view.state!.cars.A.itemArmed=false;
+  r.down(1,900,500);r.down(2,930,500);await sleep(50);
+  r.view.state!.cars.A.itemArmed=true;r.recognizer.syncState();await sleep(210);
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1,'network echo does not reject fresh fingers');r.recognizer.releaseAll();
+});
+await test('slingshot fork accepts a full second between the first two taps',async()=>{
+  const r=rig();r.down(1,F1.x,F1.y);r.up(1,F1.x,F1.y);await sleep(1000);
+  r.down(2,F2.x,F2.y);r.down(3,F3.x,F3.y);await pullDown(r,3,F3,150);
+  r.cancel(2,F2.x,F2.y);await sleep(350);assert.equal(r.sent.length,0,'a dropped anchor never fires');
+  r.up(3,F3.x,F3.y+150);assert.equal(r.sent.filter(m=>m.type==='Slingshot').length,1,'latched fork survives a missed hold');r.recognizer.releaseAll();
+});
+
+await test('one finger sliding while settling does not suppress an expected boost',async()=>{
+  const {generatePreset}=await import('../server/MapGenerator.js');const r=rig('boost'),track=generatePreset();r.view.state!.track=track;
+  const a=track.outerEdge[42],b=track.outerEdge[44],centre=track.centerline[42],d=Math.hypot(a.x-centre.x,a.y-centre.y),out={x:(a.x-centre.x)/d,y:(a.y-centre.y)/d};
+  r.down(1,a.x,a.y);r.down(2,b.x,b.y);r.move(1,a.x+out.x*25,a.y+out.y*25);await sleep(220);
+  assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1,'a single settling correction is not a two-finger drag');r.recognizer.releaseAll();
 });
 
 let failed = 0;

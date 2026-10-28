@@ -2,11 +2,12 @@ import type { BoostGate, TrackGeometry, Vec2 } from './types.js';
 import { closestOnSegment, dist, nearestOnTrack, segmentsIntersect } from './geometry.js';
 
 export const BOOST_DEPTH = 60;
+export const BOOST_MIN_WIDTH = 110;
 
-/** The gesture sets the width; the local road supplies the direction of travel. */
+/** Close taps get a usable minimum footprint; the local road supplies its direction. */
 export function orientBoostGate(a: Vec2, b: Vec2, track: TrackGeometry | null) {
-  const mid = { x: (a.x+b.x)/2, y: (a.y+b.y)/2 }, length = dist(a,b);
-  let forward = { x: -(b.y-a.y)/length, y: (b.x-a.x)/length };
+  const mid = { x: (a.x+b.x)/2, y: (a.y+b.y)/2 }, gap = dist(a,b), length = Math.max(BOOST_MIN_WIDTH,gap);
+  let forward = gap>1e-6?{ x: -(b.y-a.y)/gap, y: (b.x-a.x)/gap }:{x:1,y:0};
   if (track && track.centerline.length > 2) {
     const nearest = nearestOnTrack(mid,track), points = track.centerline;
     let bestScore = Infinity;
@@ -18,7 +19,7 @@ export function orientBoostGate(a: Vec2, b: Vec2, track: TrackGeometry | null) {
       if(d>nearest.distance+8)continue;
       const size=dist(start,end);if(size<1e-6)continue;
       const tangent={x:(end.x-start.x)/size,y:(end.y-start.y)/size};
-      const parallel=Math.abs((b.x-a.x)/length*tangent.x+(b.y-a.y)/length*tangent.y);
+      const parallel=gap>12?Math.abs((b.x-a.x)/gap*tangent.x+(b.y-a.y)/gap*tangent.y):0;
       const score=d*d+parallel*parallel*400;
       if(score<bestScore){bestScore=score;forward=tangent;}
     }

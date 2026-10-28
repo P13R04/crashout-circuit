@@ -1,6 +1,6 @@
 /** Direction, full corridor collision and pause clocks shared by both render themes. */
 import assert from 'node:assert/strict';
-import { orientBoostGate, boostFrame, hitsBoostGate } from '../server/boostGeometry.js';
+import { orientBoostGate, boostFrame, hitsBoostGate, BOOST_MIN_WIDTH } from '../server/boostGeometry.js';
 import { generatePreset, generate, selfCrossings } from '../server/MapGenerator.js';
 import { createInitialState, GameRules } from '../server/GameRules.js';
 import { dist } from '../server/geometry.js';
@@ -41,6 +41,18 @@ test('the complete oriented corridor catches fast front, rear and lateral crossi
   assert.ok(hitsBoostGate(at(-100,30),at(300,30),g),'fast side-to-side sweep');
   assert.equal(hitsBoostGate(at(-100,f.depth+16),at(300,f.depth+16),g),false,'outside the body-contact margin');
   assert.equal(hitsBoostGate(at(-100,-16),at(300,-16),g),false,'outside the rear margin');
+});
+test('close and coincident contacts make a finite, usable runway aligned with the road',()=>{
+  for(const gap of [0,2,30,100]){
+    const at=track.centerline[32],g=orientBoostGate(at,{x:at.x+gap,y:at.y},track),f=boostFrame(g);
+    assert.equal(Math.round(f.length),BOOST_MIN_WIDTH,'small touches get a full footprint');
+    assert.ok([g.a.x,g.a.y,g.b.x,g.b.y,g.dir.x,g.dir.y].every(Number.isFinite),'no division by zero on a repeated tap');
+    assert.ok(hitsBoostGate(at,{x:at.x+g.dir.x*30,y:at.y+g.dir.y*30},g),'the minimum runway catches a car');
+  }
+  const s=createInitialState(),rules=new GameRules(s,{transition:p=>{s.phase=p;},broadcastFull(){},feedback(){}},()=>1_000_000);
+  s.phase='RACE';rules.startRace(track);s.cars.A.heldItem='boost';rules.onPower('A');
+  rules.onBoostGate({type:'BoostGate',t:1_000_000,team:'A',a:track.centerline[32],b:track.centerline[32]});
+  assert.equal(s.boostGates.length,1,'the server accepts the same tolerant gesture as the table');
 });
 test('pause preserves the deployment age and lifetime of a boost; expiry still removes it',()=>{
   const s=createInitialState(),clock={now:1_000_000};

@@ -8,6 +8,7 @@
  */
 import type { GameState, Team, Car } from './types.js';
 import { config } from './config.js';
+import { speedScale } from './raceSettings.js';
 import { nearestOnTrack } from './geometry.js';
 import { GameRules, CAR_RADIUS } from './GameRules.js';
 
@@ -52,6 +53,7 @@ export class PhysicsLoop {
     s.tick++;
 
     this.rules.tickMap(now);
+    this.rules.tickTangiblePlacement(now);
 
     if (s.phase === 'RACE' && s.track) {
       this.rules.expire(now);
@@ -78,7 +80,7 @@ export class PhysicsLoop {
 
   private integrate(car: Car, input: { throttle: number; steer: number }, now: number, dt: number): void {
     const stunned = now < car.stunUntil;
-    if (car.disabled) {
+    if (car.disabled || car.respawnUntil>now) {
       car.speed = 0;
       car.velocity = { x: 0, y: 0 };
       return;
@@ -91,7 +93,7 @@ export class PhysicsLoop {
 
     const boost = now < car.boostUntil ? 1 + config.boostGain * car.boostK : 1;
     const slow = now < car.slowUntil ? config.arcSlowFactor : 1;
-    const baseMaxFwd = isPedal ? config.vMaxPedal : config.vMaxFwd;
+    const baseMaxFwd = (isPedal ? config.vMaxPedal : config.vMaxFwd)*speedScale(this.state.params.difficulty);
     const maxFwd = baseMaxFwd * boost * slow;
 
     const target = throttle * maxFwd;
@@ -114,7 +116,7 @@ export class PhysicsLoop {
   /** The drivable area is the band of local half-width around the centerline. */
   private checkTrackFall(team: Team, car: Car, now: number): void {
     const track = this.state.track;
-    if (!track || car.disabled) return;
+    if (!track || car.disabled || car.respawnUntil>now) return;
     const hit = nearestOnTrack(car.pos, track);
     const limit = hit.halfWidth - CAR_RADIUS;
     const reformGrace = this.rules.isTrackReforming() ? config.trackDeformSafetyPx : 0;

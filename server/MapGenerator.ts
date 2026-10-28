@@ -1012,7 +1012,7 @@ export function generatePreset(): TrackGeometry {
   for (let i = 0; i < LOOP_N; i++) {
     const a = (i / LOOP_N) * Math.PI * 2;
     // Rounded bean: ellipse with a gentle dent
-    const rx = 640, ry = 220 + 15 * Math.cos(2 * a);
+    const rx = 720, ry = 250 + 15 * Math.cos(2 * a);
     pts.push({ x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a) * (1 - 0.08 * Math.cos(a)) });
   }
   const loop = signedArea(pts) < 0 ? pts.reverse() : pts;

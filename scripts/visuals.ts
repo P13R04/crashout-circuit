@@ -1,6 +1,12 @@
 /** Visual invariants and rendering smoke checks; actual raster/performance QA runs in the browser. */
 import assert from 'node:assert/strict';
 import { indexedRotation, pressStroke, steamSample } from '../client-table/IndustrialMotion.js';
+import { layoutScenery, sceneryKey, sceneryReservations, standClearance, venuePoint, roadClearance } from '../client-table/SceneryLayout.js';
+import { planStandSections, standFootprint, standFootprintsOverlap } from '../client-table/StandSections.js';
+import type { VenueFrame } from '../client-table/SceneryLayout.js';
+import { racingGrid } from '../client-table/RaceGrid.js';
+import { isInsideTrackRibbon,trackTangent } from '../server/geometry.js';
+import { ThemeWorld } from '../client-table/ThemeWorld.js';
 import { ScrapBackdrop } from '../client-table/ScrapBackdrop.js';
 import { TrailBuffer, TRAIL_LIMIT, TRAIL_LIFE_MS, advanceVisualTime } from '../client-table/VisualMotion.js';
 import { visibleTrackEdges } from '../client-table/NeonTrack.js';
@@ -131,6 +137,86 @@ test('industrial machinery and vapour reuse their raster parts through motion an
   for (let frame = 0; frame < 120; frame++) backdrop.draw(ctx, frame * 131, frame > 80, frame > 100);
   assert.equal(calls.get('canvasAllocations'), prepared, 'no new canvases in ongoing animation');
 });
+for(const id of ['toy','classic','mayhem'] as const)test(`${id}: scenery reuses its sprites through long animations and reduced motion`,()=>{
+  const world=new ThemeWorld(id),ctx=canvas().getContext('2d')!;
+  world.draw(ctx,0,false,false);const allocated=calls.get('canvasAllocations');
+  for(let i=0;i<160;i++)world.draw(ctx,i*1271,i>120,i>140);
+  assert.equal(calls.get('canvasAllocations'),allocated,'live scenery never allocates new canvases');
+});
+test('grandstands surround the drawing on both long sides and leave road and controls clear',()=>{
+  const track=generatePreset(),layout=layoutScenery(track),frames=layout.stands.flat();
+  assert.ok(frames.some(f=>f.ny<-.8),'grandstands reach the upper straight');
+  assert.ok(frames.some(f=>f.ny>.8),'grandstands reach the lower straight');
+  for(const f of frames){assert.ok(roadClearance(venuePoint(f,42),track)>28,'front terraces stay away from the road');assert.ok(roadClearance(venuePoint(f,110),track)>65,'the rear terrace does not overlap another branch');}
+  const key=sceneryKey(track),copy=structuredClone(track);copy.centerline[0].x+=100;
+  assert.equal(sceneryKey(copy),key,'a temporary pull does not make the venue slide around');
+  copy.baseCenterline[0].x+=50;assert.notEqual(sceneryKey(copy),key,'a different circuit rebuilds the venue');
+});
+for(const id of ['toy','classic','mayhem'] as const)test(`${id}: populated venue stays cached across snapshots and temporary pulls`,()=>{
+  const world=new ThemeWorld(id),ctx=canvas().getContext('2d')!,track=generatePreset();world.draw(ctx,0,false,false,track);
+  const allocated=calls.get('canvasAllocations');
+  for(let i=0;i<80;i++){const copy=structuredClone(track);copy.centerline[3].x+=i;world.draw(ctx,i*313,false,false,copy);}
+  assert.equal(world.builds,1,'drawing-based scenery is prepared once');assert.equal(calls.get('canvasAllocations'),allocated,'no new canvases during venue animations');
+  const changed=structuredClone(track);changed.baseCenterline[3].x+=25;world.draw(ctx,25000,true,false,changed);assert.equal(world.builds,2,'a new drawing updates the scenery');
+});
+test('title and creation layouts keep the full prop footprint away from text and drawing surfaces',()=>{
+  for(const mode of ['lobby','map'] as const){
+    const layout=layoutScenery(generatePreset(),mode);assert.ok(layout.anchors.length>=2,'peripheral decoration remains present');
+    for(const p of layout.anchors)for(const r of sceneryReservations(mode)){
+      const dx=Math.max(r.x-p.x,0,p.x-r.x-r.w),dy=Math.max(r.y-p.y,0,p.y-r.y-r.h);
+      assert.ok(Math.hypot(dx,dy)>p.room,'the whole prop clears the reserved UI rectangle');
+    }
+  }
+});
+test('large scenery clears the road, grandstands and other full-sized props, including on a figure eight',()=>{
+  for(const track of [generatePreset(),eight]){
+    const layout=layoutScenery(track);
+    for(const a of layout.anchors){
+      assert.ok(roadClearance(a,track)>=a.room+9,'the full prop footprint clears the road');
+      assert.ok(standClearance(a,layout.stands)>=a.room+9,'pits and festival stalls clear the spectator strip');
+      for(const b of layout.anchors)if(a!==b)assert.ok(Math.hypot(a.x-b.x,a.y-b.y)>a.room+b.room,'props do not overlap one another');
+    }
+  }
+});
+test('F1 start boxes follow curved approaches and stay inside the road at bends and crossings',()=>{
+  let visible=0;
+  for(const base of [generatePreset(),eight])for(const index of [0,35,65,100,160,220]){
+    const track=structuredClone(base),i=index%track.centerline.length,t=trackTangent(track,i);
+    track.startLine={pos:{...track.centerline[i]},normal:{x:-t.y,y:t.x}};
+    const boxes=racingGrid(track);visible+=boxes.length;
+    for(const points of boxes)for(const p of points)assert.ok(isInsideTrackRibbon(p,track,8),'no paint outside the drivable ribbon');
+  }
+  assert.ok(visible>30,'the safety check preserves grid boxes on ordinary curves');
+});
+test('grandstand footprints detect overlap, containment and a separate aisle',()=>{
+  const box=(x:number,y:number)=>[{x,y},{x:x+20,y},{x:x+20,y:y+40},{x,y:y+40}];
+  assert.equal(standFootprintsOverlap(box(0,0),box(10,10)),true);
+  assert.equal(standFootprintsOverlap(box(0,0),box(20,0)),false,'a shared seam is valid');
+  assert.equal(standFootprintsOverlap(box(0,0),box(24,0),8),true,'independent sections need an aisle');
+  assert.equal(standFootprintsOverlap(box(0,0),box(30,0),8),false);
+});
+test('a tight concave offset is split before its rear terraces fold backwards',()=>{
+  const frames=Array.from({length:45},(_,i):VenueFrame=>{
+    const a=i*.04;return{x:960+100*Math.cos(a),y:540+100*Math.sin(a),tx:-Math.sin(a),ty:Math.cos(a),nx:-Math.cos(a),ny:-Math.sin(a),half:65,distance:i*14,index:i};
+  });
+  assert.equal(planStandSections(frames,()=>true).length,0,'reversed rear edges never produce a stand');
+  const convex=frames.map(f=>({...f,nx:-f.nx,ny:-f.ny}));
+  assert.ok(planStandSections(convex,()=>true).length>0,'ordinary outside curves retain their stands');
+});
+test('successive turns cannot overlap another section or an earlier part of the same terrace',()=>{
+  const frames=Array.from({length:310},(_,i):VenueFrame=>{
+    const a=i*.035,r=260-a*9,dx=-9*Math.cos(a)-r*Math.sin(a),dy=-9*Math.sin(a)+r*Math.cos(a),length=Math.hypot(dx,dy);
+    return{x:960+r*Math.cos(a),y:540+r*Math.sin(a),tx:dx/length,ty:dy/length,nx:dy/length,ny:-dx/length,half:50,distance:i*14,index:i};
+  });
+  const sections=planStandSections(frames,()=>true);
+  assert.ok(sections.length>0,'visible terraces remain around the curve');
+  const tiles=sections.flatMap((run,section)=>run.slice(1).map((b,i)=>({section,i,shape:standFootprint(run[i],b)})));
+  for(let i=0;i<tiles.length;i++)for(let j=i+1;j<tiles.length;j++){
+    const a=tiles[i],b=tiles[j];if(a.section===b.section&&Math.abs(a.i-b.i)===1)continue;
+    assert.equal(standFootprintsOverlap(a.shape,b.shape,a.section===b.section?0:8),false,'non-neighbouring terrace volumes never intersect');
+  }
+  assert.ok(tiles.length<frames.length-10,'the overlapping later turn is actually trimmed');
+});
 function scene() {
   const view = createView(() => 1_000_000), state = createInitialState();
   view.state = state; view.visualTime = 200; state.track = generatePreset(); state.trackVersion = 1;
@@ -173,7 +259,7 @@ test('map labels remain P1 and P2 after JSON synchronization and either drawing 
     recordedText=null;view.strokes.clear();
   }
 });
-test('boost deployment and expiry remain finite and immutable across both themes and reduced motion', () => {
+test('boost deployment and expiry remain finite and immutable across all themes and reduced motion', () => {
   const {view,state,renderer}=scene();state.phase='RACE';
   for(const theme of THEMES)for(const reduced of [false,true]){
     view.theme=theme.id;view.reducedMotion=reduced;
@@ -182,9 +268,9 @@ test('boost deployment and expiry remain finite and immutable across both themes
       const before=JSON.stringify(state);renderer.render(view);assert.equal(JSON.stringify(state),before);
     }
   }
-  assert.equal(renderer.stats.trackBuilds,2,'object animation never rebuilds either deck');
+  assert.equal(renderer.stats.trackBuilds,THEMES.length,'object animation never rebuilds a theme deck');
 });
-test('automatic-pilot HUD and repair feedback render in both themes without changing physics', () => {
+test('automatic-pilot HUD and repair feedback render in all themes without changing physics', () => {
   const {view,state,renderer}=scene();state.sessionMode='tangibles-test';
   state.cars.A.disabled=true;state.cars.A.hp=0;
   state.repairPads['A-pilot'].held=true;state.repairProgress.A=.45;
@@ -192,6 +278,16 @@ test('automatic-pilot HUD and repair feedback render in both themes without chan
     view.theme=theme.id;state.phase=phase;
     const before=JSON.stringify(state);renderer.render(view);assert.equal(JSON.stringify(state),before);
   }
+});
+test('touch placement shows neutral contact cues and a fixed-size preview in all themes without state mutations',()=>{
+  const {view,state,renderer}=scene();state.phase='RACE';state.tangiblePlacementMode='touch';
+  for(const theme of THEMES)for(const reduced of [false,true])for(const id of [1,2,3] as const){
+    view.theme=theme.id;view.reducedMotion=reduced;state.tangiblePlacement={id,token:1,expiresAt:view.now()+20_000};
+    for(const points of [[],[{x:900,y:500}],[{x:900,y:500},{x:900,y:580}]]){
+      view.tangibleTouch={points,valid:points.length===2};const before=JSON.stringify(state);renderer.render(view);assert.equal(JSON.stringify(state),before);
+    }
+  }
+  state.tangiblePlacement=null;view.tangibleTouch=null;renderer.render(view);
 });
 for (const theme of THEMES) test(`${theme.name}: static / paused frames reuse the deck, deformed geometry updates it and resize invalidates it`, () => {
   const { view, state, renderer, surface } = scene(); view.theme = theme.id; state.phase = 'RACE'; renderer.render(view);
@@ -266,7 +362,7 @@ test('switching themes preserves race data, reuses each deck and clears incompat
 test('theme preference survives reload, tolerates invalid values and unavailable storage', () => {
   const values = new Map<string, string>();
   const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
-  assert.equal(loadTheme(storage), 'neon'); saveTheme(storage, 'scrap'); assert.equal(loadTheme(storage), 'scrap');
+  assert.equal(loadTheme(storage), 'neon');for(const theme of THEMES){saveTheme(storage,theme.id);assert.equal(loadTheme(storage),theme.id);}
   values.set(THEME_STORAGE_KEY, 'unknown'); assert.equal(loadTheme(storage), 'neon');
   assert.equal(loadTheme({ getItem() { throw Error('denied'); } }), 'neon');
   assert.doesNotThrow(() => saveTheme({ setItem() { throw Error('denied'); } }, 'scrap'));

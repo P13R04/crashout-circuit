@@ -14,21 +14,30 @@
       padding: 10px 18px; border: 1px solid #ffbe37; border-radius: 20px;
       color: #ffdf9a; background: #080f26f5; font: 14px system-ui; pointer-events: none;
     }
-    #pc-tools { position: fixed; bottom: var(--tools-bottom, 8px); left: var(--tools-x, 56.25%); transform: translateX(-50%); font: 13px system-ui; color: #d8e1f0; }
+    #pc-tools { position: fixed; top: var(--tools-y, 35px); left: var(--tools-x, 55%); width:var(--tools-w,110px); height:var(--tools-h,76px); font: 13px system-ui; color: #d8e1f0; }
     summary {
-      width: max-content; margin: auto; padding: 9px 18px; border: 1px solid #64748b;
+      width: 100%; height:100%; margin: auto; padding: 0; justify-content:center; border: 1px solid #64748b;
       border-radius: 20px; background: #080f26ee; cursor: pointer; list-style: none;
     }
     summary::-webkit-details-marker { display: none; }
-    summary { display: flex; align-items: center; gap: 8px; min-height: 44px; }
-    summary svg { color: #8ee7ec; }
+    summary { display: flex; align-items: center; gap: 8px; min-height: 0; }
+    summary svg { color: #8ee7ec; width:calc(32px * var(--tools-scale,1)); height:calc(32px * var(--tools-scale,1)); }
     .tools-content {
-      position: absolute; bottom: 48px; left: 50%; transform: translateX(-50%);
+      position: absolute; top: 50%; left: calc(100% + 10px); transform: translateY(-50%); max-height:calc(100vh - 24px); overflow-y:auto;
       width: min(400px, calc(100vw - 32px)); padding: 16px; background: #080f26f5;
       border: 1px solid #64748b; border-radius: 18px; box-shadow: 0 8px 30px #0008;
     }
+    #settings-home { width:100%; margin-bottom:14px; }
     #fullscreen { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; margin-bottom: 14px; }
     #fullscreen-notice { color: #ffca8b; font-size: 12px; margin-bottom: 10px; }
+    #drive-options { margin-bottom:14px; }
+    #drive-A { border-color:#00e5ff; } #drive-B { border-color:#ff4081; }
+    #race-options { margin:14px 0; padding-top:12px; border-top:1px solid #ffffff18; }
+    #race-options label { display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0; }
+    #race-options input[type=number] { width:62px; }
+    #race-options input,#race-options select { font:inherit; background:#122044; color:#fff;border:1px solid #64748b;border-radius:6px;padding:7px; }
+    #race-options input[type=checkbox] { width:18px;height:18px;vertical-align:middle; }
+    #race-options :disabled { opacity:.4; }
     .setting-label { font-size: 12px; color: #b9cbd0; margin-bottom: 10px; }
     #theme-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 4px; }
     .theme-option { padding: 12px; text-align: left; background: #101b26; }
@@ -38,7 +47,7 @@
     .theme-option strong, .theme-option small { display: block; }
     .theme-option small { color: #b4c8ce; font-size: 11px; margin-top: 4px; }
     #sim.on { border-top: 1px solid #ffffff18; margin-top: 14px; padding-top: 12px; }
-    body[data-theme="scrap"] .tools-content, body[data-theme="scrap"] summary { background: #162329f5; border-color: #758c91; }
+
     #sim, #testbar { display: none; flex-wrap: wrap; gap: 8px; }
     #sim.on, #testbar.on { display: flex; }
     #testbar.on { border-top: 1px solid #ffffff18; margin-top: 12px; padding-top: 12px; }
@@ -50,6 +59,15 @@
     button.armed { background: #00e5ff; color: #04081f; }
     button.active { border-color: #ffbe37; background: #553a12; }
     button.active::before { content: '✓ '; color: #ffbe37; }
+    .tools-content, summary { background:var(--look-panel,#0b1528); border-color:var(--look-line,#344760); border-radius:var(--look-radius,18px); color:var(--look-ink,#dceef4); }
+    summary svg { color:var(--look-accent,#ffce66); }
+    button, .theme-option, #race-options input, #race-options select { background:var(--look-button,#081323); border-color:var(--look-line,#344760); color:var(--look-ink,#dceef4); }
+    button:hover { border-color:var(--look-accent,#ffce66); }
+    .theme-option[aria-pressed="true"] { border-color:var(--look-accent,#ffce66); box-shadow:inset 0 0 0 1px var(--look-accent,#ffce66); background:var(--look-top,#132039); }
+    .theme-option[aria-pressed="true"] strong::after { content:' ✓'; color:var(--look-accent,#ffce66); }
+    body[data-theme="toy"] button { border-radius:16px; box-shadow:inset 0 -3px 0 #0004,inset 0 2px 0 #fff1; }
+    body[data-theme="classic"] button { border-radius:5px; }
+    body[data-theme="mayhem"] button { border-radius:3px; box-shadow:inset 0 1px 0 #bdae8320; }
     :focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
     #sim-hint { width: 100%; color: #b7c2da; font-size: 12px; line-height: 1.5; }
     #sim-hint:empty { display: none; }
@@ -58,10 +76,22 @@
 <body>
   <canvas id="canvas" aria-label="Table de jeu Crashout Circuit"></canvas>
   <details id="pc-tools">
-    <summary title="Thème et options de jeu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z"/></svg>Paramètres</summary>
+    <summary title="Paramètres" aria-label="Paramètres"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z"/></svg></summary>
     <div class="tools-content">
       <button type="button" id="fullscreen" aria-pressed="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg><span>Plein écran</span></button>
+      <button type="button" id="settings-home">⌂ Accueil</button>
       <p id="fullscreen-notice" role="status" hidden></p>
+      <div id="drive-options" role="group" aria-label="Conduite" hidden>
+        <p class="setting-label">Conduite</p>
+        <button id="drive-A" aria-label="Conduite cyan" aria-pressed="false">Cyan · AUTO</button>
+        <button id="drive-B" aria-label="Conduite rose" aria-pressed="false">Rose · AUTO</button>
+      </div>
+      <div id="race-options" role="group" aria-label="Course">
+        <p class="setting-label">Course</p>
+        <label>Difficulté <select id="race-difficulty"><option value="easy">Easy · 50 %</option><option value="medium">Medium · 75 %</option><option value="hard">Hard · 100 %</option></select></label>
+        <label>Tours <input id="race-laps" type="number" min="1" max="99" step="1" value="3" /></label>
+        <label><span><input id="race-timer" type="checkbox" /> Chronomètre</span><span><input id="race-minutes" aria-label="Durée en minutes" type="number" min="0.5" max="120" step="0.5" value="2" disabled /> min</span></label>
+      </div>
       <p class="setting-label">Ambiance</p>
       <div id="theme-options" role="group" aria-label="Thème visuel"></div>
       <div id="sim" role="group" aria-label="Simuler un geste">

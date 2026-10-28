@@ -140,3 +140,21 @@ export function slingshotShot(anchor: Vec2, pouch: Vec2, p: SlingshotParams): Sl
   };
   return { valid: pull >= p.slingMinPullPx, pull, dir, range, target };
 }
+
+/** Smoothed local tangent, stable at sampled bends and across the loop seam. */
+export function trackTangent(track: Pick<TrackGeometry,'centerline'>, index:number): Vec2 {
+  const points=track.centerline,n=points.length;if(n<2)return{x:1,y:0};
+  const a=points[(index-2+n)%n],b=points[(index+2)%n];
+  const length=Math.hypot(b.x-a.x,b.y-a.y)||1;return{x:(b.x-a.x)/length,y:(b.y-a.y)/length};
+}
+
+/** Nearest rendered bank, including the folded inner edge of a tight corner. */
+export function nearestTrackEdge(p:Vec2,track:TrackGeometry,maxDistance=64){
+  let best:{index:number;bank:'outer'|'inner';distance:number;point:Vec2}|null=null;
+  for(const bank of ['outer','inner'] as const){const points=bank==='outer'?track.outerEdge:track.innerEdge;
+    for(let i=0;i<points.length;i++){const point=closestOnSegment(p,points[i],points[(i+1)%points.length]),distance=dist(p,point);
+      if(distance<=maxDistance&&(!best||distance<best.distance))best={index:i,bank,distance,point};
+    }
+  }
+  return best;
+}
