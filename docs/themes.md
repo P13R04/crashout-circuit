@@ -49,9 +49,13 @@ La pause et la préférence de mouvement réduit s’appliquent aux cinq ambianc
 
 `SceneryLayout.ts` dispose tribunes et grands objets depuis la géométrie initiale du circuit : échantillonnage à distance régulière, marge autour de la route, exclusion des commandes, choix des espaces libres pour les objets volumineux. Le décor reste fixe pendant les déformations temporaires. `F1Venue.ts`, `ToyWorkshop.ts` et `MayhemFestival.ts` possèdent chacun leurs propres éléments et animations. `ThemeWorld.ts` conserve le sol en 1440 × 810 et la composition en 1920 × 1080, réutilisés entre les instantanés réseau. Les animations ne créent aucun pool de particules croissant.
 
+Les écrans d’accueil et de création utilisent une composition périphérique dédiée. Le titre, les boutons, les consignes dans les deux orientations et la surface de dessin sont réservés au placement, puis exclus du rendu des animations décoratives. Les objets volumineux réservent leur empreinte complète et une marge autour de la piste, des gradins et des autres objets. Les petits ateliers Mayhem restent dans les zones de carcasses, hors des terrasses du public.
+
+Les cases de départ F1 utilisent la distance le long du tracé, sa tangente et sa largeur locale. Leurs côtés suivent les virages ; une case qui ne tient pas dans un coude aigu est omise. La peinture est aussi masquée par la surface exacte de la route.
+
 ## Vérification
 
-La passe actuelle vérifie les types, la compilation, les gestes et les règles serveur. Les 31 contrôles de rendu automatisés parcourent les cinq thèmes, toutes les phases, une boucle et un huit, les effets, les caches, le redimensionnement, la pause, le mouvement réduit et le changement de thème. Les animations des nouveaux décors n’allouent aucun nouveau canvas après leur préparation.
+La passe actuelle vérifie les types, la compilation, les gestes et les règles serveur. Les 34 contrôles de rendu automatisés parcourent les cinq thèmes, toutes les phases, une boucle et un huit, les effets, les caches, le redimensionnement, la pause, le mouvement réduit et le changement de thème. Les animations des nouveaux décors n’allouent aucun nouveau canvas après leur préparation.
 
 Une planche comparative en navigateur a servi à vérifier la composition des trois ambiances et à prolonger les tribunes sur les lignes droites. Cette passe ne comprend pas de mesure de fréquence d’images sur la dalle ; la lisibilité à distance et la fluidité avec les joueurs restent à confirmer sur table.
 

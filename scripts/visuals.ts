@@ -1,7 +1,9 @@
 /** Visual invariants and rendering smoke checks; actual raster/performance QA runs in the browser. */
 import assert from 'node:assert/strict';
 import { indexedRotation, pressStroke, steamSample } from '../client-table/IndustrialMotion.js';
-import { layoutScenery, sceneryKey, venuePoint, roadClearance } from '../client-table/SceneryLayout.js';
+import { layoutScenery, sceneryKey, sceneryReservations, standClearance, venuePoint, roadClearance } from '../client-table/SceneryLayout.js';
+import { racingGrid } from '../client-table/RaceGrid.js';
+import { isInsideTrackRibbon,trackTangent } from '../server/geometry.js';
 import { ThemeWorld } from '../client-table/ThemeWorld.js';
 import { ScrapBackdrop } from '../client-table/ScrapBackdrop.js';
 import { TrailBuffer, TRAIL_LIMIT, TRAIL_LIFE_MS, advanceVisualTime } from '../client-table/VisualMotion.js';
@@ -154,6 +156,35 @@ for(const id of ['toy','classic','mayhem'] as const)test(`${id}: populated venue
   for(let i=0;i<80;i++){const copy=structuredClone(track);copy.centerline[3].x+=i;world.draw(ctx,i*313,false,false,copy);}
   assert.equal(world.builds,1,'drawing-based scenery is prepared once');assert.equal(calls.get('canvasAllocations'),allocated,'no new canvases during venue animations');
   const changed=structuredClone(track);changed.baseCenterline[3].x+=25;world.draw(ctx,25000,true,false,changed);assert.equal(world.builds,2,'a new drawing updates the scenery');
+});
+test('title and creation layouts keep the full prop footprint away from text and drawing surfaces',()=>{
+  for(const mode of ['lobby','map'] as const){
+    const layout=layoutScenery(generatePreset(),mode);assert.ok(layout.anchors.length>=2,'peripheral decoration remains present');
+    for(const p of layout.anchors)for(const r of sceneryReservations(mode)){
+      const dx=Math.max(r.x-p.x,0,p.x-r.x-r.w),dy=Math.max(r.y-p.y,0,p.y-r.y-r.h);
+      assert.ok(Math.hypot(dx,dy)>p.room,'the whole prop clears the reserved UI rectangle');
+    }
+  }
+});
+test('large scenery clears the road, grandstands and other full-sized props, including on a figure eight',()=>{
+  for(const track of [generatePreset(),eight]){
+    const layout=layoutScenery(track);
+    for(const a of layout.anchors){
+      assert.ok(roadClearance(a,track)>=a.room+9,'the full prop footprint clears the road');
+      assert.ok(standClearance(a,layout.stands)>=a.room+9,'pits and festival stalls clear the spectator strip');
+      for(const b of layout.anchors)if(a!==b)assert.ok(Math.hypot(a.x-b.x,a.y-b.y)>a.room+b.room,'props do not overlap one another');
+    }
+  }
+});
+test('F1 start boxes follow curved approaches and stay inside the road at bends and crossings',()=>{
+  let visible=0;
+  for(const base of [generatePreset(),eight])for(const index of [0,35,65,100,160,220]){
+    const track=structuredClone(base),i=index%track.centerline.length,t=trackTangent(track,i);
+    track.startLine={pos:{...track.centerline[i]},normal:{x:-t.y,y:t.x}};
+    const boxes=racingGrid(track);visible+=boxes.length;
+    for(const points of boxes)for(const p of points)assert.ok(isInsideTrackRibbon(p,track,8),'no paint outside the drivable ribbon');
+  }
+  assert.ok(visible>30,'the safety check preserves grid boxes on ordinary curves');
 });
 function scene() {
   const view = createView(() => 1_000_000), state = createInitialState();

@@ -60,6 +60,7 @@ export class F1Venue {
       }
     }
     if(this.pit)this.paintPit(c,this.pit);
+    if(!layout.track&&layout.anchors[3])this.paintPit(c,layout.anchors[3]);
     // One marshal pavilion near each end of the main grandstand, not random fans.
     for(const f of this.flags.filter((_,i)=>i%3===0)){
       const p=venuePoint(f,29);c.save();c.translate(p.x,p.y);c.rotate(Math.atan2(f.ty,f.tx));
@@ -69,7 +70,7 @@ export class F1Venue {
   }
 
   private paintPit(c:Ctx,p:SceneryAnchor):void {
-    const scale=Math.min(1,p.room/145);
+    const scale=Math.min(1,p.room/170);
     c.save();c.translate(p.x,p.y);c.rotate(p.angle);c.scale(scale,scale);
     plate(c,-135,-83,270,166,9,'#334b43','#789080');
     c.fillStyle='#b7b99920';for(let x=-125;x<135;x+=28)c.fillRect(x,27,16,1);

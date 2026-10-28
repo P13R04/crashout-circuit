@@ -1,7 +1,7 @@
 import type { TrackGeometry } from '../server/types.js';
 import type { CircuitTheme } from './themes.js';
 import { noise, glow } from './neon.js';
-import { layoutScenery, sceneryKey } from './SceneryLayout.js';
+import { layoutScenery, sceneryKey, sceneryReservations, type SceneryPresentation } from './SceneryLayout.js';
 import { materialWash } from './CircuitMaterials.js';
 import { F1Venue } from './F1Venue.js';
 import { ToyWorkshop } from './ToyWorkshop.js';
@@ -13,21 +13,25 @@ export class ThemeWorld {
   private floor:HTMLCanvasElement|null=null;
   private scene:HTMLCanvasElement|null=null;
   private fog:HTMLCanvasElement|null=null;
-  private key:number|null=null;
+  private key:string|null=null;
   private venue:F1Venue|ToyWorkshop|MayhemFestival;
   builds=0;
   constructor(private theme:CircuitTheme){
     this.venue=theme==='classic'?new F1Venue():theme==='toy'?new ToyWorkshop():new MayhemFestival();
   }
-  draw(ctx:Ctx,time:number,reduced:boolean,mapping:boolean,track:TrackGeometry|null=null):void {
+  draw(ctx:Ctx,time:number,reduced:boolean,mapping:boolean,track:TrackGeometry|null=null,presentation?:SceneryPresentation):void {
     if(!this.floor)this.prepareFloor();
-    const key=sceneryKey(track);
+    const mode=presentation??(mapping?'map':track?'race':'lobby'),key=mode==='race'?`race-${sceneryKey(track)}`:mode;
     if(this.key!==key){
       this.scene??=document.createElement('canvas');this.scene.width=1920;this.scene.height=1080;
-      this.venue.paint(this.scene.getContext('2d')!,layoutScenery(track));this.key=key;this.builds++;
+      this.venue.paint(this.scene.getContext('2d')!,layoutScenery(track,mode));this.key=key;this.builds++;
     }
     const t=reduced?0:time;
     ctx.drawImage(this.floor!,0,0,1920,1080);
+    ctx.save();
+    for(const r of sceneryReservations(mode)){
+      ctx.beginPath();ctx.rect(0,0,1920,1080);ctx.rect(r.x,r.y,r.w,r.h);ctx.clip('evenodd');
+    }
     // Ground-plane atmosphere: moving shadows for F1, warm low dust for Mayhem.
     if(this.theme==='classic'){
       ctx.save();ctx.globalAlpha=.2;
@@ -45,6 +49,7 @@ export class ThemeWorld {
     }
     ctx.save();ctx.globalAlpha=mapping?.36:1;
     ctx.drawImage(this.scene!,0,0,1920,1080);this.venue.draw(ctx,t,reduced);ctx.restore();
+    ctx.restore();
     if(mapping){ctx.fillStyle='#0a17284d';ctx.fillRect(0,0,1920,1080);}
   }
   private prepareFloor():void {

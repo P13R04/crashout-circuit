@@ -11,7 +11,7 @@ export class ToyWorkshop {
   paint(c:Ctx,layout:SceneryLayout):void {
     this.planes=[];this.garage=null;
     layout.anchors.forEach((p,i)=>{
-      const s=Math.min(1,p.room/(i===0?155:100));
+      const s=Math.min(1,p.room/(i===0?175:i%3===2?155:125));
       c.save();c.translate(p.x,p.y);c.rotate(p.angle);c.scale(s,s);
       if(i===0){
         this.garage={x:p.x,y:p.y,angle:p.angle,scale:s};

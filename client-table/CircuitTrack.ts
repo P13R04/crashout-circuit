@@ -1,6 +1,7 @@
 import type { TrackGeometry } from '../server/types.js';
 import { visibleTrackEdges } from '../client-shared/trackVisibility.js';
 import { noise } from './neon.js';
+import { racingGrid } from './RaceGrid.js';
 import { materialWash } from './CircuitMaterials.js';
 import type { CircuitTheme } from './themes.js';
 
@@ -118,6 +119,12 @@ export class CircuitTrack {
         surface.restore();next+=toy?96:mud?66:90;seed++;
       }travelled+=len;
     }
+    if(this.theme==='classic'){
+      surface.strokeStyle='#eeeece99';surface.lineWidth=1.5;surface.lineJoin='round';
+      for(const points of racingGrid(track)){
+        surface.beginPath();points.forEach((p,i)=>i?surface.lineTo(p.x,p.y):surface.moveTo(p.x,p.y));surface.stroke();
+      }
+    }
     surface.globalCompositeOperation='source-over';
     ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(this.surface!,0,0);ctx.restore();
     ctx.lineCap='butt';ctx.lineJoin='round';
@@ -158,13 +165,6 @@ export class CircuitTrack {
     for (let x = 0; x < n; x++) for (let row = 0; row < 2; row++) {
       ctx.fillStyle = (x + row) % 2 ? '#252b2c' : this.theme === 'mayhem' ? '#d3b889' : '#fff5dc';
       ctx.fillRect(-half + x * size, -10 + row * 10, size, 10);
-    }
-    if (this.theme === 'classic') {
-      ctx.strokeStyle = '#eeeece99'; ctx.lineWidth = 1.5;
-      for (let row = 1; row < 4; row++) for (const side of [-1, 1]) {
-        const x = side * half * .46, y = 30 + row * 36;
-        ctx.beginPath(); ctx.moveTo(x - 13, y + 18); ctx.lineTo(x - 13, y); ctx.lineTo(x + 13, y); ctx.lineTo(x + 13, y + 18); ctx.stroke();
-      }
     }
     ctx.restore();
   }

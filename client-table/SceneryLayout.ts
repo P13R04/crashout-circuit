@@ -5,6 +5,38 @@ export interface VenueFrame extends Vec2 { tx:number; ty:number; nx:number; ny:n
 export interface SceneryAnchor extends Vec2 { room:number; angle:number; seed:number; }
 export interface SceneryLayout { frames:VenueFrame[]; stands:VenueFrame[][]; anchors:SceneryAnchor[]; track:TrackGeometry|null; }
 
+export type SceneryPresentation='race'|'lobby'|'map';
+export interface DecorRect {x:number;y:number;w:number;h:number;}
+/** Shared by placement and the final clip, including animation that extends beyond a prop. */
+export function sceneryReservations(mode:SceneryPresentation):readonly DecorRect[]{
+  if(mode==='lobby')return[{x:590,y:155,w:740,h:770}];
+  if(mode==='map')return[{x:155,y:195,w:1600,h:690},{x:600,y:0,w:720,h:265},{x:600,y:815,w:720,h:265}];
+  return[];
+}
+function distanceToRect(p:Vec2,r:DecorRect):number {
+  const dx=Math.max(r.x-p.x,0,p.x-r.x-r.w),dy=Math.max(r.y-p.y,0,p.y-r.y-r.h);
+  return dx||dy?Math.hypot(dx,dy):-Math.min(p.x-r.x,r.x+r.w-p.x,p.y-r.y,r.y+r.h-p.y);
+}
+function menuScenery(mode:SceneryPresentation):SceneryLayout {
+  const slots=mode==='map'?[[1440,100,64],[110,340,36],[1810,270,30],[1440,980,64],[110,740,36],[1810,815,30]]:[[380,300,110],[1540,300,110],[380,540,120],[1540,540,120],[380,780,110],[1540,780,110]];
+  const reserved=sceneryReservations(mode);
+  const anchors=slots.map(([x,y,wanted],seed)=>{
+    const p={x,y},room=Math.min(wanted,...reserved.map(r=>distanceToRect(p,r)-12));
+    return{...p,room,angle:seed%2?.12:-.12,seed};
+  }).filter(p=>p.room>=24&&!insidePanel(p,p.room)&&!inTangibleDepot(p));
+  return{frames:[],stands:[],anchors,track:null};
+}
+/** Conservative occupied strip: terraces, fence furniture, flags and overhangs. */
+export function standClearance(p:Vec2,stands:VenueFrame[][]):number {
+  let best=Infinity;
+  for(const run of stands)for(let i=1;i<run.length;i++){
+    const a=venuePoint(run[i-1],78),b=venuePoint(run[i],78),dx=b.x-a.x,dy=b.y-a.y;
+    const u=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy||1)));
+    best=Math.min(best,Math.hypot(p.x-a.x-dx*u,p.y-a.y-dy*u)-64);
+  }
+  return best;
+}
+
 /** Stable through network snapshots and temporary pulls: the venue belongs to the original drawing. */
 export function sceneryKey(track:TrackGeometry|null):number {
   if(!track)return 0;
@@ -38,8 +70,8 @@ function clearUi(p:Vec2,margin:number):boolean {
 }
 
 /** Arc-length sampling makes seat spacing and fences independent of point density. */
-export function layoutScenery(track:TrackGeometry|null):SceneryLayout {
-  if(!track)return{frames:[],stands:[],anchors:[{x:960,y:540,room:180,angle:0,seed:0},{x:480,y:640,room:100,angle:-.2,seed:1},{x:1450,y:440,room:100,angle:.15,seed:2}],track:null};
+export function layoutScenery(track:TrackGeometry|null,mode:SceneryPresentation=track?'race':'lobby'):SceneryLayout {
+  if(mode!=='race'||!track)return menuScenery(mode==='race'?'lobby':mode);
   const points=track.baseCenterline.length?track.baseCenterline:track.centerline;
   const area=points.reduce((v,p,i)=>{const q=points[(i+1)%points.length];return v+p.x*q.y-q.x*p.y;},0),sign=area>=0?1:-1;
   const frames:VenueFrame[]=[];let distance=0,next=0;
@@ -63,13 +95,13 @@ export function layoutScenery(track:TrackGeometry|null):SceneryLayout {
   // Large recognisable props get real empty space, never arbitrary dots on the road.
   const candidates:SceneryAnchor[]=[];
   for(let y=240;y<=840;y+=60)for(let x=240;x<=1680;x+=60){
-    const p={x,y},room=Math.min(roadClearance(p,track),y-170,910-y,x-145,1770-x);
-    if(room>=52&&clearUi(p,Math.min(room,75)))candidates.push({...p,room,angle:0,seed:candidates.length});
+    const p={x,y},room=Math.min(roadClearance(p,track),standClearance(p,stands),y-170,910-y,x-145,1770-x)-10;
+    if(room>=52&&clearUi(p,room))candidates.push({...p,room,angle:0,seed:candidates.length});
   }
   candidates.sort((a,b)=>b.room-a.room);
   const anchors:SceneryAnchor[]=[];
   for(const p of candidates){
-    if(anchors.every(a=>Math.hypot(a.x-p.x,a.y-p.y)>Math.min(180,a.room)+Math.min(150,p.room)+25))anchors.push({...p,angle:((p.seed%5)-2)*.06});
+    if(anchors.every(a=>Math.hypot(a.x-p.x,a.y-p.y)>a.room+p.room+20))anchors.push({...p,angle:((p.seed%5)-2)*.06});
     if(anchors.length===7)break;
   }
   return{frames,stands,anchors,track};

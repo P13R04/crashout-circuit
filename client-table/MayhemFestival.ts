@@ -1,5 +1,5 @@
 import type { SceneryLayout, SceneryAnchor, VenueFrame } from './SceneryLayout.js';
-import { venuePoint, roadClearance } from './SceneryLayout.js';
+import { venuePoint } from './SceneryLayout.js';
 import { glow, plate, noise } from './neon.js';
 type Ctx=CanvasRenderingContext2D;
 const TAU=Math.PI*2;
@@ -54,22 +54,14 @@ export class MayhemFestival {
       }
     }
     layout.anchors.forEach((p,i)=>{
-      c.save();c.translate(p.x,p.y);c.rotate(p.angle);const s=Math.min(1,p.room/(i===0?150:105));c.scale(s,s);
+      c.save();c.translate(p.x,p.y);c.rotate(p.angle);const s=Math.min(1,p.room/(i===0?175:i%3===2?130:150));c.scale(s,s);
       if(i===0)this.paintStage(c);
       else if(i%3===1){this.paintWrecks(c);this.paintBench(c,65,45);}
       else if(i%3===2)this.paintVendor(c);
-      else{this.paintWrecks(c);this.container(c,-45,-45,1);}
+      else{this.paintWrecks(c);this.paintBench(c,65,45);}
       c.restore();
-      if(i%3===1)this.welds.push({x:p.x+Math.cos(p.angle)*65*s-Math.sin(p.angle)*45*s,y:p.y+Math.sin(p.angle)*65*s+Math.cos(p.angle)*45*s,seed:i});
+      if(i>0&&i%3!==2)this.welds.push({x:p.x+Math.cos(p.angle)*65*s-Math.sin(p.angle)*45*s,y:p.y+Math.sin(p.angle)*65*s+Math.cos(p.angle)*45*s,seed:i});
     });
-    // Exposed repair corners along the ring add activity when the infield is narrow.
-    for(const f of this.lamps.filter((_,i)=>i%3===1)){
-      const p=venuePoint(f,91);
-      if(!layout.track||roadClearance(p,layout.track)>45){
-        c.save();c.translate(p.x,p.y);c.rotate(Math.atan2(f.ty,f.tx));this.paintBench(c,0,0);c.restore();
-        this.welds.push({...p,seed:f.index});
-      }
-    }
     if(!this.smoke){
       this.smoke=document.createElement('canvas');this.smoke.width=this.smoke.height=192;
       const s=this.smoke.getContext('2d')!,g=s.createRadialGradient(96,96,4,96,96,94);
@@ -164,7 +156,7 @@ export class MayhemFestival {
       c.fillStyle='#dfbb7b12';c.beginPath();c.moveTo(-4,-5);c.lineTo(-40,36);c.lineTo(40,36);c.lineTo(4,-5);c.fill();c.restore();
     }
     if(this.stage){
-      const p=this.stage,s=Math.min(1,p.room/150);
+      const p=this.stage,s=Math.min(1,p.room/175);
       c.save();c.translate(p.x,p.y);c.rotate(p.angle);c.scale(s,s);
       for(let i=0;i<16;i++){
         const h=reduced?5:3+(Math.sin(t/340+i*1.7)*.5+.5)*13;
