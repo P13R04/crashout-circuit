@@ -190,6 +190,8 @@ Deux doigts proches saisissant le même bord de piste déplacent sa section tant
 
 ## Vérification
 
+**Avant de fusionner une branche, lancer `npm run check`.** Cette commande vérifie les types des clients et du serveur, puis lance les tests d’acceptation, de gestes et de réseau, et enfin le build. La même commande tourne sur GitHub pour chaque pull request et chaque push sur `main` (`.github/workflows/check.yml`) ; une compilation ou un test cassé est signalé avant la fusion.
+
 `npm run verify` exécute tous les contrôles ci-dessous et compile les deux applications.
 
 ```bash
