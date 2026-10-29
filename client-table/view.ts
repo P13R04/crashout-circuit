@@ -2,6 +2,7 @@ import type { GameState, Team, Vec2 } from '../server/types.js';
 import type { DividerCheck } from '../server/layout.js';
 import type { ThemeId } from './themes.js';
 import type { SlingshotShot } from '../server/geometry.js';
+import type { GestureLogEntry } from './GestureLog.js';
 
 /** Short-lived visual effect spawned by a server `Feedback` message. */
 export interface Effect {
@@ -60,7 +61,7 @@ export interface View {
   dividerSubmitting: boolean;
   /** Transient guidance notice shown during map creation. */
   mapNotice: { text: string; until: number; color?: string; reason?: Exclude<DividerCheck, 'ok'> } | null;
-  debug: { on: boolean; fps: number; frameMs: number; rtt: number; touchMs: number; contacts: number };
+  debug: { on: boolean; fps: number; frameMs: number; rtt: number; touchMs: number; contacts: number; gestures: GestureLogEntry[] };
 }
 
 const DIVIDER_REFUSAL: Record<Exclude<DividerCheck, 'ok'>, string> = {
@@ -114,6 +115,6 @@ export function createView(now: () => number): View {
     pendingDivider: [],
     dividerSubmitting: false,
     mapNotice: null,
-    debug: { on: false, fps: 0, frameMs: 0, rtt: 0, touchMs: 0, contacts: 0 },
+    debug: { on: false, fps: 0, frameMs: 0, rtt: 0, touchMs: 0, contacts: 0, gestures: [] },
   };
 }

@@ -33,20 +33,18 @@ import { showDividerRefusal, showMapError, showMapNotice, type View } from './vi
 import { activeMapTeam, inMapAnchor, mapEndpointError, mapStrokeEndpoints } from '../server/mapCreation.js';
 import { tangibleTouchPose, TANGIBLE_SETTLE_MS, TANGIBLE_CONTACT_GRACE_MS } from '../server/tangibleTouch.js';
 import { tangibleDefinition } from '../server/tangibles.js';
+import { tuning } from './gestureTuning.js';
+import { recordGesture } from './GestureLog.js';
 
 export const MAX_CONTACTS = 10;
-const SETTLE_MS = 180;          // wait for all fingers to land before judging a gesture
-const SLING_CLUSTER_PX = 190;   // spatial cluster; contacts may land at different times
-const SLING_ROLE_MIN_PX = 14;   // ...then the one that moves this far is the pouch...
-const SLING_DOMINANCE = 1.5;    // ...provided it moved this many times more than each other finger
+// Settle delay, sling cluster / pouch thresholds, boost span and palm width are in
+// gestureTuning.ts (adjustable from the URL); the rest are fixed here.
 const SIM_FORK_HALF_PX = 38;    // mouse stand-in: virtual anchors either side of the pull axis
 const BOOST_MIN_PX = 0;
-const BOOST_MAX_PX = 400;
 const PULL_MIN_PX = 20;
 const PULL_MAX_PX = 220;
 const PULL_PAIR_MAX_PX = 260;
 const PULL_EDGE_INDEX_GAP = 32;
-const PALM_MAX_PX = 140;        // contacts wider than this (logical px) are palms/arms
 
 type Zone = 'tangible' | 'simsling' | 'steer' | 'pedal' | 'item' | 'pad' | 'stroke' | 'target' | 'result' | 'pause' | 'mode' | 'free' | 'rejected';
 
@@ -129,7 +127,7 @@ export class GestureRecognizer {
     const mid = { x: (p.x + sim.first.x) / 2, y: (p.y + sim.first.y) / 2 };
     const team = this.armedTeam('boost', mid);
     if (!team) this.onSimChange("Aucune équipe n'a armé de boost (POWER d'abord)");
-    else if (d > BOOST_MAX_PX) this.onSimChange('Rapprochez les deux points');
+    else if (d > tuning.boostMaxPx) this.onSimChange('Rapprochez les deux points');
     else { this.controls.gesture('boost', team, sim.first, p); this.onSimChange(''); }
     this.sim = null;
   }
@@ -383,7 +381,9 @@ export class GestureRecognizer {
 
     // Oz reserves fresh map contacts before any bonus, simulation or border gesture.
     const scale = LOGICAL_W / this.canvas.getBoundingClientRect().width;
-    if (Math.max(e.width || 0, e.height || 0) * scale > PALM_MAX_PX) { c.zone = 'rejected'; return; }
+    const width = Math.max(e.width || 0, e.height || 0) * scale;
+    this.log('contact', { id: c.id, w: (e.width || 0) * scale, h: (e.height || 0) * scale, type: e.pointerType, palm: width > tuning.palmMaxPx });
+    if (width > tuning.palmMaxPx) { c.zone = 'rejected'; return; }
     const pendingPlacement=this.pendingPlacement;
     if(pendingPlacement){
       c.zone='tangible';
@@ -664,7 +664,7 @@ export class GestureRecognizer {
 
   private scheduleEvaluation(): void {
     if (this.settleTimer) clearTimeout(this.settleTimer);
-    this.settleTimer = setTimeout(() => { this.settleTimer = null; this.evaluate(); }, SETTLE_MS);
+    this.settleTimer = setTimeout(() => { this.settleTimer = null; this.evaluate(); }, tuning.settleMs);
   }
 
   private armedTeam(kind: 'slingshot' | 'boost', at: Vec2): Team | null {
@@ -691,13 +691,14 @@ export class GestureRecognizer {
     const now=performance.now(),candidates=this.bonusRecent.filter(c=>!c.consumed&&(c.releasedAt===undefined||now-c.releasedAt<=TANGIBLE_CONTACT_GRACE_MS));
     for(let i=0;i<candidates.length;i++)for(let j=i+1;j<candidates.length;j++){
       const a=candidates[i],b=candidates[j],d=Math.hypot(a.x-b.x,a.y-b.y);
-      if(d<BOOST_MIN_PX||d>BOOST_MAX_PX)continue;
+      if(d<BOOST_MIN_PX||d>tuning.boostMaxPx)continue;
       // A drifting finger is not a border drag. Reserve deformation only for
       // two coherent outward movements; small placement corrections still boost.
       const outward=(c:Contact)=>c.outward?(c.x-c.sx)*c.outward.x+(c.y-c.sy)*c.outward.y:0;
       const da=outward(a),db=outward(b);
       if(a.edgeBank&&a.edgeBank===b.edgeBank&&Math.min(da,db)>=4&&(da+db)/2>=24)continue;
       const team=this.armedTeam('boost',{x:(a.x+b.x)/2,y:(a.y+b.y)/2});if(!team)return;
+      this.log('boost',{team,gap:d});
       this.send({type:'BoostGate',team,a:{x:a.x,y:a.y},b:{x:b.x,y:b.y}});
       this.bonusRecent.forEach(c=>{c.consumed=true;});this.bonusCommitted=true;return;
     }
@@ -722,8 +723,10 @@ export class GestureRecognizer {
       if (free.length !== 3) return;
       const cx = (free[0].sx + free[1].sx + free[2].sx) / 3;
       const cy = (free[0].sy + free[1].sy + free[2].sy) / 3;
-      if (!free.every(c => Math.hypot(c.sx - cx, c.sy - cy) <= SLING_CLUSTER_PX)) return;
+      const spread = Math.max(...free.map(c => Math.hypot(c.sx - cx, c.sy - cy)));
+      if (spread > tuning.slingClusterPx) { this.logOnce('clusterTooWide', { spread, limit: tuning.slingClusterPx }); return; }
       if (!this.armedTeam('slingshot', { x: cx, y: cy })) return;
+      this.log('cluster', { spread, limit: tuning.slingClusterPx });
       this.slingContacts=free;
       this.slingIds = free.map(c => c.id);
       this.slingPuller = null;
@@ -736,7 +739,10 @@ export class GestureRecognizer {
     const far = [...cs].sort((a, b) => disp(b) - disp(a));
     // A finger takes (or takes back) the pouch role only when it left its spot while
     // both others stayed comparatively still; otherwise the previous choice is kept.
-    if (disp(far[0]) >= SLING_ROLE_MIN_PX && disp(far[0]) >= disp(far[1]) * SLING_DOMINANCE) this.slingPuller = far[0].id;
+    if (disp(far[0]) >= tuning.slingRoleMinPx && disp(far[0]) >= disp(far[1]) * tuning.slingDominance) {
+      if (this.slingPuller !== far[0].id) this.log('puller', { id: far[0].id, move: disp(far[0]), next: disp(far[1]), ratio: disp(far[1]) ? disp(far[0]) / disp(far[1]) : 99 });
+      this.slingPuller = far[0].id;
+    }
 
     const puller = cs.find(c => c.id === this.slingPuller) ?? null;
     const anchors = puller ? cs.filter(c => c !== puller) : cs.slice(0, 2);
@@ -760,10 +766,27 @@ export class GestureRecognizer {
     const sling = this.view.sling;
     for(const c of this.slingContacts??[])c.consumed=true;
     this.cancelSling();
+    if (sling && state) {
+      const result = cancelled ? 'cancelled' : sling.idle ? 'noPouch' : !sling.shot.valid ? 'shortPull' : 'fired';
+      this.log('release', { result, pull: sling.shot.pull, min: state.params.slingMinPullPx });
+    }
     if (cancelled || !state || !sling || sling.idle || !sling.shot.valid) return;
     const anchor = { x: (sling.anchors[0].x + sling.anchors[1].x) / 2, y: (sling.anchors[0].y + sling.anchors[1].y) / 2 };
     const team = this.armedTeam('slingshot', anchor);
     if (team){this.bonusCommitted=true;this.controls.gesture('slingshot', team, anchor, { ...sling.pouch });}
+  }
+
+  private lastLog = { kind: '', at: 0 };
+
+  private log(kind: string, detail: Record<string, number | string | boolean>): void {
+    recordGesture(this.view.debug.gestures, kind, detail);
+    this.lastLog = { kind, at: performance.now() };
+  }
+
+  /** For decisions re-evaluated on every move: write again only after a change or a second. */
+  private logOnce(kind: string, detail: Record<string, number | string | boolean>): void {
+    if (this.lastLog.kind === kind && performance.now() - this.lastLog.at < 1000) return;
+    this.log(kind, detail);
   }
 
   private cancelSling(): void {

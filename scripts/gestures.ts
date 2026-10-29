@@ -11,6 +11,8 @@ g.document = { getElementById: () => null, createElement: () => ({ getContext: (
 
 const { GestureRecognizer } = await import('../client-table/GestureRecognizer.js');
 const { createView } = await import('../client-table/view.js');
+const { tuning, DEFAULT_TUNING, applyTuning } = await import('../client-table/gestureTuning.js');
+const { formatGestureEntry, gestureLogCsv, GESTURE_LOG_MAX, recordGesture } = await import('../client-table/GestureLog.js');
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -38,10 +40,12 @@ function rig(held: Held = 'slingshot') {
   } as never;
   const sent: Array<Record<string, unknown>> = [];
   const recognizer = new GestureRecognizer(canvas as never, view, m => sent.push(m));
+  let size = 1; // reported contact width and height, as a PCAP panel would
   const ev = (type: string, id: number, x: number, y: number) =>
-    ({ type, pointerId: id, clientX: x, clientY: y, pointerType: 'touch', width: 1, height: 1, timeStamp: Date.now(), preventDefault() {} });
+    ({ type, pointerId: id, clientX: x, clientY: y, pointerType: 'touch', width: size, height: size, timeStamp: Date.now(), preventDefault() {} });
   return {
     view, sent, recognizer,
+    setSize: (px: number) => { size = px; },
     down: (id: number, x: number, y: number) => handlers.pointerdown(ev('pointerdown', id, x, y)),
     move: (id: number, x: number, y: number) => handlers.pointermove(ev('pointermove', id, x, y)),
     up: (id: number, x: number, y: number) => handlers.pointerup(ev('pointerup', id, x, y)),
@@ -351,6 +355,62 @@ await test('one finger sliding while settling does not suppress an expected boos
   const a=track.outerEdge[42],b=track.outerEdge[44],centre=track.centerline[42],d=Math.hypot(a.x-centre.x,a.y-centre.y),out={x:(a.x-centre.x)/d,y:(a.y-centre.y)/d};
   r.down(1,a.x,a.y);r.down(2,b.x,b.y);r.move(1,a.x+out.x*25,a.y+out.y*25);await sleep(220);
   assert.equal(r.sent.filter(m=>m.type==='BoostGate').length,1,'a single settling correction is not a two-finger drag');r.recognizer.releaseAll();
+});
+
+await test('URL parameters adjust the thresholds; invalid or out-of-range values are ignored', async () => {
+  const target = { ...DEFAULT_TUNING };
+  assert.deepEqual(applyTuning('?cluster=230&role=9&dominance=1.2&palm=180&settle=250&boostmax=300', target).sort(), ['boostmax', 'cluster', 'dominance', 'palm', 'role', 'settle']);
+  assert.deepEqual(target, { settleMs: 250, slingClusterPx: 230, slingRoleMinPx: 9, slingDominance: 1.2, boostMaxPx: 300, palmMaxPx: 180 });
+  const untouched = { ...DEFAULT_TUNING };
+  assert.deepEqual(applyTuning('?cluster=abc&role=-3&dominance=99&palm=&unknown=5', untouched), []);
+  assert.deepEqual(untouched, DEFAULT_TUNING);
+});
+await test('the recognizer reads the live thresholds: a tighter cluster limit refuses the same three fingers', async () => {
+  try {
+    tuning.slingClusterPx = 40;
+    const r = rig(); await land(r); await pullDown(r, 3, F3, 150); r.up(3, F3.x, F3.y + 150);
+    assert.equal(r.sent.length, 0, 'fingers 120 px apart are no longer one slingshot');
+    assert.ok(r.view.debug.gestures.some(e => e.kind === 'clusterTooWide'), 'the refusal is journaled with its spread');
+    r.recognizer.releaseAll();
+  } finally { Object.assign(tuning, DEFAULT_TUNING); }
+});
+await test('the gesture journal explains a shot: contact sizes, cluster, pouch and release', async () => {
+  const r = rig(); r.setSize(22);
+  await land(r); await pullDown(r, 3, F3, 150); r.up(3, F3.x, F3.y + 150);
+  const log = r.view.debug.gestures, kinds = log.map(e => e.kind);
+  assert.equal(kinds.filter(k => k === 'contact').length, 3);
+  assert.deepEqual(log.find(e => e.kind === 'contact')!.detail.w, 22, 'the reported width reaches the journal');
+  for (const k of ['cluster', 'puller', 'release']) assert.ok(kinds.includes(k), `${k} is journaled`);
+  assert.equal(log.find(e => e.kind === 'puller')!.detail.id, 3);
+  assert.equal(log.find(e => e.kind === 'release')!.detail.result, 'fired');
+  assert.equal(r.sent.length, 1);
+  r.recognizer.releaseAll();
+});
+await test('a palm-sized contact is rejected and journaled with its width; a short pull is journaled as such', async () => {
+  const r = rig(); r.setSize(300);
+  r.down(9, F3.x, F3.y); r.up(9, F3.x, F3.y);
+  const palm = r.view.debug.gestures.find(e => e.kind === 'contact')!;
+  assert.equal(palm.detail.palm, true);
+  r.setSize(1);
+  r.down(1, F1.x, F1.y); await sleep(4);
+  r.down(2, F2.x, F2.y); await sleep(4);
+  r.down(3, 940, 515); await sleep(4);
+  r.move(3, 940, 535); r.up(3, 940, 535);
+  assert.deepEqual(r.sent, []);
+  const release = r.view.debug.gestures.find(e => e.kind === 'release')!;
+  assert.deepEqual([release.detail.result, release.detail.min], ['shortPull', 40], 'the refusal says why');
+  r.recognizer.releaseAll();
+});
+await test('the journal is bounded and exports as CSV and overlay text', async () => {
+  const log: Array<{ t: number; kind: string; detail: Record<string, number | string | boolean> }> = [];
+  for (let i = 0; i < GESTURE_LOG_MAX + 25; i++) recordGesture(log, 'contact', { id: i, note: 'a "quoted" word' }, i * 1000);
+  assert.equal(log.length, GESTURE_LOG_MAX);
+  assert.equal(log[0].detail.id, 25, 'the oldest entries are dropped');
+  const csv = gestureLogCsv(log).split(/\r?\n/);
+  assert.equal(csv[0], 't,kind,detail');
+  assert.equal(csv.length, GESTURE_LOG_MAX + 1);
+  assert.ok(csv[1].startsWith('25,contact,"{""id"":25'), 'the detail column is one quoted JSON cell');
+  assert.equal(formatGestureEntry({ t: 1.5, kind: 'puller', detail: { id: 3, ratio: 2.3456 } }), '1.500 puller id=3 ratio=2.35');
 });
 
 let failed = 0;

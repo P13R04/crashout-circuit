@@ -8,6 +8,8 @@ import { GestureRecognizer } from './GestureRecognizer.js';
 import { playFeedback, unlock } from './Sound.js';
 import { THEMES, themeLook, loadTheme, saveTheme, type ThemeId } from './themes.js';
 import { advanceVisualTime } from './VisualMotion.js';
+import { applyTuning } from './gestureTuning.js';
+import { formatGestureEntry, gestureLogCsv } from './GestureLog.js';
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const statusEl = document.getElementById('status') as HTMLDivElement;
@@ -65,6 +67,7 @@ function selectTheme(id: ThemeId): void {
 // Access to localStorage itself can be denied in embedded/private contexts.
 try { selectTheme(loadTheme(window.localStorage)); } catch { selectTheme('neon'); }
 view.debug.on = urlParams.get('debug') === '1';
+applyTuning(location.search);
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
 view.reducedMotion = motionPreference.matches || urlParams.get('motion') === '0';
 motionPreference.addEventListener('change', e => { view.reducedMotion = e.matches || urlParams.get('motion') === '0'; });
@@ -188,6 +191,7 @@ window.addEventListener('keydown', (e) => {
   if (e.target instanceof Element && e.target.closest('button, summary, input, textarea, select, a')) return;
   const key = keyName(e);
   if (key === 'F3' && !e.repeat && !down.has('F3')) view.debug.on = !view.debug.on;
+  if (key === 'F4' && !e.repeat && !down.has('F4')) { e.preventDefault(); downloadGestureLog(); }
   if (down.has(key)) return;
   down.add(key);
   if (key === 'q' || key === 'd') sendSteer('A');
@@ -410,7 +414,25 @@ function drawDebug(): void {
     `${d.fps.toFixed(0)} fps · rendu ${canvas.dataset.renderMedianMs ?? '…'} ms · RTT ${d.rtt} ms · touch→frame ${d.touchMs.toFixed(0)} ms · ${d.contacts} pts`,
     LOGICAL_W / 2, 25,
   );
+  // Latest touch decisions (issue #38): which finger became the pouch, widths, cancelled shots
+  const lines = d.gestures.slice(-8);
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(LOGICAL_W / 2 - 375, 36, 750, 4 + lines.length * 16);
+  ctx.fillStyle = '#cfd8e3';
+  ctx.textAlign = 'left';
+  lines.forEach((entry, i) => ctx.fillText(formatGestureEntry(entry).slice(0, 110), LOGICAL_W / 2 - 368, 50 + i * 16));
   ctx.restore();
+}
+
+/** F4: save the touch decisions as CSV, to compare sessions on the real table. */
+function downloadGestureLog(): void {
+  try {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([gestureLogCsv(view.debug.gestures)], { type: 'text/csv' }));
+    link.download = `gestes-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  } catch { /* Downloads can be blocked; the overlay still shows the latest lines. */ }
 }
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────────
