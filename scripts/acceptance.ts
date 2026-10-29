@@ -1189,7 +1189,7 @@ test('armed inventory survives indefinite delay until a valid gesture consumes i
   assert.equal(r.feedback.includes('itemLost'),false);
   r.rules.onSlingshot(msg({type:'Slingshot',team:'A',...aim({x:900,y:500},120)}));assert.equal(car.heldItem,null);
 });
-test('T-06 slingshot: 0.8 s telegraph, then a full-HP car is put out of order (+ stun, "stoneHit" feedback), any car inside the impact', () => {
+test('T-06 slingshot: 0.8 s telegraph, then a full-HP car loses half its HP and is stunned ("stoneHit" feedback), any car inside the impact; a second stone breaks it', () => {
   const r = raceRig();
   const A = r.state.cars.A, B = r.state.cars.B;
   A.heldItem = 'slingshot';
@@ -1210,12 +1210,19 @@ test('T-06 slingshot: 0.8 s telegraph, then a full-HP car is put out of order (+
   r.clock.now += 200;
   r.rules.updateStones(r.clock.now);
   assert.equal(B.hp, Math.max(0, config.hpMax - config.dmgStone));
-  assert.ok(config.dmgStone >= config.hpMax, 'one stone breaks a full-HP car');
-  assert.equal(B.disabled, true);
+  assert.ok(config.dmgStone < config.hpMax && 2 * config.dmgStone >= config.hpMax, 'one stone wounds a full-HP car, two break it');
+  assert.equal(B.disabled, false);
   assert.ok(r.feedback.includes('stoneHit'), 'hit feedback for the comic effect');
-  assert.ok(B.stunUntil > r.clock.now);
+  assert.ok(Math.abs(B.stunUntil - r.clock.now - config.stunStoneS * 1000) < 1, 'stunned for the configured time');
   assert.equal(A.hp, config.hpMax);
   assert.equal(r.state.stones.length, 0);
+  // Once the first impact's stun and invulnerability are over, a second stone breaks the car
+  r.clock.now += 3000; B.stunUntil = 0; B.invulnUntil = 0;
+  A.heldItem = 'slingshot'; r.rules.onPower('A');
+  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, team: 'A' as Team, ...aim({ ...B.pos }, 120) }));
+  r.clock.now += config.stoneTelegraphS * 1000; r.rules.updateStones(r.clock.now);
+  assert.equal(B.hp, Math.max(0, config.hpMax - 2 * config.dmgStone));
+  assert.equal(B.disabled, true, 'the second stone breaks the car');
 });
 test('slingshot without armed slingshot is ignored', () => {
   const r = raceRig();
@@ -1546,7 +1553,7 @@ test('a stolen slingshot consumes only the owner stock and can hit either colour
   assert.equal(r.state.stones[0].team, 'B');
   r.clock.now += 1000; r.rules.updateStones(r.clock.now);
   assert.equal(r.state.cars.A.hp, Math.max(0, config.hpMax - config.dmgStone));
-  assert.equal(r.state.cars.B.hp,0,'both starting cars are inside this impact');
+  assert.equal(r.state.cars.B.hp,Math.max(0, config.hpMax - config.dmgStone),'both starting cars are inside this impact');
   r.rules.onSlingshot(msg({ type: 'Slingshot', team: 'A', ...aim({ x: 900, y: 500 }, 120) }));
   assert.equal(r.state.stones.length, 0, 'same stock cannot be consumed twice');
 });

@@ -15,6 +15,7 @@
     "build:clients": "vite build",
     "start": "node dist/server/index.js",
     "typecheck": "tsc --noEmit",
+    "sim:sling": "tsx scripts/sling-balance.ts",
     "test:acceptance": "tsx scripts/acceptance.ts",
     "test:gestures": "tsx scripts/gestures.ts",
     "test:network": "tsx scripts/network-acceptance.ts",

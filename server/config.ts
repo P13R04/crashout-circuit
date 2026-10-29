@@ -12,9 +12,9 @@ const defaults = {
   hpMax: 100,
   dmgWall: 10,
   dmgArc: 10,
-  dmgStone: 100, // a stone puts a full-HP car out of order (hpMax)
+  dmgStone: 50, // two stones break a full-HP car; see scripts/sling-balance.ts (issue #39)
   invulnAfterHitS: 1,
-  stunStoneS: 1,
+  stunStoneS: 1.5,
   arcSlowFactor: 0.5,
   arcSlowS: 1.5,
   repairHoldS: 2,

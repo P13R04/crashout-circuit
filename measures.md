@@ -12,7 +12,7 @@ Le script `scripts/acceptance.ts` exécute les règles serveur avec une horloge 
 | T-03 | mur neutre : −10 HP pour les deux équipes, puis 1 s d’invulnérabilité |
 | T-04 | les deux pylônes neutres ≤ 500 px → un arc ; −10 HP et vitesse ×0,5 pendant 1,5 s pour les deux équipes |
 | T-05 | objet armé non utilisé après 5 s → perdu |
-| T-06 | lance-pierre : impact 0,8 s après le geste, −100 HP (hors d'usage) + étourdissement, adversaire uniquement |
+| T-06 | lance-pierre : impact 0,8 s après le geste, −50 HP + étourdissement 1,5 s, toute voiture dans la zone ; une seconde pierre met la voiture hors d'usage |
 | T-07 | portail plus long → boost plus fort (k = clamp(L/400, 0,3, 1)) |
 | T-08 | fantôme 3 s sans effet des éléments adverses, puis recharge 20 s |
 | T-09 | réparation seulement si les deux pads sont tenus ; relâcher l'un remet la jauge à 0 |
@@ -48,3 +48,23 @@ Le serveur calcule les empreintes depuis `tableDiagonalInches` (55 par défaut) 
 Le mode **TEST TANGIBLES** permet de répéter les essais avec un opérateur Oz et un seul copilote, sans IA d’évitement. `npm run test:autopilot` vérifie la conduite continue au centre (six minutes simulées), les rebonds sur un mur diagonal, les effets électriques sur les deux voitures, le retour progressif après déviation, la réparation avec le seul contact humain du copilote, la pause et le retour aux modes normaux. Un circuit en huit et une déformation locale sont également couverts.
 
 En navigateur, vérifier séparément : entrée par le nouveau bouton, départ par ▶, pleine fenêtre avec **Paramètres → Plein écran**, sortie par **Échap** sans pause, panne après choc et réparation de chaque voiture depuis son seul poste copilote. La validation des contacts multiples et des dimensions physiques reste à effectuer sur la dalle réelle.
+
+## 5. Équilibrage du lance-pierre (issue #39)
+
+`npm run sim:sling` (`scripts/sling-balance.ts`) fait courir deux pilotes automatiques avec la vraie physique et les vrais dégâts pendant 10 minutes simulées, tandis que deux copilotes scriptés ramassent le lance-pierre, l'arment avec POWER, visent la position future de l'adversaire et réparent une voiture en panne. Hypothèses humaines : 1,5 s entre la prise et le tir, 1,5 s pour poser le doigt sur le pad de réparation, une voiture blessée mais roulante n'est pas réparée.
+
+Constats avec les valeurs d'origine (100 PV, étourdissement 1 s) :
+- La cadence est limitée par les pickups, pas par le geste : environ **4 tirs par minute pour toute la table en Easy** (6 en Hard), car 4 pickups reviennent 15 s après la prise et la moitié donne un boost. Une limite de fréquence supplémentaire n'est pas nécessaire.
+- Une touche coûte **6,5 s hors-jeu** (étourdissement, réparation à deux de 2 s, trois feux de 3 s, réaction) et renvoie la voiture au dernier checkpoint.
+- Avec un tir parfait, chaque voiture passe **22 à 26 %** de la course hors-jeu ; avec un tir correct (±50 px), 12 à 18 %.
+
+Valeurs retenues : **50 PV et 1,5 s d'étourdissement** (deux pierres mettent une voiture à pleine santé hors d'usage), portée, rayon, avertissement et délai de réapparition inchangés. Le premier coup gêne et blesse (la voiture perd la moitié de sa vie, ce qui compte face aux murs et aux arcs), le second immobilise.
+
+| Easy, 10 min | Tirs/min | Touches/min | Pannes/min | Hors-jeu par touche | Temps hors-jeu |
+|---|---|---|---|---|---|
+| Avant, tir parfait | 4,0 | 4,8 | 4,8 | 6,5 s | 26 % |
+| **Après, tir parfait** | 4,2 | 4,3 | 2,1 | 4,0 s | 15 % |
+| Avant, tir ±50 px | 4,0 | 2,1 | 2,1 | 6,5 s | 12 % |
+| **Après, tir ±50 px** | 4,6 | 2,5 | 1,2 | 3,9 s | 8 % |
+
+**Limite** : ces chiffres classent des réglages, ils ne remplacent pas des parties réelles. Les temps de réaction, la visée et l'esquive des pilotes humains sont supposés ; la distance perdue par le retour au checkpoint n'est pas chiffrée. Les valeurs définitives sont à confirmer pendant les sessions de l'issue #40 : relancer `npm run sim:sling` après avoir adapté `PLAYERS` aux temps observés.
