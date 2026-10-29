@@ -24,7 +24,7 @@ Depuis les premières mesures de l'issue, le comportement a changé : seul le **
 
 ## Journal des décisions
 
-Avec `?debug=1` (ou **F3**), l'overlay du haut affiche les huit dernières décisions du recognizer. **F4** télécharge tout le journal (400 entrées maximum) en CSV `gestes-<date>.csv`.
+Avec `?debug=1` (ou **F3**), l'overlay du haut affiche les huit dernières décisions du recognizer. **F4** télécharge tout le journal (2 000 entrées maximum) en CSV `session-<date>.csv` ; `?log=1` le télécharge automatiquement à la fin de chaque partie. Les retours du serveur (`server`) et les changements de phase (`phase`) y figurent aussi, ce qui permet de rejouer une séance (voir [docs/sessions-de-test.md](sessions-de-test.md)).
 
 | Entrée | Contenu | Utilité |
 |---|---|---|
@@ -34,6 +34,8 @@ Avec `?debug=1` (ou **F3**), l'overlay du haut affiche les huit dernières déci
 | `puller` | doigt choisi, son déplacement, celui du suivant, rapport | quelle poche, quand, pourquoi |
 | `release` | `fired`, `shortPull`, `noPouch` ou `cancelled`, traction, minimum | pourquoi un tir est parti ou non |
 | `boost` | écart entre les deux doigts | portail déclenché |
+| `server` | type de retour du serveur (`pickup`, `stoneHit`, `repairDone`...), équipe, position | relier un geste à son effet |
+| `phase` | nouvelle phase (`RACE`, `PAUSED`, `RESULT`...) | découper la séance |
 
 ## Protocole
 

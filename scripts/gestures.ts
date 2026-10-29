@@ -409,6 +409,7 @@ await test('the journal is bounded and exports as CSV and overlay text', async (
   const csv = gestureLogCsv(log).split(/\r?\n/);
   assert.equal(csv[0], 't,kind,detail');
   assert.equal(csv.length, GESTURE_LOG_MAX + 1);
+  assert.equal(log.length, 2000, 'a whole game fits in the journal');
   assert.ok(csv[1].startsWith('25,contact,"{""id"":25'), 'the detail column is one quoted JSON cell');
   assert.equal(formatGestureEntry({ t: 1.5, kind: 'puller', detail: { id: 3, ratio: 2.3456 } }), '1.500 puller id=3 ratio=2.35');
 });

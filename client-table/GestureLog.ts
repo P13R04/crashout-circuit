@@ -1,8 +1,10 @@
 /**
- * Short journal of what the touch recognizer decided and why (issue #38): which
- * contact became the pouch, how wide the fingers were, why a shot was cancelled.
- * It lives in `view.debug.gestures`, is drawn in the `?debug=1` overlay and can be
- * downloaded with F4 to compare sessions on the real table.
+ * Journal of what the touch recognizer decided and why (issue #38): which contact
+ * became the pouch, how wide the fingers were, why a shot was cancelled. For test
+ * sessions (issue #40) it also carries the server feedbacks and phase changes, so a
+ * session can be replayed afterwards. It lives in `view.debug.gestures`, is drawn in
+ * the `?debug=1` overlay and is downloaded with F4, or at the end of every game with
+ * `?log=1`.
  */
 export interface GestureLogEntry {
   /** Seconds since the page loaded. */
@@ -11,7 +13,7 @@ export interface GestureLogEntry {
   detail: Record<string, number | string | boolean>;
 }
 
-export const GESTURE_LOG_MAX = 400;
+export const GESTURE_LOG_MAX = 2000;
 
 export function recordGesture(
   log: GestureLogEntry[], kind: string, detail: GestureLogEntry['detail'], now = performance.now(),

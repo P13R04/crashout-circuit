@@ -9,7 +9,7 @@ import { playFeedback, unlock } from './Sound.js';
 import { THEMES, themeLook, loadTheme, saveTheme, type ThemeId } from './themes.js';
 import { advanceVisualTime } from './VisualMotion.js';
 import { applyTuning } from './gestureTuning.js';
-import { formatGestureEntry, gestureLogCsv } from './GestureLog.js';
+import { formatGestureEntry, gestureLogCsv, recordGesture } from './GestureLog.js';
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const statusEl = document.getElementById('status') as HTMLDivElement;
@@ -297,6 +297,8 @@ function handleMessage(msg: ServerMessage): void {
     }
     case 'PhaseChange':
       view.effects.length = 0;
+      recordGesture(view.debug.gestures, 'phase', { phase: msg.phase });
+      if (msg.phase === 'RESULT' && urlParams.get('log') === '1') downloadGestureLog();
       if (msg.phase === 'MAP' || msg.phase === 'LOBBY') {
         view.strokes.clear();
         view.pendingDivider = [];
@@ -310,6 +312,7 @@ function handleMessage(msg: ServerMessage): void {
       }
       break;
     case 'Feedback':
+      recordGesture(view.debug.gestures, 'server', { kind: msg.kind, team: msg.team, x: Math.round(msg.x), y: Math.round(msg.y) });
       if (msg.kind === 'dividerTooShort' || msg.kind === 'dividerOutOfZone') {
         view.dividerSubmitting = false;
         showDividerRefusal(view, msg.kind === 'dividerTooShort' ? 'tooShort' : 'outOfZone');
@@ -424,12 +427,12 @@ function drawDebug(): void {
   ctx.restore();
 }
 
-/** F4: save the touch decisions as CSV, to compare sessions on the real table. */
+/** F4 (or the end of a game with `?log=1`): save the session journal as CSV. */
 function downloadGestureLog(): void {
   try {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([gestureLogCsv(view.debug.gestures)], { type: 'text/csv' }));
-    link.download = `gestes-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+    link.download = `session-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
   } catch { /* Downloads can be blocked; the overlay still shows the latest lines. */ }
