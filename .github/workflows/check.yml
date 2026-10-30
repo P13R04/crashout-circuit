@@ -1,0 +1,26 @@
+name: check
+
+# Every pull request and every push to main runs the same command as a local
+# `npm run check`: types (clients and server), acceptance, gesture and network
+# tests, then the full build.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
