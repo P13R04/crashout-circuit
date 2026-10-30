@@ -107,7 +107,7 @@ Le tiroir **Test PC**, fermé par défaut, apparaît en course avec une souris, 
 - **Lance-pierre** : maintenir le clic pour poser la fourche, tirer en arrière, puis relâcher. La trajectoire est prévisualisée et la pierre vole depuis la poche. En mode PC, ce geste est disponible directement dès qu’un lance-pierre est armé.
 - **Boost** puis deux clics définissent le portail. Son centre vient des contacts, sa largeur vaut au moins 110 px et son orientation suit la piste. Aux croisements, l’axe entre les contacts indique la branche à traverser.
 
-Les simulations passent par les mêmes règles d’armement, de vol et de consommation que les gestes tactiles. Le lance-pierre conserve les paramètres de `main` : traction minimale de 40 px, portée croissante et dégâts de 100 HP.
+Les simulations passent par les mêmes règles d’armement, de vol et de consommation que les gestes tactiles. Le lance-pierre conserve les paramètres de `main` : traction minimale de 40 px, portée croissante ; la pierre retire 50 HP et étourdit 1,5 s (deux pierres mettent une voiture à pleine santé hors d’usage).
 
 En course **PC uniquement**, ce tiroir contient aussi **Invincibles** et **Objets libres**. Ces outils de développement restent ignorés en mode table et ne sont pas accessibles à Oz.
 

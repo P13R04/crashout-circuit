@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
     "check": "npm run typecheck && npm run typecheck:server && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run build",
+    "sim:sling": "tsx scripts/sling-balance.ts",
     "test:acceptance": "tsx scripts/acceptance.ts",
     "test:gestures": "tsx scripts/gestures.ts",
     "test:network": "tsx scripts/network-acceptance.ts",

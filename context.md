@@ -198,7 +198,7 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 |---|---|---|
 | Mur (poteau seul) | −10, puis 1 s d'invulnérabilité | Rebond |
 | Arc électrique | −10 par franchissement | Vitesse ×0,5 pendant 1,5 s |
-| Pierre du lance-pierre | −100 (une voiture à pleine santé est mise hors d'usage) | Étourdissement 1 s |
+| Pierre du lance-pierre | −50 (deux pierres mettent une voiture à pleine santé hors d'usage ; équilibrage #39, voir `measures.md` §5) | Étourdissement 1,5 s |
 
 **R-09** Les éléments d'une équipe n'affectent jamais sa propre voiture (pas de tir ami). Ils sont affichés semi-transparents pour elle.
 **R-10** À **HP = 0**, le véhicule est **hors d'usage**: il s'arrête et ne répond plus au Pilote, jusqu'à la réparation synchrone (§7.4).
@@ -233,7 +233,7 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 - Direction: la pierre part de la poche, **à l'opposé de la traction**, et passe par le milieu de la fourche.
 - Portée (fonction continue de la traction): de 220 px (traction 40 px, minimum) à 900 px (traction 260 px, maximum) au-delà de la fourche. Une traction plus courte que 40 px ne tire pas et laisse l'objet armé. Le point d'atterrissage reste dans la table.
 - Effet: la pierre est **visible en vol** pendant **0,8 s**, puis frappe le point d'atterrissage. Un cercle rouge d'avertissement y est affiché pendant le vol, orienté vers le joueur adverse le plus proche (l'adversaire peut esquiver).
-- Rayon d'impact 60 px [EST]. Touche uniquement la voiture adverse. Dégâts: voir R-08.
+- Rayon d'impact 60 px [EST]. Touche toute voiture dans la zone, tireur compris. Dégâts: voir R-08.
 
 **C-02 Boost (zone d'accélération / portail de vitesse)**
 - Geste: **2 doigts** posés sur la piste, écartés de 100 à 400 px. Le segment entre les deux doigts forme le seuil d'entrée d'une zone rectangulaire d'accélération (largeur 100–400 px, profondeur 60 px orientée dans le sens de la piste).
@@ -445,9 +445,9 @@ Les états de réparation sont représentés par les deux contacts et un anneau 
 | `lapsToWin` | 3 |
 | `sessionMaxSeconds` | 300 |
 | `hpMax` | 100 |
-| `dmgWall` / `dmgArc` / `dmgStone` | 10 / 10 / 100 |
+| `dmgWall` / `dmgArc` / `dmgStone` | 10 / 10 / 50 |
 | `invulnAfterHitS` | 1 |
-| `stunStoneS` | 1 |
+| `stunStoneS` | 1,5 |
 | `arcSlowFactor` / `arcSlowS` | 0,5 / 1,5 |
 | `repairHoldS` / `repairHpRestore` | 2 / 60 |
 | `pickupRespawnS` / `armWindowS` | 15 / 5 |
