@@ -5,6 +5,7 @@ import { resolve, dirname, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { networkInterfaces } from 'os';
 import { GameServer } from './GameServer.js';
+import { audioByteRange } from './audioHttp.js';
 import { config } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -18,18 +19,30 @@ const MIME: Record<string, string> = {
   '.svg':  'image/svg+xml',
   '.png':  'image/png',
   '.ico':  'image/x-icon',
+  '.wav':  'audio/wav',
+  '.mp3':  'audio/mpeg',
+  '.ogg':  'audio/ogg',
 };
 
 const CLIENTS_ROOT = resolve(__dirname, '../../dist/clients');
 
-function serveStatic(res: http.ServerResponse, filePath: string): boolean {
+function serveStatic(res: http.ServerResponse, filePath: string,range?:string): boolean {
   // Only regular files below dist/clients (no directories, no path traversal)
   if (!filePath.startsWith(CLIENTS_ROOT)) return false;
   try { if (!statSync(filePath).isFile()) return false; } catch { return false; }
   const ext = extname(filePath);
   const mime = MIME[ext] ?? 'application/octet-stream';
   const content = readFileSync(filePath);
-  res.writeHead(200, { 'Content-Type': mime });
+  if(mime.startsWith('audio/')){
+    const headers={'Content-Type':mime,'Accept-Ranges':'bytes'};
+    if(range){
+      const part=audioByteRange(range,content.length);
+      if(!part){res.writeHead(416,{...headers,'Content-Range':`bytes */${content.length}`});res.end();return true;}
+      res.writeHead(206,{...headers,'Content-Length':part.end-part.start+1,'Content-Range':`bytes ${part.start}-${part.end}/${content.length}`});res.end(content.subarray(part.start,part.end+1));return true;
+    }
+    res.writeHead(200,{...headers,'Content-Length':content.length});res.end(content);return true;
+  }
+  res.writeHead(200, { 'Content-Type': mime,'Content-Length':content.length });
   res.end(content);
   return true;
 }
@@ -57,7 +70,7 @@ const httpServer = http.createServer((req, res) => {
 
   // Vite emits shared bundles under /assets/ for all three pages
   if (url.pathname.startsWith('/assets/')) {
-    if (serveStatic(res, resolve(CLIENTS_ROOT, url.pathname.slice(1)))) return;
+    if (serveStatic(res, resolve(CLIENTS_ROOT, url.pathname.slice(1)),req.headers.range)) return;
     res.writeHead(404);
     res.end('Not found');
     return;
@@ -77,10 +90,10 @@ const httpServer = http.createServer((req, res) => {
 
   // Serve the file or fall back to index.html (SPA behaviour)
   const candidate = resolve(clientDir, filePath === '/' ? 'index.html' : filePath.slice(1));
-  if (serveStatic(res, candidate)) return;
+  if (serveStatic(res, candidate,req.headers.range)) return;
 
   const index = resolve(clientDir, 'index.html');
-  if (serveStatic(res, index)) return;
+  if (serveStatic(res, index,req.headers.range)) return;
 
   res.writeHead(404);
   res.end('Not found');

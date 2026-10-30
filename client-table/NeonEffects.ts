@@ -46,7 +46,7 @@ export class NeonEffects {
           }
           break;
         }
-        case 'stoneImpact': case 'stoneHit': case 'hit': case 'wallDestroyed': {
+        case 'stoneImpact': case 'stoneHit': case 'hit': case 'electricHit': case 'wallDestroyed': {
           if(view.theme==='toy'){
             for(let i=0;i<(reduced?4:12);i++){
               const a=i*2.4,d=(reduced?12:10+k*48)*( .5+noise(i*31));

@@ -237,7 +237,7 @@ test('every phase, both motion preferences and all feedback effects render witho
     view.reducedMotion = reduced;
     for (const phase of ['LOBBY', 'MAP', 'READY', 'RACE', 'PAUSED', 'RESULT'] as const) {
       state.phase = phase; state.winner = 'A'; state.pausedAt = 1_000_000;
-      view.effects = ['pickup', 'itemArmed', 'itemLost', 'stoneImpact', 'stoneHit', 'hit', 'wallDestroyed', 'repairDone', 'boostHit', 'boostGate', 'fall', 'carDisabled', 'checkpoint', 'trackDeformed']
+      view.effects = ['pickup', 'itemArmed', 'itemLost', 'stoneImpact', 'stoneHit', 'hit', 'electricHit', 'wallDestroyed', 'repairDone', 'boostHit', 'boostGate', 'fall', 'carDisabled', 'checkpoint', 'trackDeformed']
         .map(kind => ({ kind, x: 900, y: 600, team: 'A', start: 0, dur: 900 }));
       const before = JSON.stringify(state);
       renderer.render(view);

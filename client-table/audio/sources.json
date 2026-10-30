@@ -1,0 +1,156 @@
+[
+  {
+    "file": "metal-light-1.wav",
+    "author": "Kenney",
+    "source": "https://kenney.nl/assets/impact-sounds",
+    "original": "impactMetal_light_000.ogg",
+    "license": "CC0-1.0",
+    "seconds": 0.373,
+    "bytes": 32940,
+    "sha256": "4356045e27beb33a9991cc5f4a00ae5517d4647dd206e8726ab695bc939ed549",
+    "processing": "PCM mono 44.1 kHz, peak normalization, edge fades"
+  },
+  {
+    "file": "metal-light-2.wav",
+    "author": "Kenney",
+    "source": "https://kenney.nl/assets/impact-sounds",
+    "original": "impactMetal_light_001.ogg",
+    "license": "CC0-1.0",
+    "seconds": 0.249,
+    "bytes": 22000,
+    "sha256": "18906b2f1c2539d282d329e8aff2a664db05d9f256b7368d33c4425070888b78",
+    "processing": "PCM mono 44.1 kHz, peak normalization, edge fades"
+  },
+  {
+    "file": "metal-heavy-1.wav",
+    "author": "Kenney",
+    "source": "https://kenney.nl/assets/impact-sounds",
+    "original": "impactMetal_heavy_000.ogg",
+    "license": "CC0-1.0",
+    "seconds": 0.165,
+    "bytes": 14576,
+    "sha256": "7a698e2c8c8cd3c7ae943f03d12fa0d9aa7261738ab71f568efaa88b9f80b137",
+    "processing": "PCM mono 44.1 kHz, peak normalization, edge fades"
+  },
+  {
+    "file": "metal-heavy-2.wav",
+    "author": "Kenney",
+    "source": "https://kenney.nl/assets/impact-sounds",
+    "original": "impactMetal_heavy_001.ogg",
+    "license": "CC0-1.0",
+    "seconds": 0.356,
+    "bytes": 31476,
+    "sha256": "91f2927b421d03f1692efb7b378d478a7fd9931c4a1533cfc504e7b94c2e5ceb",
+    "processing": "PCM mono 44.1 kHz, peak normalization, edge fades"
+  },
+  {
+    "file": "metal-place.wav",
+    "author": "Kenney",
+    "source": "https://kenney.nl/assets/impact-sounds",
+    "original": "impactPlate_light_000.ogg",
+    "license": "CC0-1.0",
+    "seconds": 0.542,
+    "bytes": 47886,
+    "sha256": "deecddc5989a6530b7adca114356448266c0638ac616bc02edb09355063fecc9",
+    "processing": "PCM mono 44.1 kHz, peak normalization, edge fades"
+  },
+  {
+    "file": "electric-zap.wav",
+    "author": "Kenney",
+    "source": "https://kenney.nl/assets/sci-fi-sounds",
+    "original": "forceField_000.ogg",
+    "license": "CC0-1.0",
+    "seconds": 0.7,
+    "bytes": 61784,
+    "sha256": "addc1225fc2cb5b2a7a46b6265ef2eee107d87ef3193521bcb67445580fc7f70",
+    "processing": "PCM mono 44.1 kHz, peak normalization, edge fades"
+  },
+  {
+    "file": "electric-on.wav",
+    "author": "Kenney",
+    "source": "https://kenney.nl/assets/sci-fi-sounds",
+    "original": "forceField_002.ogg",
+    "license": "CC0-1.0",
+    "seconds": 0.9,
+    "bytes": 79424,
+    "sha256": "bc49865b8bd557d5bdfc735db3f3fc9546cca847f816abbf8a6f45eaae4bdd56",
+    "processing": "PCM mono 44.1 kHz, peak normalization, edge fades"
+  },
+  {
+    "file": "boost-pass.wav",
+    "author": "Kenney",
+    "source": "https://kenney.nl/assets/sci-fi-sounds",
+    "original": "thrusterFire_002.ogg",
+    "license": "CC0-1.0",
+    "seconds": 0.75,
+    "bytes": 66194,
+    "sha256": "cdee0a780195f00f3d3b021bdb5f233c286662a683649a1e6d077787f1b0c28f",
+    "processing": "PCM mono 44.1 kHz, peak normalization, edge fades"
+  },
+  {
+    "file": "power-off.wav",
+    "author": "Kenney",
+    "source": "https://kenney.nl/assets/sci-fi-sounds",
+    "original": "doorClose_000.ogg",
+    "license": "CC0-1.0",
+    "seconds": 0.532,
+    "bytes": 46932,
+    "sha256": "7501ca3069cfa04942f194bdcf68e3f5da541e0621d543f19b00273d00f69003",
+    "processing": "PCM mono 44.1 kHz, peak normalization, edge fades"
+  },
+  {
+    "file": "reactor-loop.wav",
+    "author": "Kenney",
+    "source": "https://kenney.nl/assets/sci-fi-sounds",
+    "original": "engineCircular_000.ogg",
+    "license": "CC0-1.0",
+    "seconds": 4.88,
+    "bytes": 430460,
+    "sha256": "bed2f8a779c0a2fb7214d372d8ceed0faa0be1c2cc40a8c7e21180c2a9598fb6",
+    "processing": "PCM mono 44.1 kHz, circular crossfade"
+  },
+  {
+    "file": "electric-loop.wav",
+    "author": "Kenney",
+    "source": "https://kenney.nl/assets/sci-fi-sounds",
+    "original": "spaceEngineLow_000.ogg",
+    "license": "CC0-1.0",
+    "seconds": 4.88,
+    "bytes": 430460,
+    "sha256": "e45b1dea2c58e6ad3a0ed7194880e7949a38238ba5064eb710c932671e3c587a",
+    "processing": "PCM mono 44.1 kHz, circular crossfade"
+  },
+  {
+    "file": "factory-ambience.mp3",
+    "author": "yd",
+    "source": "https://opengameart.org/content/factory-ambiance",
+    "original": "Factory.ogg",
+    "license": "CC0-1.0",
+    "seconds": 38.0,
+    "bytes": 609009,
+    "sha256": "134dd04b7e2ca36d73aa7fa99db483e7180a6d5b4c3caead3c783fc0264d1d77",
+    "processing": "44.1 kHz, circular crossfade; MP3 128 kbps"
+  },
+  {
+    "file": "glutton-music.mp3",
+    "author": "Kistol",
+    "source": "https://opengameart.org/content/glutton",
+    "original": "Glutton.ogg",
+    "license": "CC0-1.0",
+    "seconds": 122.0,
+    "bytes": 1953166,
+    "sha256": "edc2ce35d0bc21908a1f8b1e32bf036092b0a40a9ef66de49d8584d11c65f37f",
+    "processing": "44.1 kHz, circular crossfade; MP3 128 kbps"
+  },
+  {
+    "file": "sling-release.wav",
+    "author": "Kenney",
+    "source": "https://kenney.nl/assets/rpg-audio",
+    "original": "knifeSlice.ogg",
+    "license": "CC0-1.0",
+    "seconds": 0.6,
+    "bytes": 52924,
+    "sha256": "45baf9bc1c317ac426e58536a79e0ce9fc8058c204f51a007705010f25593a2f",
+    "processing": "PCM mono 44.1 kHz, peak normalization, edge fades"
+  }
+]

@@ -5,7 +5,7 @@ import { createView, showDividerRefusal, showMapError } from './view.js';
 import { Renderer } from './Renderer.js';
 import { SETTINGS_BUTTON } from '../server/layout.js';
 import { GestureRecognizer } from './GestureRecognizer.js';
-import { playFeedback, unlock } from './Sound.js';
+import { playFeedback, unlock, tableAudio } from './Sound.js';
 import { THEMES, themeLook, loadTheme, saveTheme, type ThemeId } from './themes.js';
 import { advanceVisualTime } from './VisualMotion.js';
 import { applyTuning } from './gestureTuning.js';
@@ -44,6 +44,7 @@ const ctx = canvas.getContext('2d')!;
 const sync = new StateSync();
 const view = createView(() => sync.now());
 const renderer = new Renderer(ctx);
+try{tableAudio.restore(window.localStorage);}catch{/* Audio preferences are optional. */}
 const urlParams = new URLSearchParams(location.search);
 // Themes are a local display setting: switching never sends a command or restarts a race.
 const themeOptions = document.getElementById('theme-options')!;
@@ -73,12 +74,13 @@ view.reducedMotion = motionPreference.matches || urlParams.get('motion') === '0'
 motionPreference.addEventListener('change', e => { view.reducedMotion = e.matches || urlParams.get('motion') === '0'; });
 
 const conn = connectWs('/ws', {
-  onOpen: () => { statusEl.hidden = true; },
-  onClose: () => { statusEl.textContent = 'Connexion perdue · Reconnexion…'; statusEl.hidden = false; gestures.releaseAll(); },
+  onOpen: () => { statusEl.hidden = true; tableAudio.connection(true); },
+  onClose: () => { tableAudio.connection(false); statusEl.textContent = 'Connexion perdue · Reconnexion…'; statusEl.hidden = false; gestures.releaseAll(); },
   onMessage: handleMessage,
 });
-const controls = createControls(m => conn.send(m));
-const gestures = new GestureRecognizer(canvas, view, (m) => conn.send(m));
+const sendTable=(m:{type:string}&Record<string,unknown>)=>{tableAudio.uiCommand(m);conn.send(m);};
+const controls = createControls(sendTable);
+const gestures = new GestureRecognizer(canvas, view, sendTable);
 
 document.getElementById('settings-home')!.addEventListener('click',()=>{conn.send({type:'Reset'});pcTools.open=false;});
 const difficultyInput=document.getElementById('race-difficulty') as HTMLSelectElement;
@@ -156,7 +158,21 @@ function syncTestBar(): void {
   testItems.setAttribute('aria-pressed', String(!!st?.testMode.allItems));
 }
 
-window.addEventListener('pointerdown', unlock, { once: true });
+window.addEventListener('pointerdown',unlock,{capture:true});
+window.addEventListener('keydown',e=>{if(!e.repeat)unlock();},{capture:true});
+document.addEventListener('click',e=>{if(e.target instanceof Element&&e.target.closest('button,summary'))playFeedback('ui');},{capture:true});
+const audioToggle=document.getElementById('audio-enabled') as HTMLButtonElement;
+const audioRanges={effects:document.getElementById('audio-effects') as HTMLInputElement,ambience:document.getElementById('audio-ambience') as HTMLInputElement,music:document.getElementById('audio-music') as HTMLInputElement};
+function syncAudioSettings():void{
+  audioToggle.setAttribute('aria-pressed',String(tableAudio.settings.enabled));audioToggle.textContent=tableAudio.settings.enabled?'Son activé':'Son coupé';
+  for(const key of ['effects','ambience','music'] as const)audioRanges[key].value=String(Math.round(tableAudio.settings[key]*100));
+}
+function changeAudio(value:Parameters<typeof tableAudio.configure>[0]):void{
+  try{tableAudio.configure(value,window.localStorage);}catch{tableAudio.configure(value);}syncAudioSettings();
+}
+audioToggle.addEventListener('click',()=>changeAudio({enabled:!tableAudio.settings.enabled}));
+for(const key of ['effects','ambience','music'] as const)audioRanges[key].addEventListener('input',()=>changeAudio({[key]:Number(audioRanges[key].value)/100}));
+document.getElementById('audio-test')!.addEventListener('click',()=>tableAudio.preview());syncAudioSettings();
 // Desktop local multiplayer adapter. It mirrors the table controls without
 // leaking keyboard rules into the game engine: Q/D and ←/→ are the two
 // extremes of the same continuous steering input; cars keep moving.
@@ -198,7 +214,7 @@ window.addEventListener('keydown', (e) => {
   if (key === 'ArrowLeft' || key === 'ArrowRight') { e.preventDefault(); sendSteer('B'); }
   if (key === 'z') sendSteer('A');
   if (key === 'ArrowUp') { e.preventDefault(); sendSteer('B'); }
-  if (key === ' ') { e.preventDefault(); conn.send({ type: 'Pause' }); }
+  if (key === ' ') { e.preventDefault(); sendTable({ type: 'Pause' }); }
   if (key === 'a' || key === 'p') updateKeyboardRepair('A');
   if (key === 'm' || key === 'c') updateKeyboardRepair('B');
   // A/M alone press the copilot's POWER button. Waiting briefly lets the
@@ -254,7 +270,7 @@ window.addEventListener('keydown', e => {
   // Keep the browser's default Escape behaviour and reserve Space for the game pause.
 }, true);
 
-document.addEventListener('visibilitychange', () => { if (document.hidden) gestures.releaseAll(); });
+document.addEventListener('visibilitychange', () => { tableAudio.focus(!document.hidden); if (document.hidden) gestures.releaseAll(); });
 
 // Round-trip time (server echo), used by the debug overlay (task 18)
 setInterval(() => conn.send({ type: 'Ping' }), 2000);
@@ -332,7 +348,7 @@ function handleMessage(msg: ServerMessage): void {
         }
       }
       if (msg.kind === 'mapAccepted') view.mapNotice = null;
-      playFeedback(msg.kind);
+      playFeedback(msg.kind,{x:msg.x,y:msg.y});
       break;
     case 'Pong':
       view.debug.rtt = Date.now() - msg.clientT;
@@ -388,6 +404,7 @@ function drawFrame(now: number): void {
   ctx.scale(dpr, dpr);
   const renderStart = performance.now();
   renderer.render(view);
+  tableAudio.update(view,now);
   renderSamples.push(performance.now() - renderStart);
   if (renderSamples.length > 120) renderSamples.shift();
   if (now - metricsAt > 1000) {

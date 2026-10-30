@@ -39,6 +39,10 @@
     #race-options input[type=checkbox] { width:18px;height:18px;vertical-align:middle; }
     #race-options :disabled { opacity:.4; }
     .setting-label { font-size: 12px; color: #b9cbd0; margin-bottom: 10px; }
+    #audio-options { margin:14px 0; padding-top:12px; border-top:1px solid #ffffff18; }
+    #audio-options label { display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0; }
+    #audio-options input[type=range] { width:60%;accent-color:var(--look-accent,#ffce66);min-height:28px; }
+    .audio-buttons { display:flex;gap:8px;margin-bottom:10px; }
     #theme-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 4px; }
     .theme-option { padding: 12px; text-align: left; background: #101b26; }
     .theme-option[aria-pressed="true"] { border-color: #9becf2; box-shadow: inset 0 0 0 1px #9becf2; background: #223a44; }
@@ -91,6 +95,13 @@
         <label>Difficulté <select id="race-difficulty"><option value="easy">Easy · 50 %</option><option value="medium">Medium · 75 %</option><option value="hard">Hard · 100 %</option></select></label>
         <label>Tours <input id="race-laps" type="number" min="1" max="99" step="1" value="3" /></label>
         <label><span><input id="race-timer" type="checkbox" /> Chronomètre</span><span><input id="race-minutes" aria-label="Durée en minutes" type="number" min="0.5" max="120" step="0.5" value="2" disabled /> min</span></label>
+      </div>
+      <div id="audio-options" role="group" aria-label="Audio">
+        <p class="setting-label">Audio</p>
+        <div class="audio-buttons"><button id="audio-enabled" type="button" aria-pressed="true">Son activé</button><button id="audio-test" type="button">Tester</button></div>
+        <label>Effets <input id="audio-effects" aria-label="Volume des effets" type="range" min="0" max="100" step="1" value="70" /></label>
+        <label>Ambiance <input id="audio-ambience" aria-label="Volume de l’ambiance" type="range" min="0" max="100" step="1" value="22" /></label>
+        <label>Musique <input id="audio-music" aria-label="Volume de la musique" type="range" min="0" max="100" step="1" value="12" /></label>
       </div>
       <p class="setting-label">Ambiance</p>
       <div id="theme-options" role="group" aria-label="Thème visuel"></div>

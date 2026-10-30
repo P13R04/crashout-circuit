@@ -791,11 +791,11 @@ export class GameRules {
 
   // ─── Damage ────────────────────────────────────────────────────────────────
 
-  damage(car: Car, amount: number, now: number): void {
+  damage(car: Car, amount: number, now: number,feedback='hit'): void {
     if (car.disabled || this.state.testMode.invincible) return;
     if (this.state.tutorial) amount = 0; // lessons show the hit, never its cost
     car.hp = Math.max(0, car.hp - amount);
-    this.host.feedback('hit', car.pos.x, car.pos.y, car.team);
+    this.host.feedback(feedback, car.pos.x, car.pos.y, car.team);
     if (car.hp === 0) {
       car.disabled = true;
       car.speed = 0;
@@ -1176,7 +1176,7 @@ export class GameRules {
           if (!t.active || t.status !== 'placed' || t.kind !== 'pylon') continue;
           const at = { x: t.x * config.logicalWidth, y: t.y * config.logicalHeight };
           if (distToSegment(at, prev, car.pos) > config.pylonFieldRadiusPx + CAR_RADIUS) continue;
-          this.damage(car, config.dmgArc, now);
+          this.damage(car, config.dmgArc, now,'electricHit');
           car.invulnUntil = now + config.invulnAfterHitS * 1000;
           car.slowUntil = now + config.arcSlowS * 1000;
           car.speed *= config.arcSlowFactor;
@@ -1187,7 +1187,7 @@ export class GameRules {
         for (const arc of s.arcs) {
           if (arc.team === team || arc.disabledUntil > now) continue;
           if (Math.min(distToSegment(car.pos, arc.pylon1, arc.pylon2), distToSegment(arc.pylon1, prev, car.pos), distToSegment(arc.pylon2, prev, car.pos)) <= CAR_RADIUS + WALL_HALF_THICKNESS || segmentsIntersect(prev, car.pos, arc.pylon1, arc.pylon2)) {
-            this.damage(car, config.dmgArc, now);
+            this.damage(car, config.dmgArc, now,'electricHit');
             car.invulnUntil = now + config.invulnAfterHitS * 1000;
             car.slowUntil = now + config.arcSlowS * 1000;
             car.speed *= config.arcSlowFactor;

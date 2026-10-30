@@ -93,7 +93,7 @@ test('neutral electrical fields and the connecting arc hurt and slow both automa
   for(let i=0;i<10*60;i++){
     const speed={A:r.state.cars.A.speed,B:r.state.cars.B.speed};const count=r.feedback.length;
     r.step();
-    for(const event of r.feedback.slice(count))if(event.kind==='hit'){
+    for(const event of r.feedback.slice(count))if(event.kind==='electricHit'){
       const car=r.state.cars[event.team];
       assert.ok(car.hp<100);assert.ok(car.slowUntil>r.clock.now);
       assert.ok(car.speed<=speed[event.team]*.51+3,'electrical slow-down survives the controller');

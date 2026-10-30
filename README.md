@@ -223,3 +223,7 @@ prototypes/      laboratoire historique, conservé sans modification
 ```
 
 Les anciennes règles expérimentales fantôme / destruction restent dans le moteur pour référence, mais ne sont plus exposées comme boutons ou commandes de la table. Les spécifications historiques de `.kiro/` et le laboratoire ne décrivent donc pas toujours les commandes actuelles ; ce README décrit le prototype fonctionnel.
+
+### Audio
+
+**Paramètres → Audio** permet de couper le son et de régler effets, ambiance et musique séparément. Les sons physiques utilisent des extraits CC0 téléchargés ; les clics, alertes et confirmations utilisent des signaux simples. Ferraille possède une ambiance industrielle et une proposition de musique. Voir [l’inventaire complet, les sons à rechercher et le parcours d’essai](docs/audio.md), ainsi que [les crédits et licences](client-table/audio/CREDITS.md). `npm run test:audio` fait partie de `check` et `verify`.
