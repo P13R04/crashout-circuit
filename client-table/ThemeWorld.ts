@@ -19,7 +19,7 @@ export class ThemeWorld {
   constructor(private theme:CircuitTheme){
     this.venue=theme==='classic'?new F1Venue():theme==='toy'?new ToyWorkshop():new MayhemFestival();
   }
-  draw(ctx:Ctx,time:number,reduced:boolean,mapping:boolean,track:TrackGeometry|null=null,presentation?:SceneryPresentation):void {
+  draw(ctx:Ctx,time:number,reduced:boolean,mapping:boolean,track:TrackGeometry|null=null,presentation?:SceneryPresentation,venueOpacity=1):void {
     if(!this.floor)this.prepareFloor();
     const mode=presentation??(mapping?'map':track?'race':'lobby'),key=mode==='race'?`race-${sceneryKey(track)}`:mode;
     if(this.key!==key){
@@ -47,7 +47,7 @@ export class ThemeWorld {
         ctx.globalAlpha=.15*Math.sin(age*Math.PI);ctx.drawImage(this.fog!,x-160,y-90,320,180);
       }ctx.restore();
     }
-    ctx.save();ctx.globalAlpha=mapping?.36:1;
+    ctx.save();ctx.globalAlpha=(mapping?.36:1)*venueOpacity;
     ctx.drawImage(this.scene!,0,0,1920,1080);this.venue.draw(ctx,t,reduced);ctx.restore();
     ctx.restore();
     if(mapping){ctx.fillStyle='#0a17284d';ctx.fillRect(0,0,1920,1080);}

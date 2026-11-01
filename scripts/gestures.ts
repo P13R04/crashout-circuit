@@ -250,10 +250,23 @@ await test('former mode buttons and neutral settings space never toggle drive mo
 await test('the tangible-test lobby entry starts its own mode without changing the other entries', async () => {
   const { START_TANGIBLE_TEST_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON } = await import('../client-table/Renderer.js');
   for (const [button, expected] of [[START_TANGIBLE_TEST_BUTTON,'StartTangibleTest'],[START_TABLE_BUTTON,'StartGame'],[START_PC_BUTTON,'StartGame'],[START_TUTORIAL_BUTTON,'StartTutorial']] as const) {
-    const r=rig(null);r.view.state!.phase='LOBBY';
+    const r=rig(null);r.view.state!.phase='LOBBY';r.view.state!.developerTools=true;
     const x=button.x+button.w/2,y=button.y+button.h/2;
     r.down(1,x,y);r.up(1,x,y);assert.equal(r.sent.length,1);assert.equal(r.sent[0].type,expected);
   }
+});
+await test('participants cannot activate invisible keyboard or tangible-test lobby regions',async()=>{
+ const {START_PC_BUTTON,START_TANGIBLE_TEST_BUTTON}=await import('../client-table/Renderer.js');
+ for(const b of [START_PC_BUTTON,START_TANGIBLE_TEST_BUTTON]){const r=rig(null);r.view.state!.phase='LOBBY';r.view.state!.developerTools=false;r.down(1,b.x+b.w/2,b.y+b.h/2);r.up(1,b.x+b.w/2,b.y+b.h/2);assert.equal(r.sent.length,0);}
+});
+await test('the start button stays inert during construction and roulette, then accepts a fresh tap',async()=>{
+  const {RACE_START_BUTTON:b}=await import('../client-table/Renderer.js');
+  const {TRACK_PRESENTATION_MS}=await import('../server/trackPresentation.js');
+  const r=rig(null);r.view.state!.phase='READY';r.view.state!.trackPresentation={startedAt:1000,originIndex:0};
+  let now=1000;r.view.now=()=>now;
+  const tap=(id:number)=>{r.down(id,b.x+b.w/2,b.y+b.h/2);r.up(id,b.x+b.w/2,b.y+b.h/2);};
+  tap(1);now=1000+TRACK_PRESENTATION_MS-1;tap(2);assert.equal(r.sent.length,0);
+  now=1000+TRACK_PRESENTATION_MS;tap(3);assert.equal(r.sent.at(-1)?.type,'BeginRace');r.recognizer.releaseAll();
 });
 await test('automatic test consumes pilot touches while copilot POWER and repair remain available', async () => {
   const r=rig();r.view.state!.sessionMode='tangibles-test';

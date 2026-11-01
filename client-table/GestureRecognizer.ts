@@ -19,6 +19,7 @@
  * of the closest copilot station; the armed stock can belong to either team.
  * No finger is ever tracked back to a person (REQ-5.1).
  */
+import { presentingTrack } from '../server/trackPresentation.js';
 import { armedPickup } from '../server/armedPickup.js';
 import { createControls } from '../client-shared/controls.js';
 import type { GameState, Team, Vec2 } from '../server/types.js';
@@ -28,7 +29,7 @@ import {
 } from '../server/layout.js';
 import { slingshotShot, trackTangent, nearestTrackEdge } from '../server/geometry.js';
 import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON} from './Renderer.js';
-import { tutorialButtonAt } from './TutorialOverlay.js';
+import { inTutorialCard, tutorialButtonAt, tutorialIdentifying } from './TutorialOverlay.js';
 import { showDividerRefusal, showMapError, showMapNotice, type View } from './view.js';
 import { activeMapTeam, inMapAnchor, mapEndpointError, mapStrokeEndpoints } from '../server/mapCreation.js';
 import { tangibleTouchPose, TANGIBLE_SETTLE_MS, TANGIBLE_CONTACT_GRACE_MS } from '../server/tangibleTouch.js';
@@ -269,15 +270,15 @@ export class GestureRecognizer {
 
     // 0 — lobby: start button
     if (state.phase === 'LOBBY') {
-      if (hit(START_TABLE_BUTTON) || hit(START_PC_BUTTON)) {
+      if (hit(START_TABLE_BUTTON) || state.developerTools && hit(START_PC_BUTTON)) {
         c.zone = 'result';
         this.send({ type: 'StartGame', mode: hit(START_PC_BUTTON) ? 'pc' : 'table' });
-      } else if (hit(START_TANGIBLE_TEST_BUTTON)) {
+      } else if (state.developerTools && hit(START_TANGIBLE_TEST_BUTTON)) {
         c.zone = 'result'; this.send({ type: 'StartTangibleTest' });
       } else if (hit(START_TUTORIAL_BUTTON)) {
-        // A mouse means a PC session (keyboard + click stand-ins), anything else the table
+        // Starting with a mouse must keep the four real stations and touch lessons.
         c.zone = 'result';
-        this.send({ type: 'StartTutorial', mode: e.pointerType === 'mouse' ? 'pc' : 'table' });
+        this.send({ type: 'StartTutorial', mode: this.view.tutorialMode });
       } else c.zone = 'rejected';
       return;
     }
@@ -313,6 +314,7 @@ export class GestureRecognizer {
       return;
     }
     if (state.phase === 'READY') {
+      if(presentingTrack(state,this.view.now())){c.zone='rejected';return;}
       const b = RACE_START_BUTTON;
       if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
         c.zone = 'result'; this.send({ type: 'BeginRace' });
@@ -334,9 +336,11 @@ export class GestureRecognizer {
     const tutorialButton = tutorialButtonAt(state, p);
     if (tutorialButton) {
       c.zone = 'result';
-      this.send(tutorialButton.kind === 'skip' ? { type: 'TutorialSkip', team: tutorialButton.team } : { type: 'NewGame' });
+      this.send(tutorialButton.kind === 'skip' ? { type: 'TutorialSkip', team: tutorialButton.team } : { type: 'TutorialRace' });
       return;
     }
+
+    if(state.tutorial?.finished||inTutorialCard(state,p)){c.zone='rejected';return;}
 
     // 3 — pads and buttons of the corner panels
     for (const panel of PANELS) {
@@ -379,7 +383,9 @@ export class GestureRecognizer {
       if (Math.abs(l.x) <= panelWidth(panel.role,state.driveMode[panel.team]) / 2 && Math.abs(l.y) <= PANEL_H / 2) { c.zone = 'rejected'; return; }
     }
 
-    // Oz reserves fresh map contacts before any bonus, simulation or border gesture.
+    if(tutorialIdentifying(state)){c.zone='rejected';return;}
+
+    // The operator reserves fresh map contacts before any bonus, simulation or border gesture.
     const scale = LOGICAL_W / this.canvas.getBoundingClientRect().width;
     const width = Math.max(e.width || 0, e.height || 0) * scale;
     this.log('contact', { id: c.id, w: (e.width || 0) * scale, h: (e.height || 0) * scale, type: e.pointerType, palm: width > tuning.palmMaxPx });

@@ -46,6 +46,7 @@ const view = createView(() => sync.now());
 const renderer = new Renderer(ctx);
 try{tableAudio.restore(window.localStorage);}catch{/* Audio preferences are optional. */}
 const urlParams = new URLSearchParams(location.search);
+view.tutorialMode='table';
 // Themes are a local display setting: switching never sends a command or restarts a race.
 const themeOptions = document.getElementById('theme-options')!;
 for (const theme of THEMES) {
@@ -66,9 +67,8 @@ function selectTheme(id: ThemeId): void {
   for (const button of themeOptions.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.theme === id));
 }
 // Access to localStorage itself can be denied in embedded/private contexts.
-try { selectTheme(loadTheme(window.localStorage)); } catch { selectTheme('neon'); }
-view.debug.on = urlParams.get('debug') === '1';
-applyTuning(location.search);
+try { selectTheme(loadTheme(window.localStorage)); } catch { selectTheme('scrap'); }
+view.debug.on = false;
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
 view.reducedMotion = motionPreference.matches || urlParams.get('motion') === '0';
 motionPreference.addEventListener('change', e => { view.reducedMotion = e.matches || urlParams.get('motion') === '0'; });
@@ -105,7 +105,7 @@ const driveOptions=document.getElementById('drive-options')!;
 const driveButtons={A:document.getElementById('drive-A')!,B:document.getElementById('drive-B')!};
 for(const team of ['A','B'] as const)driveButtons[team].addEventListener('click',()=>conn.send({type:'ToggleDriveMode',team}));
 function syncDriveOptions(): void {
-  const s=view.state;driveOptions.hidden=!s||!['READY','RACE','PAUSED'].includes(s.phase)||s.sessionMode==='tangibles-test';
+  const s=view.state;driveOptions.hidden=!s||!['LOBBY','READY','RACE','PAUSED'].includes(s.phase)||s.sessionMode==='tangibles-test';
   for(const team of ['A','B'] as const){const mode=s?.driveMode[team]??'auto';driveButtons[team].textContent=`${team==='A'?'Cyan':'Rose'} · ${mode==='auto'?'AUTO':'PÉDALE'}`;driveButtons[team].setAttribute('aria-pressed',String(mode==='pedal'));}
 }
 
@@ -118,6 +118,7 @@ const simHint = document.getElementById('sim-hint') as HTMLSpanElement;
 const showSimulation = urlParams.get('sim') === '1' || window.matchMedia('(pointer: fine)').matches;
 let simKind: 'slingshot' | 'boost' | null = null;
 const setSim = (k: 'slingshot' | 'boost' | null): void => {
+  if(k&&!view.state?.developerTools)return;
   simKind = simKind === k ? null : k;
   sim3.classList.toggle('armed', simKind === 'slingshot');
   sim2.classList.toggle('armed', simKind === 'boost');
@@ -142,15 +143,15 @@ const testBar = document.getElementById('testbar') as HTMLDivElement;
 const testInvincible = document.getElementById('test-invincible') as HTMLButtonElement;
 const testItems = document.getElementById('test-items') as HTMLButtonElement;
 testInvincible.addEventListener('click', () =>
-  conn.send({ type: 'TestToggle', flag: 'invincible', on: !view.state?.testMode.invincible }));
+  view.state?.developerTools&&conn.send({ type: 'TestToggle', flag: 'invincible', on: !view.state?.testMode.invincible }));
 testItems.addEventListener('click', () =>
-  conn.send({ type: 'TestToggle', flag: 'allItems', on: !view.state?.testMode.allItems }));
+  view.state?.developerTools&&conn.send({ type: 'TestToggle', flag: 'allItems', on: !view.state?.testMode.allItems }));
 function syncTestBar(): void {
   const st = view.state;
   const racing = st?.phase === 'RACE' || st?.phase === 'PAUSED';
   // The tutorial needs the real item rules: no free items, no invincibility switch
-  testBar.classList.toggle('on', st?.mapMode === 'pc' && racing && !st.tutorial);
-  simBar.classList.toggle('on', showSimulation && racing);
+  testBar.classList.toggle('on', !!st?.developerTools && st?.mapMode === 'pc' && racing && !st.tutorial);
+  simBar.classList.toggle('on', !!st?.developerTools && showSimulation && racing);
   if (!racing && simKind) setSim(null);
   testInvincible.classList.toggle('active', !!st?.testMode.invincible);
   testItems.classList.toggle('active', !!st?.testMode.allItems);
@@ -206,8 +207,8 @@ function updateKeyboardRepair(team: 'A' | 'B'): void {
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof Element && e.target.closest('button, summary, input, textarea, select, a')) return;
   const key = keyName(e);
-  if (key === 'F3' && !e.repeat && !down.has('F3')) view.debug.on = !view.debug.on;
-  if (key === 'F4' && !e.repeat && !down.has('F4')) { e.preventDefault(); downloadGestureLog(); }
+  if (view.state?.developerTools && key === 'F3' && !e.repeat && !down.has('F3')) view.debug.on = !view.debug.on;
+  if (view.state?.developerTools && key === 'F4' && !e.repeat && !down.has('F4')) { e.preventDefault(); downloadGestureLog(); }
   if (down.has(key)) return;
   down.add(key);
   if (key === 'q' || key === 'd') sendSteer('A');
@@ -281,6 +282,9 @@ function handleMessage(msg: ServerMessage): void {
       const prev = view.state;
       view.state = sync.apply(msg.state, msg.t);
       gestures.syncState();
+      if(!prev&&view.state.developerTools){view.debug.on=urlParams.get('debug')==='1';applyTuning(location.search);}
+      if(!view.state.developerTools){view.debug.on=false;simBar.remove();testBar.remove();}
+      view.tutorialMode=view.state.developerTools&&urlParams.get('tutorial')==='pc'?'pc':'table';
       syncDriveOptions();
       syncRaceOptions();
       if (view.state.mapTargets) {
@@ -314,7 +318,7 @@ function handleMessage(msg: ServerMessage): void {
     case 'PhaseChange':
       view.effects.length = 0;
       recordGesture(view.debug.gestures, 'phase', { phase: msg.phase });
-      if (msg.phase === 'RESULT' && urlParams.get('log') === '1') downloadGestureLog();
+      if (msg.phase === 'RESULT' && view.state?.developerTools && urlParams.get('log') === '1') downloadGestureLog();
       if (msg.phase === 'MAP' || msg.phase === 'LOBBY') {
         view.strokes.clear();
         view.pendingDivider = [];
@@ -334,7 +338,7 @@ function handleMessage(msg: ServerMessage): void {
         showDividerRefusal(view, msg.kind === 'dividerTooShort' ? 'tooShort' : 'outOfZone');
       }
       view.effects.push({
-        kind: msg.kind, x: msg.x, y: msg.y, team: msg.team, start: view.visualTime, dur: effectDuration(msg.kind),
+        kind: msg.kind, itemKind:msg.itemKind, x: msg.x, y: msg.y, team: msg.team, start: view.visualTime, dur: effectDuration(msg.kind),
       });
       if (view.effects.length > 64) view.effects.splice(0, view.effects.length - 64);
       if (msg.kind.startsWith('map') && msg.kind !== 'mapAccepted') {
@@ -360,8 +364,9 @@ function effectDuration(kind: string): number {
   switch (kind) {
     case 'stoneHit': return 700;
     case 'fall': return 950;
-    case 'pickup': return 650;
+    case 'pickup': return 800;
     case 'itemArmed': return 650;
+    case 'itemUsed': return 400;
     case 'checkpoint': return 550;
     case 'trackDeformed': return 550;
     case 'stoneImpact': return 700;

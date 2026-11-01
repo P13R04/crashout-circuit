@@ -16,7 +16,7 @@
     "start": "node dist/server/index.js",
     "typecheck": "tsc --noEmit",
     "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
-    "check": "npm run typecheck && npm run typecheck:server && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run test:audio && npm run build",
+    "check": "npm run typecheck && npm run typecheck:server && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run test:audio && npm run test:track-creation && npm run test:public-session && npm run test:pickups && npm run build",
     "sim:sling": "tsx scripts/sling-balance.ts",
     "test:acceptance": "tsx scripts/acceptance.ts",
     "test:gestures": "tsx scripts/gestures.ts",
@@ -28,8 +28,11 @@
     "test:race-settings": "tsx scripts/race-settings.ts",
     "test:boost": "tsx scripts/boost.ts",
     "test:tangible-touch": "tsx scripts/tangible-touch.ts",
-    "verify": "npm run typecheck && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run test:visuals && npm run test:tangibles && npm run test:autopilot && npm run test:boost && npm run test:tangible-touch && npm run test:race-settings && npm run test:reservations && npm run test:audio && npm run build",
-    "test:audio": "tsx scripts/audio.ts"
+    "verify": "npm run typecheck && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run test:visuals && npm run test:tangibles && npm run test:autopilot && npm run test:boost && npm run test:tangible-touch && npm run test:race-settings && npm run test:reservations && npm run test:audio && npm run test:track-creation && npm run test:public-session && npm run test:pickups && npm run build",
+    "test:audio": "tsx scripts/audio.ts",
+    "test:track-creation": "tsx scripts/track-creation.ts",
+    "test:public-session": "tsx scripts/public-session.ts",
+    "test:pickups": "tsx scripts/pickups.ts"
   },
   "dependencies": {
     "ws": "^8.18.0"

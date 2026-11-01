@@ -2,16 +2,16 @@
 export const THEMES = [
   { id: 'neon', name: 'Néon', detail: 'Vide matriciel', colors: ['#131f35', '#9079ff', '#00e5ff'] },
   { id: 'scrap', name: 'Ferraille', detail: 'Acier · vapeur · énergie', colors: ['#424e54', '#91aaa9', '#70e6ed'] },
-  { id: 'toy', name: 'Toy Circuit', detail: 'Miniatures · atelier · plastique', colors: ['#17686d', '#ffb82e', '#f86445'] },
-  { id: 'classic', name: 'F1 Classic', detail: 'Asphalte · vibreurs · paddock', colors: ['#355a48', '#e9544d', '#e9e9df'] },
-  { id: 'mayhem', name: 'Mayhem', detail: 'Festival · boue · castagne', colors: ['#3c3029', '#a45f3b', '#ffc16b'] },
+  { id: 'toy', name: 'Circuit miniature', detail: 'Miniatures · atelier · plastique', colors: ['#17686d', '#ffb82e', '#f86445'] },
+  { id: 'classic', name: 'Grand Prix', detail: 'Asphalte · vibreurs · paddock', colors: ['#355a48', '#e9544d', '#e9e9df'] },
+  { id: 'mayhem', name: 'Castagne', detail: 'Festival · boue · castagne', colors: ['#3c3029', '#a45f3b', '#ffc16b'] },
 ] as const;
 export type ThemeId = typeof THEMES[number]['id'];
 export type CircuitTheme = Exclude<ThemeId, 'neon' | 'scrap'>;
-export const THEME_STORAGE_KEY = 'crashout.visual-theme';
-export function themeId(value: unknown): ThemeId { return THEMES.find(t => t.id === value)?.id ?? 'neon'; }
+export const THEME_STORAGE_KEY = 'crashout.visual-theme.v2';
+export function themeId(value: unknown): ThemeId { return THEMES.find(t => t.id === value)?.id ?? 'scrap'; }
 export function loadTheme(storage: Pick<Storage, 'getItem'>): ThemeId {
-  try { return themeId(storage.getItem(THEME_STORAGE_KEY)); } catch { return 'neon'; }
+  try { return themeId(storage.getItem(THEME_STORAGE_KEY)); } catch { return 'scrap'; }
 }
 export function saveTheme(storage: Pick<Storage, 'setItem'>, id: ThemeId): void {
   try { storage.setItem(THEME_STORAGE_KEY, id); } catch { /* Still usable when storage is unavailable. */ }

@@ -24,6 +24,11 @@ interface ConnectedClient {
   connectedAt: number;
 }
 
+export interface GameServerOptions {
+  developerTools?: boolean;
+  authorizeOperator?: (request:IncomingMessage)=>boolean;
+}
+
 export class GameServer {
   private wss: WebSocketServer;
   private clients: Set<ConnectedClient> = new Set();
@@ -32,12 +37,13 @@ export class GameServer {
   readonly rules: GameRules;
   readonly physics: PhysicsLoop;
 
-  constructor(wss: WebSocketServer) {
+  constructor(wss: WebSocketServer, private options:GameServerOptions={}) {
     this.wss = wss;
     this.state = createInitialState();
+    this.state.developerTools=options.developerTools===true;
     const host: RulesHost = {
-      feedback: (kind, x, y, team) =>
-        this.broadcast({ type: 'Feedback', t: Date.now(), kind, x, y, team } satisfies FeedbackMsg),
+      feedback: (kind, x, y, team, itemKind) =>
+        this.broadcast({ type: 'Feedback', t: Date.now(), kind, x, y, team, ...(itemKind?{itemKind}:{}) } satisfies FeedbackMsg),
       transition: (phase, data) => this.transitionTo(phase, data),
       broadcastFull: () => this.broadcastFull(),
     };
@@ -51,6 +57,7 @@ export class GameServer {
   private onConnection(ws: WebSocket, req: IncomingMessage): void {
     const url = new URL(req.url ?? '/', `http://localhost`);
     const role = this.resolveRole(url);
+    if(role==='oz'&&!this.options.authorizeOperator?.(req)){ws.close(4401,'Code opérateur requis');return;}
 
     const client: ConnectedClient = { ws, role, connectedAt: Date.now() };
     this.clients.add(client);
@@ -113,19 +120,22 @@ export class GameServer {
         if (fromTable && msg.role === 'copilot' && (msg.team === 'A' || msg.team === 'B')) this.rules.onPower(msg.team, msg);
         break;
       case 'StartGame':
-        if (fromTable && this.state.phase === 'LOBBY') this.rules.enterMap(msg.mode);
+        if (fromTable && this.state.phase === 'LOBBY' && (msg.mode===undefined||msg.mode==='table'||msg.mode==='pc'&&this.state.developerTools)) this.rules.enterMap(msg.mode);
         break;
       case 'StartTangibleTest':
-        if (fromTable) this.rules.startTangibleTest();
+        if (fromTable && this.state.developerTools) this.rules.startTangibleTest();
         break;
       case 'StartTutorial':
-        if (fromTable && this.state.phase === 'LOBBY') this.rules.startTutorial(msg.mode === 'pc' ? 'pc' : 'table');
+        if (fromTable && this.state.phase === 'LOBBY' && (msg.mode===undefined||msg.mode==='table'||msg.mode==='pc'&&this.state.developerTools)) this.rules.startTutorial(msg.mode === 'pc' ? 'pc' : 'table');
+        break;
+      case 'TutorialRace':
+        if (fromTable) this.rules.tutorialRace();
         break;
       case 'TutorialSkip':
         if (fromTable) this.rules.tutorialSkip(msg.team);
         break;
       case 'TestToggle':
-        if (fromTable) this.rules.onTestToggle(msg);
+        if (fromTable && this.state.developerTools) this.rules.onTestToggle(msg);
         break;
       case 'Pause':
         if (fromTable) this.rules.togglePause();

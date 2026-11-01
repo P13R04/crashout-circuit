@@ -10,7 +10,7 @@ import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PLAY_AREA, TANGIBLE_DEPOT, N
 import { HUD, drawItemIcon } from './HUD.js';
 import { TEAM_COLOR, type View, type SlingPreview } from './view.js';
 import { icon, contacts, type Icon } from './icons.js';
-import { drawTutorial } from './TutorialOverlay.js';
+import { drawTutorial, tutorialIdentifying, drawStationLabels } from './TutorialOverlay.js';
 import { TangibleTransitions } from './TangibleTransitions.js';
 import { playFeedback } from './Sound.js';
 import { ScrapBackdrop } from './ScrapBackdrop.js';
@@ -24,16 +24,18 @@ import { NeonVehicles } from './NeonVehicles.js';
 import { NeonObjects } from './NeonObjects.js';
 import { NeonEffects } from './NeonEffects.js';
 import { armedPickup, RESPAWN_COUNTDOWN_MS } from '../server/armedPickup.js';
+import { presentingTrack, presentationFrame } from '../server/trackPresentation.js';
+import { TrackCreation } from './TrackCreation.js';
 import { drawTangibleTouchPreview } from './TangibleTouchPreview.js';
 import { glow, NEON, plate } from './neon.js';
 import { activeMapTeam, inMapAnchor, mapStrokeEndpoints, MAP_ANCHOR_RADIUS } from '../server/mapCreation.js';
 
 type Ctx = CanvasRenderingContext2D;
 
-export const START_TABLE_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 144, w: 520, h: 60 };
-export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 - 68, w: 520, h: 60 };
-export const START_TUTORIAL_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 8, w: 520, h: 60 };
-export const START_TANGIBLE_TEST_BUTTON = { x: LOGICAL_W / 2 - 260, y: LOGICAL_H / 2 + 84, w: 520, h: 60 };
+export const START_TABLE_BUTTON = { x: LOGICAL_W / 2 - 260, y: 548, w: 520, h: 88 };
+export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: 660, w: 250, h: 58 };
+export const START_TUTORIAL_BUTTON = { x: LOGICAL_W / 2 - 260, y: 408, w: 520, h: 88 };
+export const START_TANGIBLE_TEST_BUTTON = { x: LOGICAL_W / 2 + 10, y: 660, w: 250, h: 58 };
 export const RESULT_BUTTON = { x: LOGICAL_W / 2 - 200, y: LOGICAL_H / 2 - 45, w: 400, h: 90 };
 export const PAUSE_BUTTON = { x: LOGICAL_W / 2 - 58, y: 35, w: 116, h: 76 };
 export const DRIVE_MODE_BUTTONS = { A: SETTINGS_BUTTON, B: SETTINGS_BUTTON };
@@ -44,6 +46,7 @@ export const RACE_START_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44
 
 export class Renderer {
   private hud = new HUD();
+  private creation = new TrackCreation();
   private transitions = new TangibleTransitions(playFeedback);
   private backdrop = new VoidBackdrop();
   private track = new NeonTrack();
@@ -80,21 +83,30 @@ export class Renderer {
     const industrial = this.theme === 'scrap';
     const world = this.theme !== 'neon' && this.theme !== 'scrap' ? this.world(this.theme) : null;
     const look = themeLook(this.theme);
+    const building = state && presentingTrack(state,view.now()) && state.track && state.trackPresentation;
+    const buildFrame = building ? presentationFrame(building,view.now()) : null;
     const vehicles = world?.vehicles ?? (industrial ? this.scrapVehicles : this.vehicles);
     const objects = world?.objects ?? (industrial ? this.scrapObjects : this.objects);
     const track = world?.track ?? (industrial ? this.scrapTrack : this.track);
     if (state) this.transitions.update(state, view.visualTime);
     this.reducedMotion = view.reducedMotion;
     this.time = view.visualTime;
-    if(world)world.backdrop.draw(ctx,this.time,view.reducedMotion,state?.phase==='MAP',state?.track??null,state?.phase==='LOBBY'?'lobby':state?.phase==='MAP'?'map':'race');
+    if(world)world.backdrop.draw(ctx,this.time,view.reducedMotion,state?.phase==='MAP',state?.track??null,state?.phase==='LOBBY'?'lobby':state?.phase==='MAP'?'map':'race',buildFrame?.reveal??1);
     else (industrial?this.scrapBackdrop:this.backdrop).draw(ctx,this.time,view.reducedMotion,state?.phase==='MAP');
     if (!state) return;
 
-    if (state.phase === 'LOBBY') { vehicles.clear(); this.drawLobby(ctx); return; }
-    if (state.phase === 'MAP') { vehicles.clear(); this.drawMap(ctx, state, view);  return; }
+    if (state.phase === 'LOBBY') { vehicles.clear(); objects.clearPickups(); this.drawLobby(ctx,state.developerTools); return; }
+    if (state.phase === 'MAP') { vehicles.clear(); objects.clearPickups(); this.drawMap(ctx, state, view);  return; }
     if (state.phase !== 'READY' && state.phase !== 'RACE' && state.phase !== 'PAUSED' && state.phase !== 'RESULT') return;
     const now = state.phase === 'PAUSED' ? state.pausedAt : view.now();
 
+    if(building && state.track){
+      vehicles.clear();
+      this.creation.draw(ctx,state.track,state.trackVersion,building,now,this.reducedMotion,look.accent,view.strokes.values(),
+        ()=>track.draw(ctx,state.track!,state.trackVersion,this.time,this.reducedMotion,false));
+      if(buildFrame?.stage==='lock')for(const team of ['A','B'] as const)vehicles.draw(ctx,state.cars[team],this.time,now,this.reducedMotion,[]);
+      return;
+    }
     if (state.track) track.draw(ctx, state.track, state.trackVersion, this.time, this.reducedMotion);
     vehicles.drawTrails(ctx, state, this.time, now, this.reducedMotion);
     objects.drawPickups(ctx, state, this.time, this.reducedMotion);
@@ -114,6 +126,7 @@ export class Renderer {
     this.hud.draw(ctx, state, view);
     this.drawDisabledAlerts(ctx, state);
     this.drawNeutralZones(ctx,state);
+    this.effects.draw(ctx,view,true);
     if (state.phase === 'READY') { this.drawRaceReady(ctx, state); }
     if (state.phase === 'RACE') { this.drawCountdown(ctx, state, now); this.drawPauseButton(ctx, 'PAUSE'); }
     if (state.phase === 'PAUSED') { this.drawPaused(ctx); this.drawPauseButton(ctx, 'REPRENDRE'); }
@@ -134,7 +147,7 @@ export class Renderer {
   }
 
   private drawExpectedBonus(ctx: Ctx,state: GameState):void {
-    if(state.tangiblePlacement||!['RACE','PAUSED'].includes(state.phase))return;
+    if(state.tutorial||!['RACE','PAUSED'].includes(state.phase))return;
     const expected=armedPickup(state);if(!expected)return;
     ctx.save();ctx.translate(960,170);ctx.fillStyle=themeLook(this.theme).panel+'ed';ctx.strokeStyle=themeLook(this.theme).accent+'90';ctx.lineWidth=2;
     ctx.beginPath();ctx.roundRect(-45,-32,90,64,12);ctx.fill();ctx.stroke();
@@ -160,7 +173,7 @@ export class Renderer {
   }
 
 
-  private drawLobby(ctx: Ctx): void {
+  private drawLobby(ctx: Ctx, developerTools=false): void {
     ctx.save(); ctx.textAlign = 'center';
     for (const rot of [0, Math.PI]) {
       ctx.save(); ctx.translate(LOGICAL_W / 2, LOGICAL_H / 2); ctx.rotate(rot);
@@ -171,20 +184,20 @@ export class Renderer {
       ctx.fillStyle = '#96bacd'; ctx.font = '500 22px monospace'; ctx.fillText('C I R C U I T', 0, -165); ctx.restore();
     }
     for (const [button, glyph, label, color] of [
-      [START_TABLE_BUTTON, 'touch', 'TABLE', '#00e5ff'],
-      [START_PC_BUTTON, 'mouse', 'PC', '#ff4081'],
       [START_TUTORIAL_BUTTON, 'draw', 'TUTORIEL', '#ffce66'],
-      [START_TANGIBLE_TEST_BUTTON, 'wrench', 'TEST TANGIBLES', '#61f4ba'],
+      [START_TABLE_BUTTON, 'flag', 'COURSE', '#00e5ff'],
+      ...(developerTools?[[START_PC_BUTTON, 'mouse', 'CLAVIER', '#ff4081'],[START_TANGIBLE_TEST_BUTTON, 'wrench', 'ESSAI OBJETS', '#61f4ba']] as const:[]),
     ] as const) {
       ctx.fillStyle = `${color}18`; ctx.strokeStyle = color; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.roundRect(button.x, button.y, button.w, button.h, 18); ctx.fill(); ctx.stroke();
-      icon(ctx, glyph, button.x + 74, button.y + button.h / 2, 34, color);
+      icon(ctx, glyph, button.x + (button.w<300?30:74), button.y + button.h / 2, 34, color);
       // Only the mode name needs a second orientation. The symbol is shared.
       for (const rot of [0, Math.PI]) {
         ctx.save(); ctx.translate(button.x + button.w / 2 + 25, button.y + button.h / 2); ctx.rotate(rot);
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 20px monospace'; ctx.fillText(label, 0, 26); ctx.restore();
+        ctx.fillStyle = '#fff'; ctx.font = `bold ${button.w<300?14:22}px monospace`; ctx.fillText(label, 0, button.w<300?21:28); ctx.restore();
       }
     }
+    drawStationLabels(ctx, this.theme);
     ctx.restore();
   }
 
@@ -336,6 +349,7 @@ export class Renderer {
   // ─── Overlays ─────────────────────────────────────────────────────────────
 
   private drawCountdown(ctx: Ctx, state: GameState, now: number): void {
+    if(tutorialIdentifying(state))return;
     const left = state.sessionStartAt - now;
     if (left > -600) {
       ctx.save();

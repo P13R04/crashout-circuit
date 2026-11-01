@@ -14,7 +14,8 @@ Les travaux de Quentin #37, #38, #39 et #40 ont été récupérés : commande `c
 | Mode choisi / création de circuit | Deux notes de confirmation | Sinus | Transition confirmée |
 | Tracé accepté | Accord court montant | Sinus | Réponse serveur |
 | Geste ou tracé refusé | Deux notes graves | Sinus | Réponse serveur, limitation des répétitions |
-| Circuit prêt | Deux notes | Sinus | Passage en READY |
+| Roulette de la ligne | Petits clics espacés selon la décélération | Triangle, 22 ms | Limitation à une voix par 65 ms, aucun rattrapage après reconnexion |
+| Circuit prêt | Deux notes | Sinus | Fixation de la ligne après la roulette ; immédiatement pour un circuit prédéfini |
 | Départ | Trois bips identiques, puis GO plus haut et plus long | Triangle | Suit `sessionStartAt` ; pas de décompte rejoué à la reconnexion |
 | Pause / reprise | Deux notes descendantes / montantes | Sinus | Arrête les boucles et les sons planifiés ; reprise sans rattraper les anciens bips |
 | Objet ramassé | Deux notes aiguës | Sinus | Serveur, différencié de l'armement |

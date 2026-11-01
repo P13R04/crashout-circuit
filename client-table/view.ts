@@ -1,4 +1,4 @@
-import type { GameState, Team, Vec2 } from '../server/types.js';
+import type { GameState, Team, Vec2, ItemKind } from '../server/types.js';
 import type { DividerCheck } from '../server/layout.js';
 import type { ThemeId } from './themes.js';
 import type { SlingshotShot } from '../server/geometry.js';
@@ -7,6 +7,7 @@ import type { GestureLogEntry } from './GestureLog.js';
 /** Short-lived visual effect spawned by a server `Feedback` message. */
 export interface Effect {
   kind: string;
+  itemKind?:ItemKind;
   x: number;
   y: number;
   team: Team;
@@ -36,6 +37,8 @@ export interface LocalStroke {
 export interface View {
   state: GameState | null;
   reducedMotion: boolean;
+  /** Explicit desktop alternative; a mouse click must not change a four-player tutorial. */
+  tutorialMode: 'table' | 'pc';
   theme: ThemeId;
   /** Local animation clock, frozen in pause and capped after hidden-tab gaps. */
   visualTime: number;
@@ -100,7 +103,8 @@ export function createView(now: () => number): View {
   return {
     state: null,
     reducedMotion: false,
-    theme: 'neon',
+    tutorialMode: 'table',
+    theme: 'scrap',
     visualTime: 0,
     now,
     effects: [],

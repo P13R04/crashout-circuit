@@ -1,270 +1,154 @@
-/**
- * TutorialOverlay — what the table shows during the guided tutorial (issue #32).
- *
- * Each team gets a banner on its own side of the table with its current lesson, its
- * progress and a SKIP button, plus a pulsing outline on the control to use. Texts are
- * short on purpose. Once both teams are done, an end screen sends everybody back home.
- * Progress itself is decided by the server (`state.tutorial`); this file only draws it
- * and tells GestureRecognizer where the buttons are.
- */
+/** Role-facing lessons at the four real stations. Game events, not animation timers, validate progress. */
 import type { GameState, Team, Vec2, TutorialStepId } from '../server/types.js';
 import {
-  LOGICAL_W, LOGICAL_H, panelOf, localToWorld, worldToLocal, padLocal,
-  STEER_AREA_LOCAL, steerArea, PEDAL_LOCAL, POWER_BTN_LOCAL, type PanelLayout,
+  LOGICAL_W, LOGICAL_H, PANELS, panelOf, localToWorld, worldToLocal, padLocal,
+  TANGIBLE_DEPOT, steerArea, PEDAL_LOCAL, POWER_BTN_LOCAL, type PanelLayout,
 } from '../server/layout.js';
 import { icon } from './icons.js';
 import { TEAM_COLOR, TEAM_NAME } from './view.js';
+import { themeLook, type ThemeId } from './themes.js';
+import { armedPickup } from '../server/armedPickup.js';
+import { drawGestureDemo, type GestureDemoId } from './TutorialGestures.js';
 
 type Ctx = CanvasRenderingContext2D;
 type Rect = { x: number; y: number; w: number; h: number };
-
-/** Free strip between the two corner panels of a side, clear of the pause / mode buttons. */
-const BANNER = { w: 680, h: 120 };
-const BANNER_AT: Record<Team, PanelLayout> = {
-  A: { team: 'A', role: 'pilot', cx: 1080, cy: LOGICAL_H - 158, rot: 0 },
-  B: { team: 'B', role: 'pilot', cx: 1080, cy: 158, rot: Math.PI },
-};
-/** In the banner's own frame (origin = centre, "up" = away from the team). */
-const SKIP_LOCAL: Rect = { x: BANNER.w / 2 - 18 - 92, y: 8, w: 92, h: 44 };
-export const TUTORIAL_END_BUTTON: Rect = { x: LOGICAL_W / 2 - 200, y: LOGICAL_H / 2 - 45, w: 400, h: 90 };
-
-const TOUCH_MARGIN = 8;
-
-export type TutorialButton = { kind: 'skip'; team: Team } | { kind: 'end' };
-
-/** Which tutorial button, if any, is under a touch. */
-export function tutorialButtonAt(state: GameState, p: Vec2): TutorialButton | null {
-  const tutorial = state.tutorial;
-  if (!tutorial) return null;
-  if (tutorial.finished) {
-    const b = TUTORIAL_END_BUTTON;
-    return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h ? { kind: 'end' } : null;
-  }
-  for (const team of ['A', 'B'] as Team[]) {
-    if (!tutorial.steps[tutorial.teams[team].step]) continue; // done: no button
-    const l = worldToLocal(BANNER_AT[team], p.x, p.y);
-    const b = SKIP_LOCAL;
-    if (l.x >= b.x - TOUCH_MARGIN && l.x <= b.x + b.w + TOUCH_MARGIN && l.y >= b.y - TOUCH_MARGIN && l.y <= b.y + b.h + TOUCH_MARGIN) {
-      return { kind: 'skip', team };
-    }
+type Role = 'pilot' | 'copilot';
+const CARD = { w: 390, h: 144 };
+function cardAt(team: Team, role: Role): PanelLayout {
+  const panel=panelOf(team,role);
+  return {...panel,cx:role==='pilot'?740:1220,cy:panel.cy<LOGICAL_H/2?145:935};
+}
+const SKIP: Rect = { x: 90, y: -65, w: 88, h: 28 };
+export const TUTORIAL_END_BUTTON: Rect = { x: LOGICAL_W/2-200,y:LOGICAL_H/2-45,w:400,h:90 };
+export type TutorialButton = { kind:'skip';team:Team } | {kind:'end'};
+export function tutorialIdentifying(state: GameState): boolean {
+  return !!state.tutorial && (['A','B'] as const).some(t=>state.tutorial!.steps[state.tutorial!.teams[t].step]==='identify');
+}
+export function tutorialButtonAt(state: GameState,p:Vec2):TutorialButton|null {
+  const tut=state.tutorial;if(!tut)return null;
+  const hit=(p:Vec2,r:Rect,margin=0)=>p.x>=r.x-margin&&p.x<=r.x+r.w+margin&&p.y>=r.y-margin&&p.y<=r.y+r.h+margin;
+  if(tut.finished)return hit(p,TUTORIAL_END_BUTTON)?{kind:'end'}:null;
+  for(const team of ['A','B'] as const){
+    if(tut.steps[tut.teams[team].step]&&hit(worldToLocal(cardAt(team,'pilot'),p.x,p.y),SKIP,5))return{kind:'skip',team};
   }
   return null;
 }
-
-/** Centre of a team's SKIP button on the table (where it is drawn and hit-tested). */
-export function tutorialSkipCenter(team: Team): Vec2 {
-  return localToWorld(BANNER_AT[team], SKIP_LOCAL.x + SKIP_LOCAL.w / 2, SKIP_LOCAL.y + SKIP_LOCAL.h / 2);
+export function tutorialSkipCenter(team:Team):Vec2 {return localToWorld(cardAt(team,'pilot'),SKIP.x+SKIP.w/2,SKIP.y+SKIP.h/2);}
+/** The whole card is a non-interactive demonstration, never a gesture surface. */
+export function inTutorialCard(state:GameState,p:Vec2):boolean {
+  if(!state.tutorial||state.tutorial.finished)return false;
+  return PANELS.some(panel=>{const l=worldToLocal(cardAt(panel.team,panel.role),p.x,p.y);return Math.abs(l.x)<=CARD.w/2&&Math.abs(l.y)<=CARD.h/2;});
 }
 
-// ─── Texts ───────────────────────────────────────────────────────────────────
-
-const KEYS: Record<'steer' | 'pedal' | 'power' | 'repair', Record<Team, string>> = {
-  steer: { A: 'Q puis D', B: '← puis →' },
-  pedal: { A: 'Z', B: '↑' },
-  power: { A: 'A', B: 'M' },
-  repair: { A: 'A + P', B: 'M + C' },
-};
-
-interface Lesson { text: string; hint?: string }
-
-function lessonOf(id: TutorialStepId, sub: number, team: Team, pc: boolean): Lesson {
-  switch (id) {
-    case 'steer':
-      return {
-        text: 'Glissez à gauche, puis à droite.',
-        hint: `${sub & 1 ? '✓' : '○'} gauche   ${sub & 2 ? '✓' : '○'} droite${pc ? `   ·   clavier : ${KEYS.steer[team]}` : ''}`,
-      };
-    case 'pedal':
-      return sub === 0
-        ? { text: 'Passez votre pilote en PÉDALE.', hint: 'Paramètres → Conduite.' }
-        : sub === 1
-          ? { text: 'Maintenez la pédale.', hint: pc ? `clavier : maintenez ${KEYS.pedal[team]}` : undefined }
-          : { text: 'Repassez en AUTO.', hint: 'Paramètres → Conduite.' };
-    case 'pickup':
-      return { text: 'Roulez sur un objet pour le ramasser.' };
-    case 'power':
-      return { text: 'Copilote : armez avec ⏻.', hint: pc ? `clavier : ${KEYS.power[team]}` : 'Puis réalisez le geste.' };
-    case 'sling':
-      return pc
-        ? { text: 'Lance-pierre : cliquez, tirez, relâchez.', hint: 'Visez devant la voiture adverse' }
-        : { text: 'Posez 3 doigts, tirez-en un, relâchez.', hint: 'La pierre part à l’opposé de la traction' };
-    case 'boostPickup':
-      return { text: 'Ramassez un boost.' };
-    case 'boostPower':
-      return { text: 'Armez le boost avec ⏻.', hint: pc ? `clavier : ${KEYS.power[team]}` : undefined };
-    case 'boost':
-      return pc
-        ? { text: 'Paramètres → Boost, puis deux clics.', hint: 'Écartez les deux contacts.' }
-        : { text: 'Posez 2 doigts écartés sur la piste.', hint: 'Devant votre voiture.' };
-    case 'boostCross':
-      return { text: 'Traversez le portail jaune.' };
-    case 'borderPull':
-      return { text: 'À 2 doigts, tirez un bord vers l’extérieur.' };
-    case 'repair':
-      return {
-        text: 'Maintenez ensemble les deux clés.',
-        hint: pc ? `clavier : maintenez ${KEYS.repair[team]}` : 'Si l’un des deux lâche, la jauge retombe',
-      };
+interface Lesson { text:string; hint?:string; demo?:GestureDemoId }
+function lessonOf(state:GameState,id:TutorialStepId,sub:number,team:Team,role:Role):Lesson {
+  const pilot=role==='pilot',pc=state.mapMode==='pc',name=TEAM_NAME[team].toLowerCase();
+  const stock=armedPickup(state),otherArmed=stock&&stock.team!==team;
+  if((id==='power'||id==='boostPower')&&otherArmed)return{text:pilot?'Gardez votre voiture en piste.':`Le bonus ${TEAM_NAME[stock.team].toLowerCase()} est armé.`,hint:pilot?undefined:'Un seul bonus à la fois. Vous pouvez l’utiliser.',demo:pilot?'steer':stock.kind==='boost'?'boost':'sling'};
+  switch(id){
+    case 'identify':return{text:sub&(pilot?1:2)?'Votre poste est prêt.':'Touchez votre clé de réparation.',hint:`Voiture ${name} · coéquipier en diagonale`,demo:'identify'};
+    case 'steer':return pilot?{text:'Essayez gauche, puis droite.',hint:`${sub&1?'✓':'○'} gauche   ${sub&2?'✓':'○'} droite${state.driveMode[team]==='pedal'?' · maintenez la pédale':''}`,demo:id}:{text:`Suivez la voiture ${name}.`,hint:'Votre pilote essaie les commandes.',demo:'watch'};
+    case 'pedal':return !pilot?{text:'Votre pilote essaie la pédale.',demo:id}:sub===0?{text:'Paramètres → Conduite → PÉDALE.',demo:id}:sub===1?{text:'Maintenez la pédale.',hint:team==='A'?'Clavier : Z':'Clavier : ↑',demo:id}:{text:'Repassez en AUTO dans les paramètres.',demo:id};
+    case 'pickup':case 'boostPickup':return pilot?{text:id==='pickup'?'Ramassez un lance-pierre.':'Ramassez une accélération.',hint:'Le bonus arrive chez votre copilote.',demo:id}:{text:'Votre pilote ramasse un bonus.',hint:'Il apparaîtra au-dessus de ⏻.',demo:id};
+    case 'power':case 'boostPower':return pilot?{text:'Gardez votre voiture en piste.',hint:'Votre copilote prépare le bonus.',demo:'steer'}:{text:'Armez votre bonus avec ⏻.',hint:'Une fois armé, chacun peut l’utiliser.',demo:id};
+    case 'sling':return pilot?{text:'Évitez la zone d’impact.',hint:'Une pierre peut toucher les deux voitures.',demo:'impact'}:{text:pc?'Cliquez, tirez, relâchez.':'Deux doigts fixes. Tirez avec le troisième.',hint:'Relâchez le doigt qui tire pour lancer.',demo:id};
+    case 'boost':return pilot?{text:'Visez la zone d’accélération.',hint:'Votre copilote la pose sur la piste.',demo:'boostCross'}:{text:pc?'Paramètres → Accélération, puis deux clics.':'Posez deux doigts sur la piste.',hint:'Ensemble ou l’un après l’autre.',demo:id};
+    case 'boostCross':return pilot?{text:'Traversez les chevrons jaunes.',demo:id}:{text:'Guidez votre pilote vers la zone.',hint:'Votre voiture accélère en la traversant.',demo:id};
+    case 'borderPull':return pilot?{text:'Suivez la piste qui se déforme.',demo:'watch'}:{text:'À deux doigts, maintenez puis tirez le bord.',hint:'Saisissez le même bord, même en virage.',demo:id};
+    case 'repair':return{text:'Maintenez vos deux clés ensemble.',hint:'Gardez le contact jusqu’au remplissage.',demo:id};
     case 'wall':
-      return { text: 'Touchez le mur avec votre voiture.', hint: 'Ici, sans dégât' };
-    case 'arc':
-      return { text: 'Traversez l’arc électrique.', hint: 'Ici, sans dégât' };
-    case 'pylon':
-      return { text: 'Oz : posez les deux piliers.', hint: 'Sans Oz : passez cette étape.' };
+      if(pc)return{text:pilot?'Touchez le mur.':'Le mur bloque les deux voitures.',hint:'Entraînement : aucun dégât.',demo:pilot?'deflect':id};
+      return pilot?{text:sub?'Touchez le mur avec votre voiture.':'Restez en piste pendant la pose.',hint:'Entraînement : aucun dégât.',demo:'deflect'}:{text:sub?'Le mur bloque les deux voitures.':'Posez le mur avec un doigt de chaque côté.',hint:'Les doigts touchent la table à la pose.',demo:id};
+    case 'arc':return{text:pilot?'Traversez l’arc électrique.':'Les piliers électrisent les deux voitures.',hint:'En course : dégâts et ralentissement.',demo:id};
+    case 'depot': {
+      const otherStep=state.tutorial!.steps[state.tutorial!.teams[team==='A'?'B':'A'].step];
+      const both=!otherStep||otherStep==='depot';
+      return !both?{text:'L’autre équipe termine ses essais.',hint:'Vous rangerez ensuite les trois obstacles.',demo:'depot'}:pilot?{text:'Vos copilotes rangent les obstacles.',hint:'La course commence ensuite sur votre circuit.',demo:id}:{text:'Rangez les trois obstacles dans la réserve.',hint:'Entre les deux postes de copilote.',demo:id};
+    }
+    case 'pylon':return pilot?{text:'Continuez à conduire.',hint:'Vos copilotes essaient les piliers.',demo:'arc'}:{text:sub===3?'Rapprochez les deux piliers.':'Encadrez la piste avec les deux piliers.',hint:sub===3?'Un arc les relie lorsqu’ils sont assez proches.':'Un doigt de chaque côté de chaque pilier.',demo:id};
+  }
+}
+function wrap(ctx:Ctx,text:string,width:number):string[]{const lines:string[]=[];let line='';for(const word of text.split(' ')){const next=line?`${line} ${word}`:word;if(line&&ctx.measureText(next).width>width){lines.push(line);line=word;}else line=next;}if(line)lines.push(line);return lines;}
+
+export function drawStationLabels(ctx:Ctx,theme:ThemeId):void {
+  const look=themeLook(theme);
+  for(const panel of PANELS){
+    ctx.save();ctx.translate(panel.cx,panel.cy);ctx.rotate(panel.rot);
+    ctx.fillStyle=look.panel+'f5';ctx.strokeStyle=TEAM_COLOR[panel.team];ctx.lineWidth=2;
+    ctx.beginPath();ctx.roundRect(-118,-48,236,96,14);ctx.fill();ctx.stroke();
+    icon(ctx,panel.role==='pilot'?'wheel':'power',-80,0,38,TEAM_COLOR[panel.team]);
+    ctx.textAlign='left';ctx.fillStyle=TEAM_COLOR[panel.team];ctx.font='bold 21px system-ui';ctx.fillText(TEAM_NAME[panel.team],-48,-5);
+    ctx.fillStyle=look.ink;ctx.font='600 16px system-ui';ctx.fillText(panel.role==='pilot'?'PILOTE':'COPILOTE',-48,23);ctx.restore();
   }
 }
 
-function wrap(ctx: Ctx, text: string, maxWidth: number): string[] {
-  const lines: string[] = [];
-  let line = '';
-  for (const word of text.split(' ')) {
-    const attempt = line ? `${line} ${word}` : word;
-    if (line && ctx.measureText(attempt).width > maxWidth) { lines.push(line); line = word; }
-    else line = attempt;
-  }
-  if (line) lines.push(line);
-  return lines;
-}
-
-// ─── Drawing ─────────────────────────────────────────────────────────────────
-
-/** `driveMode` is the shared PILOTAGE button, owned by the renderer. */
-export function drawTutorial(ctx: Ctx, state: GameState, now: number, driveMode: Record<Team, Rect>): void {
-  const tutorial = state.tutorial;
-  if (!tutorial) return;
-  if (tutorial.finished) { drawEnd(ctx); return; }
-  const pulse = 0.5 + 0.5 * Math.sin(now / 220);
-  for (const team of ['A', 'B'] as Team[]) {
-    drawHighlights(ctx, state, team, pulse, driveMode[team]);
-    drawBanner(ctx, state, team);
+export function drawTutorial(ctx:Ctx,state:GameState,now:number,driveMode:Record<Team,Rect>):void {
+  const tut=state.tutorial;if(!tut||state.phase==='PAUSED')return;
+  if(tut.finished){drawEnd(ctx);return;}
+  const pulse=now===0?.5:.5+.5*Math.sin(now/280);
+  for(const team of ['A','B'] as const){
+    drawHighlights(ctx,state,team,pulse,driveMode[team]);
+    for(const role of ['pilot','copilot'] as const)drawCard(ctx,state,team,role,now);
+    if(tutorialIdentifying(state)||['steer','pickup','boostPickup'].includes(tut.steps[tut.teams[team].step]))drawCarIdentity(ctx,state,team,pulse);
   }
 }
-
-function drawBanner(ctx: Ctx, state: GameState, team: Team): void {
-  const tutorial = state.tutorial!;
-  const progress = tutorial.teams[team];
-  const total = tutorial.steps.length;
-  const id = tutorial.steps[progress.step];
-  const color = TEAM_COLOR[team];
-  const at = BANNER_AT[team];
-  const { w, h } = BANNER;
-  ctx.save();
-  ctx.translate(at.cx, at.cy);
-  ctx.rotate(at.rot);
-  ctx.fillStyle = 'rgba(4,8,31,0.95)';
-  ctx.strokeStyle = id ? color : '#3ddc84';
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 16); ctx.fill(); ctx.stroke();
-
-  ctx.textAlign = 'left';
-  ctx.fillStyle = id ? color : '#3ddc84';
-  ctx.font = 'bold 14px sans-serif';
-  ctx.fillText(`${TEAM_NAME[team]} · ${id ? `ÉTAPE ${progress.step + 1}/${total}` : 'TERMINÉ'}`, -w / 2 + 18, -h / 2 + 24);
-  // progress bar
-  ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  ctx.fillRect(-w / 2 + 18, -h / 2 + 32, w - 36, 4);
-  ctx.fillStyle = id ? color : '#3ddc84';
-  ctx.fillRect(-w / 2 + 18, -h / 2 + 32, (w - 36) * (progress.step / total), 4);
-
-  if (!id) {
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 24px sans-serif';
-    ctx.fillText('✓ Tout est vu', -w / 2 + 18, 6);
-    ctx.fillStyle = '#b7c2da'; ctx.font = '16px sans-serif';
-    ctx.fillText('L’autre équipe continue.', -w / 2 + 18, 36);
-    ctx.restore();
-    return;
-  }
-
-  const lesson = lessonOf(id, progress.sub, team, state.mapMode === 'pc');
-  const textWidth = SKIP_LOCAL.x - 14 - (-w / 2 + 18);
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 21px sans-serif';
-  wrap(ctx, lesson.text, textWidth).slice(0, 3).forEach((line, i) => ctx.fillText(line, -w / 2 + 18, -h / 2 + 62 + i * 25));
-  if (lesson.hint) {
-    ctx.fillStyle = '#b7c2da'; ctx.font = '15px sans-serif';
-    ctx.fillText(lesson.hint, -w / 2 + 18, h / 2 - 12);
-  }
-
-  const b = SKIP_LOCAL;
-  ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('PASSER ▸', b.x + b.w / 2, b.y + b.h / 2 + 5);
+function drawCard(ctx:Ctx,state:GameState,team:Team,role:Role,now:number):void {
+  const tut=state.tutorial!,progress=tut.teams[team],id=tut.steps[progress.step],color=TEAM_COLOR[team],at=cardAt(team,role);
+  const waitingForSeats=id==='steer'&&tutorialIdentifying(state);
+  const lesson:Lesson=!id?{text:'Entraînement terminé.',hint:'L’autre équipe termine ses essais.'}:waitingForSeats?{text:'Votre équipe est prête.',hint:'Les quatre postes se préparent.',demo:'identify'}:lessonOf(state,id,progress.sub,team,role);
+  ctx.save();ctx.translate(at.cx,at.cy);ctx.rotate(at.rot);
+  ctx.fillStyle='#08141df5';ctx.strokeStyle=color+'aa';ctx.lineWidth=2;
+  ctx.beginPath();ctx.roundRect(-CARD.w/2,-CARD.h/2,CARD.w,CARD.h,14);ctx.fill();ctx.stroke();
+  ctx.textAlign='left';ctx.fillStyle=color;ctx.font='700 15px system-ui';ctx.fillText(`${TEAM_NAME[team]} · ${role==='pilot'?'PILOTE':'COPILOTE'}`,-177,-47);
+  ctx.fillStyle='#ffffff18';ctx.fillRect(-177,-35,354,3);ctx.fillStyle=color;ctx.fillRect(-177,-35,354*Math.min(1,progress.step/tut.steps.length),3);
+  ctx.fillStyle='#f4fbff';ctx.font='600 19px system-ui';wrap(ctx,lesson.text,230).slice(0,3).forEach((text,i)=>ctx.fillText(text,-177,-9+i*22));
+  if(lesson.hint){ctx.fillStyle='#b4c9d2';ctx.font='13px system-ui';ctx.fillText(lesson.hint,-177,59);}
+  if(lesson.demo){ctx.save();ctx.translate(131,4);ctx.scale(.8,.8);drawGestureDemo(ctx,lesson.demo,now,color,waitingForSeats?3:progress.sub);ctx.restore();}
+  if(id&&role==='pilot'){
+    ctx.fillStyle='#ffffff0c';ctx.strokeStyle='#728995';ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(SKIP.x,SKIP.y,SKIP.w,SKIP.h,7);ctx.fill();ctx.stroke();
+    ctx.textAlign='center';ctx.fillStyle='#c6d4db';ctx.font='13px system-ui';ctx.fillText('Passer ›',SKIP.x+SKIP.w/2,SKIP.y+19);
+  }else if(id){ctx.textAlign='right';ctx.fillStyle='#8fa9b5';ctx.font='12px system-ui';ctx.fillText(`${progress.step+1}/${tut.steps.length}`,176,-47);}
   ctx.restore();
 }
-
-/** Pulsing outline on the thing to use, so the lesson also *shows* where to act. */
-function drawHighlights(ctx: Ctx, state: GameState, team: Team, pulse: number, driveMode: Rect): void {
-  const tutorial = state.tutorial!;
-  const progress = tutorial.teams[team];
-  const id = tutorial.steps[progress.step];
-  if (!id) return;
-  const color = TEAM_COLOR[team];
-  ctx.save();
-  ctx.strokeStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 10 + 12 * pulse; ctx.lineWidth = 3 + 2 * pulse;
-
-  const inPanel = (role: 'pilot' | 'copilot', draw: () => void): void => {
-    const panel = panelOf(team, role);
-    ctx.save(); ctx.translate(panel.cx, panel.cy); ctx.rotate(panel.rot); draw(); ctx.restore();
-  };
-  const box = (r: Rect): void => { ctx.beginPath(); ctx.roundRect(r.x - 6, r.y - 6, r.w + 12, r.h + 12, 14); ctx.stroke(); };
-  const centred = (r: { x: number; y: number; w: number; h: number }): Rect => ({ x: r.x - r.w / 2, y: r.y - r.h / 2, w: r.w, h: r.h });
-  const circle = (x: number, y: number, r: number): void => { ctx.beginPath(); ctx.arc(x, y, r + 6 + 4 * pulse, 0, Math.PI * 2); ctx.stroke(); };
-
-  switch (id) {
-    case 'steer':
-      inPanel('pilot', () => box(centred(steerArea(state.driveMode[team]))));
-      break;
-    case 'pedal':
-      if (progress.sub === 1) inPanel('pilot', () => box(centred(PEDAL_LOCAL)));
-      else box(driveMode);
-      break;
-    case 'pickup': case 'boostPickup':
-      for (const p of state.pickups) if (p.respawnAt === 0) circle(p.pos.x, p.pos.y, 26);
-      break;
-    case 'power': case 'boostPower':
-      inPanel('copilot', () => circle(POWER_BTN_LOCAL.x, POWER_BTN_LOCAL.y, POWER_BTN_LOCAL.r));
-      break;
-    case 'repair':
-      for (const role of ['pilot', 'copilot'] as const) {
-        const pad = padLocal(role,state.driveMode[team]);
-        inPanel(role, () => circle(pad.x, pad.y, pad.r));
-      }
-      break;
-    case 'boostCross':
-      for (const g of state.boostGates) if (g.team === team) circle((g.a.x + g.b.x) / 2, (g.a.y + g.b.y) / 2, 40);
-      break;
-    case 'wall':
-      for (const w of state.walls) if (w.id === `tut-wall-${team}`) circle(w.pos.x, w.pos.y, w.lengthPx / 2);
-      break;
-    case 'arc':
-      for (const a of state.arcs) if (a.id === `tut-arc-${team}`) circle((a.pylon1.x + a.pylon2.x) / 2, (a.pylon1.y + a.pylon2.y) / 2, 60);
-      break;
-    default:
-      break;
+function drawCarIdentity(ctx:Ctx,state:GameState,team:Team,pulse:number):void {
+  const car=state.cars[team],color=TEAM_COLOR[team];
+  ctx.save();ctx.translate(car.pos.x,car.pos.y);
+  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.globalAlpha=.5+.3*pulse;ctx.beginPath();ctx.arc(0,0,29+4*pulse,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1;
+  // Separate the labels at the side-by-side start, with a short link to the actual car.
+  const other=state.cars[team==='A'?'B':'A'].pos,dx=car.pos.x-other.x,dy=car.pos.y-other.y,d=Math.hypot(dx,dy);
+  const label={x:d<130?(team==='A'?-55:55):0,y:car.pos.y<400?90:-62};
+  label.y=Math.max(320,Math.min(780,car.pos.y+label.y))-car.pos.y;
+  ctx.strokeStyle=color+'88';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(label.x*.4,label.y*.4);ctx.lineTo(label.x,label.y);ctx.stroke();
+  ctx.translate(label.x,label.y);ctx.fillStyle='#07131ef5';ctx.beginPath();ctx.roundRect(-36,-24,72,48,8);ctx.fill();
+  for(const rot of [0,Math.PI]){ctx.save();ctx.rotate(rot);ctx.textAlign='center';ctx.fillStyle=color;ctx.font='700 13px system-ui';ctx.fillText(TEAM_NAME[team],0,17);ctx.restore();}
+  ctx.restore();
+}
+function drawHighlights(ctx:Ctx,state:GameState,team:Team,pulse:number,driveMode:Rect):void {
+  const tut=state.tutorial!,p=tut.teams[team],id=tut.steps[p.step];if(!id)return;
+  ctx.save();ctx.strokeStyle=TEAM_COLOR[team];ctx.shadowColor=TEAM_COLOR[team];ctx.shadowBlur=8+8*pulse;ctx.lineWidth=3;
+  const panel=(role:Role,draw:()=>void)=>{const at=panelOf(team,role);ctx.save();ctx.translate(at.cx,at.cy);ctx.rotate(at.rot);draw();ctx.restore();};
+  const box=(r:Rect)=>{ctx.beginPath();ctx.roundRect(r.x-5,r.y-5,r.w+10,r.h+10,12);ctx.stroke();};
+  const circle=(x:number,y:number,r:number)=>{ctx.beginPath();ctx.arc(x,y,r+5+3*pulse,0,Math.PI*2);ctx.stroke();};
+  switch(id){
+    case 'identify':case 'repair':
+      for(const role of ['pilot','copilot'] as const){if(id==='identify'&&(p.sub&(role==='pilot'?1:2)))continue;const pad=padLocal(role,state.driveMode[team]);panel(role,()=>circle(pad.x,pad.y,pad.r));}break;
+    case 'steer':if(!tutorialIdentifying(state))panel('pilot',()=>{const a=steerArea(state.driveMode[team]);box({x:a.x-a.w/2,y:a.y-a.h/2,w:a.w,h:a.h});if(state.driveMode[team]==='pedal')box({x:PEDAL_LOCAL.x-PEDAL_LOCAL.w/2,y:PEDAL_LOCAL.y-PEDAL_LOCAL.h/2,w:PEDAL_LOCAL.w,h:PEDAL_LOCAL.h});});break;
+    case 'pedal':if(p.sub===1)panel('pilot',()=>box({x:PEDAL_LOCAL.x-PEDAL_LOCAL.w/2,y:PEDAL_LOCAL.y-PEDAL_LOCAL.h/2,w:PEDAL_LOCAL.w,h:PEDAL_LOCAL.h}));else box(driveMode);break;
+    case 'pickup':case 'boostPickup':for(const pickup of state.pickups)if(pickup.respawnAt===0&&pickup.kind===(id==='pickup'?'slingshot':'boost'))circle(pickup.pos.x,pickup.pos.y,25);break;
+    case 'power':case 'boostPower':if(!armedPickup(state))panel('copilot',()=>circle(POWER_BTN_LOCAL.x,POWER_BTN_LOCAL.y,POWER_BTN_LOCAL.r));break;
+    case 'boostCross':for(const g of state.boostGates)if(g.team===team)circle((g.a.x+g.b.x)/2,(g.a.y+g.b.y)/2,35);break;
+    case 'wall':if(p.sub)for(const w of state.walls)if(w.id==='wall-1'||w.id===`tut-wall-${team}`)circle(w.pos.x,w.pos.y,w.lengthPx/2);break;
+    case 'depot':if((['A','B'] as const).every(t=>tut.steps[tut.teams[t].step]==='depot'))box(TANGIBLE_DEPOT);break;
+    case 'arc':for(const a of state.arcs)if(a.id===`tut-arc-${team}`||!a.id.startsWith('tut-'))circle((a.pylon1.x+a.pylon2.x)/2,(a.pylon1.y+a.pylon2.y)/2,50);break;
   }
   ctx.restore();
 }
-
-function drawEnd(ctx: Ctx): void {
-  ctx.save();
-  ctx.fillStyle = 'rgba(4,8,31,0.84)'; ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
-  ctx.textAlign = 'center';
-  for (const rot of [0, Math.PI]) { // readable from both long edges
-    ctx.save();
-    ctx.translate(LOGICAL_W / 2, LOGICAL_H / 2);
-    ctx.rotate(rot);
-    ctx.fillStyle = '#3ddc84'; ctx.shadowColor = '#3ddc84'; ctx.shadowBlur = 24;
-    ctx.font = 'bold 76px monospace';
-    ctx.fillText('PRÊTS', 0, -200);
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = '28px monospace';
-    ctx.fillText('Prêts pour la course.', 0, -140);
-    ctx.restore();
-  }
-  const b = TUTORIAL_END_BUTTON;
-  ctx.fillStyle = 'rgba(61,220,132,0.16)'; ctx.strokeStyle = '#3ddc84'; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 16); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 32px monospace';
-  ctx.fillText('ACCUEIL', b.x + b.w / 2, b.y + 56);
+function drawEnd(ctx:Ctx):void {
+  ctx.save();ctx.fillStyle='#06101deb';ctx.fillRect(0,0,LOGICAL_W,LOGICAL_H);ctx.textAlign='center';
+  for(const rot of [0,Math.PI]){ctx.save();ctx.translate(LOGICAL_W/2,LOGICAL_H/2);ctx.rotate(rot);
+    icon(ctx,'flag',0,-235,64,'#61f4ba');ctx.fillStyle='#f3fbff';ctx.font='800 43px system-ui';ctx.fillText('À VOUS DE JOUER',0,-162);
+    ctx.fillStyle='#b5cbd5';ctx.font='22px system-ui';ctx.fillText('Dessinez votre circuit, puis lancez la course.',0,-119);ctx.restore();}
+  const b=TUTORIAL_END_BUTTON;ctx.fillStyle='#61f4ba18';ctx.strokeStyle='#61f4ba';ctx.lineWidth=3;ctx.beginPath();ctx.roundRect(b.x,b.y,b.w,b.h,16);ctx.fill();ctx.stroke();
+  for(const rot of [0,Math.PI]){ctx.save();ctx.translate(LOGICAL_W/2,LOGICAL_H/2);ctx.rotate(rot);ctx.fillStyle='#f3fbff';ctx.font='700 21px system-ui';ctx.fillText('CRÉER LE CIRCUIT ›',0,29);ctx.restore();}
   ctx.restore();
 }

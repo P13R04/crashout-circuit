@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { networkInterfaces } from 'os';
 import { GameServer } from './GameServer.js';
 import { audioByteRange } from './audioHttp.js';
+import { OperatorAccess } from './operatorAccess.js';
 import { config } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -48,8 +49,11 @@ function serveStatic(res: http.ServerResponse, filePath: string,range?:string): 
 }
 
 // ── HTTP server ────────────────────────────────────────────────────────────────
+const operatorAccess=new OperatorAccess(process.env.CRASHOUT_OPERATOR_CODE);
 const httpServer = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://localhost`);
+
+  if(url.pathname==='/api/operator/session'){void operatorAccess.handle(req,res);return;}
 
   if (url.pathname === '/api/session') {
     const port = (httpServer.address() as { port: number }).port;
@@ -63,6 +67,7 @@ const httpServer = http.createServer((req, res) => {
 
   // Full server-side journal of pylon events (task 15)
   if (url.pathname === '/api/oz-log') {
+    if(!operatorAccess.authorized(req)){res.writeHead(401);res.end('Accès opérateur requis.');return;}
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(gameServer.rules.tangibleLog));
     return;
@@ -101,7 +106,8 @@ const httpServer = http.createServer((req, res) => {
 
 // ── WebSocket server ───────────────────────────────────────────────────────────
 const wss = new WebSocketServer({ server: httpServer });
-const gameServer = new GameServer(wss);
+const gameServer = new GameServer(wss,{developerTools:process.env.CRASHOUT_DEV_TOOLS==='1',authorizeOperator:req=>operatorAccess.authorized(req)});
+gameServer.rules.setTangiblePlacementMode('touch');
 
 // Export for use by PhysicsLoop and other modules (added in later tasks)
 export { gameServer };
@@ -124,5 +130,7 @@ httpServer.listen(PORT, async () => {
     console.log(`   Oz:      http://${ip}:${PORT}/oz`);
   }
 
+  console.log(`   Code opérateur : ${operatorAccess.code}`);
+  console.log(`   Outils de test : ${gameServer.getState().developerTools?'activés':'désactivés'}`);
   console.log(`   Config:  lapsToWin=${config.lapsToWin}, physicsHz=${config.physicsHz}\n`);
 });

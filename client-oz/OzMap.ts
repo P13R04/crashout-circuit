@@ -30,6 +30,7 @@ export interface OzMapHandlers {
 
 interface Drag {
   pointer: number;
+  moved?: boolean;
   id: TangibleId;
   mode: 'move' | 'rotate' | 'place';
   anchor: Vec2;
@@ -77,10 +78,11 @@ export class OzMap {
     canvas.addEventListener('pointerup', e => {
       if (this.drag?.pointer !== e.pointerId) return;
       this.move(e);
-      const distMoved = Math.hypot(e.clientX - this.downClientPos.x, e.clientY - this.downClientPos.y);
       if (this.drag.mode === 'place') {
         this.h.onPlace(this.drag.pose);
-      } else if (distMoved <= 3) {
+      } else if(this.drag.mode==='rotate'){
+        // Rotation was already sent by pointermove; a tap on its handle is not a relocation.
+      } else if (!this.drag.moved) {
         // Pure click on placed tangible: activate pick & drop mode!
         this.movingTangibleId = this.drag.id;
         this.movingWallStep = 0;
@@ -101,7 +103,8 @@ export class OzMap {
       this.h.onDragEnd();
       this.draw();
     });
-    canvas.addEventListener('pointercancel', () => this.cancel());
+    canvas.addEventListener('contextmenu',e=>e.preventDefault());
+    canvas.addEventListener('pointercancel', e => {if(e.isPrimary!==false)this.cancel();});
     canvas.addEventListener('lostpointercapture', () => { if (this.drag) this.cancel(); });
   }
 
@@ -117,6 +120,8 @@ export class OzMap {
     this.h.onToolStep?.(tool, 0, null);
     this.draw();
   }
+
+  get hasOperation():boolean {return !!(this.tool||this.drag||this.movingTangibleId||this.h.preparing());}
 
   getTool(): OzTool {
     return this.tool;
@@ -175,6 +180,7 @@ export class OzMap {
   }
 
   private down(e: PointerEvent): void {
+    if (e.isPrimary===false||this.drag&&this.drag.pointer!==e.pointerId)return;
     if (!this.h.enabled() || !this.state || (e.button !== undefined && e.button !== 0)) return;
     e.preventDefault();
     const s = this.state, p = this.point(e);
@@ -372,6 +378,10 @@ export class OzMap {
 
     const d = this.drag;
     if (!d || d.pointer !== e.pointerId) { this.draw(); return; }
+    if(d.mode==='move'&&!d.moved){
+      if(Math.hypot(e.clientX-this.downClientPos.x,e.clientY-this.downClientPos.y)<=(e.pointerType==='touch'?10:3))return;
+      d.moved=true;
+    }
     const logical = d.mode !== 'move' ? rotateWall(d.anchor, p, s.params.wallLengthPx)
       : { x: p.x - d.offset.x, y: p.y - d.offset.y, angle: d.pose.angle };
     if (!logical) return;
@@ -605,7 +615,7 @@ export class OzMap {
         ctx.arc(this.hover.x, this.hover.y, 18 * unit, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        textAt('⚡ 1er Pylône (cliquez)', this.hover.x, this.hover.y, 12, '#ffe14a', -28);
+        textAt('⚡ 1er Pylône (touchez)', this.hover.x, this.hover.y, 12, '#ffe14a', -28);
       } else if (this.toolStep === 1 && this.firstPoint) {
         const p1 = this.firstPoint;
         // Pylon 1 placed
@@ -691,7 +701,7 @@ export class OzMap {
         ctx.arc(this.hover.x, this.hover.y, 14 * unit, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        textAt('🧱 1er point du mur (cliquez)', this.hover.x, this.hover.y, 12, '#ff6a6a', -24);
+        textAt('🧱 1er point du mur (touchez)', this.hover.x, this.hover.y, 12, '#ff6a6a', -24);
       } else if (this.toolStep === 1 && this.firstPoint) {
         const p1 = this.firstPoint;
         // Anchor 1
@@ -747,7 +757,7 @@ export class OzMap {
           }
 
           const label = isValid
-            ? `🧱 Mur orienté (${Math.round(angle)}°) — Cliquez pour poser`
+            ? `🧱 Mur orienté (${Math.round(angle)}°) — Touchez pour poser`
             : `⚠️ Emplacement sur commandes joueur — Déplacez le mur`;
           const labelColor = isValid ? '#ff6a6a' : '#fbbf24';
           textAt(label, center.x, center.y, 12, labelColor, -26);
@@ -789,7 +799,7 @@ export class OzMap {
           }
 
           const label = isValid
-            ? `🧱 Cliquez pour poser le 1er point (ou molette pour tourner)`
+            ? `🧱 Touchez pour poser le 1er point (ou molette pour tourner)`
             : `⚠️ Emplacement sur commandes joueur — Déplacez le mur`;
           textAt(label, p.x, p.y, 12, isValid ? '#00e5ff' : '#fbbf24', -26);
         } else if (this.movingWallStep === 1 && this.movingWallFirstPoint) {
@@ -848,7 +858,7 @@ export class OzMap {
           }
 
           const label = isValid
-            ? `🧱 Mur orienté (${Math.round(angle)}°) — Cliquez pour déposer`
+            ? `🧱 Mur orienté (${Math.round(angle)}°) — Touchez pour déposer`
             : `⚠️ Emplacement sur commandes joueur — Déplacez le mur`;
           const labelColor = isValid ? '#00e5ff' : '#fbbf24';
           textAt(label, center.x, center.y, 12, labelColor, -26);
@@ -880,7 +890,7 @@ export class OzMap {
             ctx.lineTo(op.x, op.y);
             ctx.stroke();
             ctx.shadowBlur = 0;
-            textAt(`⚡ Arc lié (${Math.round(d)} px ≤ ${arcRange} px) — Cliquez pour déposer`, p.x, p.y, 12, '#ffe14a', -26);
+            textAt(`⚡ Arc lié (${Math.round(d)} px ≤ ${arcRange} px) — Touchez pour déposer`, p.x, p.y, 12, '#ffe14a', -26);
           } else {
             // Out of range
             ctx.strokeStyle = 'rgba(255, 110, 110, 0.55)';
@@ -891,10 +901,10 @@ export class OzMap {
             ctx.lineTo(op.x, op.y);
             ctx.stroke();
             ctx.setLineDash([]);
-            textAt(`⚠ Hors portée (${Math.round(d)} px > ${arcRange} px) — Cliquez pour déposer`, p.x, p.y, 12, '#f87171', -26);
+            textAt(`⚠ Hors portée (${Math.round(d)} px > ${arcRange} px) — Touchez pour déposer`, p.x, p.y, 12, '#f87171', -26);
           }
         } else {
-          textAt(`⚡ Pylône ${id === 2 ? '1' : '2'} — Cliquez pour déposer`, p.x, p.y, 12, '#ffe14a', -26);
+          textAt(`⚡ Pylône ${id === 2 ? '1' : '2'} — Touchez pour déposer`, p.x, p.y, 12, '#ffe14a', -26);
         }
 
         // Pylon preview circle

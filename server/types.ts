@@ -147,15 +147,15 @@ export interface MapTargets {
 
 /** Each lesson is done by one real game event (see `server/Tutorial.ts`). */
 export type TutorialStepId =
-  | 'steer' | 'pedal'
+  | 'identify' | 'steer' | 'pedal'
   | 'pickup' | 'power' | 'sling'
   | 'boostPickup' | 'boostPower' | 'boost' | 'boostCross'
-  | 'borderPull' | 'repair' | 'wall' | 'arc' | 'pylon';
+  | 'borderPull' | 'repair' | 'wall' | 'arc' | 'pylon' | 'depot';
 
 export interface TutorialTeam {
   /** Index in `TutorialState.steps`; equal to its length once the team is done. */
   step: number;
-  /** Progress inside the step (bit field for `steer`, 0..2 for `pedal`). */
+  /** Role/direction/contact bit field, or progress inside the current lesson. */
   sub: number;
 }
 
@@ -205,10 +205,18 @@ export interface GameParams {
   arcMaxDistPx: number;
 }
 
+/** Shared clock for the road reveal and finish-line draw; never drives the physics. */
+export interface TrackPresentation {
+  startedAt: number;
+  originIndex: number;
+}
+
 export interface GameState {
   phase: Phase;
   /** Test sessions use the same physics with automated pilot controls. */
   sessionMode: 'race' | 'tangibles-test';
+  /** Host opt-in only; participants cannot enable test tools with a URL or command. */
+  developerTools: boolean;
   /** Driving scheme selected independently by each pilot. */
   driveMode: Record<Team, DriveMode>;
   tick: number;
@@ -240,6 +248,7 @@ export interface GameState {
   repairProgress: Record<Team, number>;
   /** Incremented whenever `track` changes; State broadcasts omit the track otherwise. */
   trackVersion: number;
+  trackPresentation: TrackPresentation | null;
   /** Operator-reported pylons currently on the table, keyed by tangible id. */
   tangibles: Record<number, Tangible>;
   tangiblePlacementMode: TangiblePlacementMode;
@@ -365,6 +374,9 @@ export interface TutorialSkipMsg extends BaseMsg {
   team: Team;
 }
 
+/** Leave the completed tutorial and prepare a normal race on a player-drawn track. */
+export interface TutorialRaceMsg extends BaseMsg { type: 'TutorialRace' }
+
 export interface PauseMsg extends BaseMsg {
   type: 'Pause';
 }
@@ -441,6 +453,7 @@ export interface FeedbackMsg extends BaseMsg {
   x: number;
   y: number;
   team: Team;
+  itemKind?: ItemKind;
 }
 
 export interface PongMsg extends BaseMsg {
@@ -471,6 +484,7 @@ export type ClientMessage =
   | StartTangibleTestMsg
   | StartTutorialMsg
   | TutorialSkipMsg
+  | TutorialRaceMsg
   | PauseMsg
   | ToggleDriveModeMsg
   | TangibleMovedMsg

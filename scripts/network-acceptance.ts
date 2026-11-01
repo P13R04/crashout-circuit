@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
 import { WebSocket, WebSocketServer } from 'ws';
+import {TRACK_PRESENTATION_MS} from '../server/trackPresentation.js';
 import { GameServer } from '../server/GameServer.js';
 import type { GameState, ServerMessage } from '../server/types.js';
 
 const httpServer = http.createServer();
 const wss = new WebSocketServer({ server: httpServer });
-const game = new GameServer(wss);
+const game = new GameServer(wss,{developerTools:true,authorizeOperator:()=>true});
 httpServer.listen(0, '127.0.0.1');
 await once(httpServer, 'listening');
 const port = (httpServer.address() as { port: number }).port;
@@ -185,8 +186,23 @@ try {
   table.send({ type: 'TutorialSkip', team: 'A' });
   await ozAgain.until(s => s.tutorial?.teams.A.step === 1);
   assert.equal(game.getState().tutorial!.teams.B.step, 0, 'lessons are independent per team');
+  table.send({type:'TutorialRace'});await table.flush();assert.equal(game.getState().phase,'RACE','cannot skip unfinished training');
+  for(const team of ['A','B'])for(let i=0;i<20;i++)table.send({type:'TutorialSkip',team});
+  await ozAgain.until(s=>s.tutorial?.finished===true);
+  ozAgain.send({type:'TutorialRace'});await ozAgain.flush();assert.equal(game.getState().phase,'RACE','operator cannot launch the race');
+  table.send({type:'TutorialRace'});await ozAgain.until(s=>s.phase==='MAP'&&s.tutorial===null);
   table.send({ type: 'NewGame' });
   await ozAgain.until(s => s.phase === 'LOBBY' && s.tutorial === null);
+  // Reconnects share one roulette and one authoritative line; early start commands cannot bypass it.
+  game.rules.startRace(undefined,true,{startedAt:Date.now(),originIndex:23});
+  const showing=await table.until(s=>s.phase==='READY'&&!!s.trackPresentation);
+  const duringBuild=await client('table');await duringBuild.until(s=>!!s.trackPresentation);
+  assert.deepEqual(duringBuild.snapshots[0].trackPresentation,showing.trackPresentation);
+  assert.deepEqual(duringBuild.snapshots[0].track?.startLine,game.getState().track!.startLine);
+  table.send({type:'BeginRace'});await table.flush();assert.equal(game.getState().phase,'READY');
+  game.getState().trackPresentation!.startedAt=Date.now()-TRACK_PRESENTATION_MS-1;
+  table.send({type:'BeginRace'});await table.until(s=>s.phase==='RACE'&&s.trackPresentation===null);
+  duringBuild.ws.terminate();table.send({type:'NewGame'});await table.until(s=>s.phase==='LOBBY');
   // Only the table can start the full-physics autonomous session, which survives reconnect.
   ozAgain.send({type:'StartTangibleTest'});await ozAgain.flush();assert.equal(game.getState().phase,'LOBBY');
   table.send({type:'StartTangibleTest'});

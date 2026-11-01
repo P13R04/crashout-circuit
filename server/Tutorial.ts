@@ -9,7 +9,7 @@
  *
  * GameRules owns one instance and forwards the events; this class only moves the
  * progression and prepares what a lesson needs (forced item, scripted breakdown,
- * hostile obstacle ahead of the car).
+ * real tangible handling, or a scripted obstacle for the PC alternative).
  */
 import type { GameState, Team, ItemKind, Vec2, TutorialStepId, TutorialState } from './types.js';
 import { config } from './config.js';
@@ -28,21 +28,19 @@ const OBSTACLE_LIFE_MS = 10 * 60_000;
 const STEER_THRESHOLD = 0.5;
 const THROTTLE_THRESHOLD = 0.5;
 
-const other = (t: Team): Team => (t === 'A' ? 'B' : 'A');
-
 const STEPS: TutorialStepId[] = [
-  'steer', 'pedal',
+  'identify', 'steer', 'pedal',
   'pickup', 'power', 'sling',
   'boostPickup', 'boostPower', 'boost', 'boostCross',
-  'borderPull', 'repair', 'wall', 'arc', 'pylon',
+  'borderPull', 'repair', 'wall', 'pylon', 'arc', 'depot',
 ];
 
 /** A mouse has one contact: the two-finger border pull cannot be done on PC. */
 export function tutorialSteps(mode: 'table' | 'pc'): TutorialStepId[] {
-  return mode === 'pc' ? STEPS.filter(s => s !== 'borderPull') : [...STEPS];
+  return STEPS.filter(s => mode === 'pc' ? s !== 'borderPull' && s !== 'identify' && s !== 'depot' : s !== 'pedal');
 }
 
-/** Item a lesson is about: the pickup hands out exactly this one, whatever the draw says. */
+/** The visible pickup kind a lesson asks a team to collect. */
 const ITEM_OF: Partial<Record<TutorialStepId, ItemKind>> = {
   pickup: 'slingshot', power: 'slingshot', sling: 'slingshot',
   boostPickup: 'boost', boostPower: 'boost', boost: 'boost',
@@ -88,7 +86,7 @@ export class Tutorial {
     return this.data.steps[this.data.teams[team].step] ?? null;
   }
 
-  /** Item a pickup gives to this team right now, or null for the normal random draw. */
+  /** Pickup kind taught to this team right now; other kinds remain for its opponents. */
   forcedItem(team: Team): ItemKind | null {
     const id = this.current(team);
     return (id && ITEM_OF[id]) || null;
@@ -96,6 +94,14 @@ export class Tutorial {
 
   skip(team: Team): void {
     this.complete(team);
+  }
+
+  /** Both partners identify their station by touching its repair key. */
+  onStation(team: Team, role: 'pilot' | 'copilot'): void {
+    if (this.current(team) !== 'identify') return;
+    const lesson = this.data.teams[team];
+    lesson.sub |= role === 'pilot' ? 1 : 2;
+    if (lesson.sub === 3) this.complete(team);
   }
 
   // ─── Events ────────────────────────────────────────────────────────────────
@@ -107,6 +113,7 @@ export class Tutorial {
 
   /** `steer` is the raw [-1, 1] command, before the steering gain. */
   onPilotInput(team: Team, steer: number, throttle: number): void {
+    if (TEAMS.some(t => this.current(t) === 'identify')) return;
     const id = this.current(team);
     const lesson = this.data.teams[team];
     if (id === 'steer') {
@@ -124,25 +131,42 @@ export class Tutorial {
   }
 
   onObstacleHit(team: Team, kind: 'wall' | 'arc'): void {
-    if (this.current(team) === kind) this.complete(team);
+    if (this.current(team) === kind && (kind !== 'wall' || this.data.teams[team].sub === 1)) this.complete(team);
   }
 
-  /** Oz placed or changed a pylon: a lesson needs one of the team's own arcs. */
-  onTangibles(): void {
+  /** Physical placement, rather than an activation toggle, validates the handling lesson. */
+  onTangiblePlaced(id: number): void {
+    const tangible = this.state.tangibles[id];
+    if (!tangible?.active || tangible.status !== 'placed') return;
     for (const team of TEAMS) {
-      if (this.current(team) === 'pylon' && this.state.arcs.some(a => (a.team === null || a.team === team) && !a.id.startsWith(TUTORIAL_OBSTACLE_PREFIX))) {
-        this.complete(team);
-      }
+      const lesson = this.data.teams[team];
+      if (this.current(team) === 'wall' && id === 1) lesson.sub = 1;
+      if (this.current(team) === 'pylon' && (id === 2 || id === 3)) lesson.sub |= id === 2 ? 1 : 2;
+    }
+    this.onTangibles();
+  }
+
+  onTangibles(): void {
+    for(const team of TEAMS)if(this.current(team)==='wall'&&this.state.mapMode==='table'&&(!this.state.tangibles[1]?.active||this.state.tangibles[1]?.status!=='placed'))this.data.teams[team].sub=0;
+    if (TEAMS.every(t => this.current(t) === 'depot' || this.current(t) === null) && [1,2,3].every(id => this.state.tangibles[id]?.status === 'parked')) {
+      for (const team of TEAMS) this.complete(team);
+      return;
+    }
+    if (!this.state.arcs.some(a => !a.id.startsWith(TUTORIAL_OBSTACLE_PREFIX) && a.disabledUntil <= this.ctx.now())) return;
+    for (const team of TEAMS) {
+      if (this.current(team) === 'pylon' && this.data.teams[team].sub === 3) this.complete(team);
     }
   }
 
-  /** Item lessons depend on a window that can close: send the team back one lesson. */
+  /** A consumed stock or an expired portal can be retried from its arming lesson. */
   tick(): void {
     for (const team of TEAMS) {
       const id = this.current(team);
       const car = this.state.cars[team];
       if ((id === 'sling' || id === 'boost') && !car.itemArmed) {
         this.relapse(team, id === 'sling' ? 'power' : 'boostPower');
+      } else if (id==='arc' && this.state.mapMode==='table' && !this.state.arcs.some(a=>!a.id.startsWith(TUTORIAL_OBSTACLE_PREFIX)&&a.disabledUntil<=this.ctx.now())) {
+        this.relapse(team,'pylon');
       } else if (id === 'boostCross' && !this.state.boostGates.some(g => g.team === team)) {
         this.relapse(team, 'boostPower'); // the portal expired before the car went through it
       }
@@ -184,7 +208,7 @@ export class Tutorial {
       case 'pickup': case 'boostPickup':
         // Empty hands and a pickup of the right kind ready on the road
         car.heldItem = null; car.itemArmed = false; car.itemArmExpiry = 0;
-        for (const p of this.state.pickups) { p.respawnAt = 0; p.kind = item!; }
+        for (const p of this.state.pickups) p.respawnAt = 0;
         break;
       case 'power': case 'boostPower':
         car.heldItem = item!; car.itemArmed = false; car.itemArmExpiry = 0;
@@ -199,12 +223,16 @@ export class Tutorial {
       case 'repair':
         this.ctx.breakDown(team);
         break;
-      case 'wall': case 'arc':
-        this.placeObstacle(team, id);
+      case 'wall':
+        if (this.state.mapMode === 'pc') { this.placeObstacle(team, id); this.data.teams[team].sub = 1; }
         break;
-      case 'pylon':
-        this.onTangibles(); // Oz may have placed a pair before
+      case 'arc':
+        if (this.state.mapMode === 'pc') this.placeObstacle(team, id);
         break;
+      case 'depot':
+        this.onTangibles();
+        break;
+
     }
   }
 
@@ -240,15 +268,15 @@ export class Tutorial {
     const id = `${TUTORIAL_OBSTACLE_PREFIX}${kind}-${team}`;
     if (kind === 'wall') {
       this.state.walls.push({
-        id, team: other(team), pos: ahead.at,
+        id, team: null, pos: ahead.at,
         angle: (Math.atan2(ahead.tangent.y, ahead.tangent.x) * 180) / Math.PI + 90,
-        lengthPx: config.wallLengthPx, disabledUntil: 0, expiresAt: this.ctx.now() + OBSTACLE_LIFE_MS,
+        lengthPx: config.wallLengthPx, widthPx: config.wallWidthPx, tolerancePx: config.tangibleTolerancePx, disabledUntil: 0, expiresAt: this.ctx.now() + OBSTACLE_LIFE_MS,
       });
     } else {
       const reach = Math.max(10, ahead.halfWidth - 6);
       const normal = { x: -ahead.tangent.y, y: ahead.tangent.x };
       this.state.arcs.push({
-        id, team: other(team), disabledUntil: 0,
+        id, team: null, disabledUntil: 0,
         pylon1: { x: ahead.at.x + normal.x * reach, y: ahead.at.y + normal.y * reach },
         pylon2: { x: ahead.at.x - normal.x * reach, y: ahead.at.y - normal.y * reach },
       });

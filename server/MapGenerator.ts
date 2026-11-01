@@ -401,9 +401,11 @@ function tangentAt(centerline: Vec2[], idx: number): Vec2 {
  * Checkpoint 0 is the start line: the 8 checkpoints are spread evenly starting
  * from it, so a lap is completed when the car crosses checkpoint 0 again.
  */
-function placeFeatures(geo: BaseGeometry, randomStart = true, preferredStart?: Vec2): TrackGeometry {
+function placeFeatures(geo: BaseGeometry, randomStart = true, preferredStart?: Vec2, rng: () => number = Math.random): TrackGeometry {
   const { centerline, widths } = geo;
   const n = centerline.length;
+  const cum = cumulative(centerline);
+  const junction = junctionMask(centerline, widths, selfCrossings(centerline, cum), cum);
 
   let startIdx = 0;
   if (preferredStart) {
@@ -433,15 +435,14 @@ function placeFeatures(geo: BaseGeometry, randomStart = true, preferredStart?: V
       candidates.push({ idx: (i + windowSize / 2) % n, curv: totalCurv });
     }
     candidates.sort((a, b) => a.curv - b.curv);
-    const safePool = candidates.slice(0, Math.max(1, Math.floor(candidates.length * 0.18)));
-    startIdx = (randomStart ? safePool[Math.floor(Math.random() * safePool.length)] : safePool[0]).idx;
+    // Keep the line and the two cars clear of another branch at a crossing.
+    const clear=candidates.filter(c=>!junction[c.idx]&&!junction[(c.idx-3+n)%n]);
+    const pool=clear.length?clear:candidates;
+    const safePool = pool.slice(0, Math.max(1, Math.floor(pool.length * 0.18)));
+    startIdx = (randomStart ? safePool[Math.min(safePool.length-1,Math.floor(Math.max(0,rng()) * safePool.length))] : safePool[0]).idx;
   }
 
-  // A figure of eight: a checkpoint (or the start) on a junction would also be crossed
-  // by the other branch, so they are moved along the path to the nearest clear spot,
-  // keeping the checkpoints in order.
-  const cum = cumulative(centerline);
-  const junction = junctionMask(centerline, widths, selfCrossings(centerline, cum), cum);
+  // Preferred drawing anchors may be on a junction; keep checkpoints ordered and clear.
   if (junction[startIdx]) {
     for (let d = 1; d <= 40; d++) {
       const k = [(startIdx + d) % n, (startIdx - d + n) % n].find(q => !junction[q]);
@@ -498,6 +499,33 @@ function placeFeatures(geo: BaseGeometry, randomStart = true, preferredStart?: V
     checkpoints, startLine, startPositions, pickupPositions,
     featureIndices: { checkpoints: checkpointIndices, start: startIdx, starts: [behind, behind], pickups: pickupIndices },
   };
+}
+
+/** Draw a race's finish independently of the drawing anchors, rebuilding every dependent feature together. */
+export function randomizeRaceStart(track: TrackGeometry, rng: () => number = Math.random): TrackGeometry {
+  return randomizePickups(placeFeatures(track, true, undefined, rng),rng);
+}
+
+/** Random anchors per race, then fixed respawn spots. Indices keep Baptiste's deformation tracking intact. */
+export function randomizePickups(track:TrackGeometry,rng:()=>number=Math.random):TrackGeometry {
+  const c=track.centerline,n=c.length,cum=cumulative(c);
+  const junction=junctionMask(c,track.widths,selfCrossings(c,cum),cum);
+  const candidates=Array.from({length:n},(_,i)=>i);
+  const random=()=>Math.max(0,Math.min(.999999999,rng()));
+  for(let i=n-1;i>0;i--){const j=Math.floor(random()*(i+1));[candidates[i],candidates[j]]=[candidates[j],candidates[i]];}
+  const positions:Vec2[]=[],indices:number[]=[];
+  for(const strict of [true,false])for(const i of candidates){
+    if(indices.includes(i)||positions.length>=PICKUP_COUNT)continue;
+    if(dist(c[i],track.startLine.pos)<135||track.startPositions.some(p=>dist(c[i],p)<90))continue;
+    if(strict&&(junction[i]||track.checkpoints.some(cp=>dist(c[i],cp.pos)<60)))continue;
+    const normal=perpendicular(tangentAt(c,i)),lateral=track.widths[i]/2*.3*(positions.length%2===0?1:-1);
+    const at=clampToTrackRibbon(add(c[i],scale(normal,lateral)),track,25);
+    if(positions.some(p=>dist(p,at)<140)||dist(at,track.startLine.pos)<120)continue;
+    positions.push(at);indices.push(i);
+  }
+  // Valid generated tracks normally provide many candidates. Keep four objects even for legacy tiny fixtures.
+  for(let i=positions.length;i<PICKUP_COUNT;i++){positions.push({...track.pickupPositions[i]});indices.push(track.featureIndices.pickups[i]);}
+  return {...track,pickupPositions:positions,featureIndices:{...track.featureIndices,pickups:indices}};
 }
 
 // ─── Step 10: validateGeometry ───────────────────────────────────────────────

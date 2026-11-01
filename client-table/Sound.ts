@@ -108,6 +108,7 @@ export class TableAudio {
     if(!this.gate.accept(family,t,kind==='trackDeformed'?.8:family==='impact'?.09:.065))return;
     if(kind.startsWith('map')&&!['mapAccepted','mapBegin'].includes(kind)){this.notes([210,170],x,.055);return;}
     switch(kind){
+      case 'rouletteTick':this.tone(920,.022,.025,x,0,610,'triangle');break;
       case 'ui':this.tone(1050,.035,.045,x,0,760,'triangle');break;
       case 'mapBegin':case 'raceReady':this.notes([330,495],x,.065);break;
       case 'mapAccepted':this.notes([523,784],x);break;
@@ -148,7 +149,7 @@ export class TableAudio {
   }
   uiCommand(message:{type:string;[key:string]:unknown}):void {
     if(message.type==='Slingshot')this.slingSentAt=performance.now();
-    if(['StartGame','StartTutorial','StartTangibleTest','BeginRace','GenerateTrack','Reset','NewGame','Pause','ToggleDriveMode','TestToggle','Power'].includes(message.type)||message.type==='PadHold'&&message.on===true)this.feedback('ui');
+    if(['StartGame','StartTutorial','TutorialRace','StartTangibleTest','BeginRace','GenerateTrack','Reset','NewGame','Pause','ToggleDriveMode','TestToggle','Power'].includes(message.type)||message.type==='PadHold'&&message.on===true)this.feedback('ui');
   }
   private loop(key:string,id:AudioAsset,volume:number,rate=1,x=960,bus:'effects'|'ambience'='effects'):void {
     const c=this.audio!;let loop=this.loops.get(key);

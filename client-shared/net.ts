@@ -43,6 +43,7 @@ export class StateSync {
 export interface Connection {
   send(msg: { type: string } & Record<string, unknown>): void;
   isOpen(): boolean;
+  close(): void;
 }
 
 /** WebSocket with automatic reconnection; every outgoing message gets a `t` timestamp. */
@@ -52,22 +53,28 @@ export function connectWs(
     onMessage(msg: ServerMessage): void;
     onOpen?(): void;
     onClose?(): void;
+    onUnauthorized?(): void;
   },
 ): Connection {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const url = `${proto}://${location.host}${path}`;
   let ws: WebSocket | null = null;
+  let stopped=false;
+  let reconnectTimer:ReturnType<typeof setTimeout>|null=null;
 
   const open = (): void => {
+    if(stopped)return;
     ws = new WebSocket(url);
     ws.addEventListener('open', () => handlers.onOpen?.());
     ws.addEventListener('message', (ev) => {
       try { handlers.onMessage(JSON.parse(ev.data as string) as ServerMessage); }
       catch { console.warn('[net] bad message', ev.data); }
     });
-    ws.addEventListener('close', () => {
+    ws.addEventListener('close', event => {
       handlers.onClose?.();
-      setTimeout(open, 2000);
+      if(stopped)return;
+      if(event.code===4401){stopped=true;handlers.onUnauthorized?.();return;}
+      reconnectTimer=setTimeout(open, 2000);
     });
     ws.addEventListener('error', () => ws?.close());
   };
@@ -78,5 +85,6 @@ export function connectWs(
       if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: Date.now(), ...msg }));
     },
     isOpen: () => ws?.readyState === WebSocket.OPEN,
+    close:()=>{stopped=true;if(reconnectTimer)clearTimeout(reconnectTimer);ws?.close();},
   };
 }

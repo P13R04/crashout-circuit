@@ -80,7 +80,11 @@ export class PhysicsLoop {
 
   private integrate(car: Car, input: { throttle: number; steer: number }, now: number, dt: number): void {
     const stunned = now < car.stunUntil;
-    if (car.disabled || car.respawnUntil>now) {
+    const tutorial = this.state.tutorial;
+    const identifying = tutorial && (['A', 'B'] as const).some(t => tutorial.steps[tutorial.teams[t].step] === 'identify');
+    const lesson = tutorial?.steps[tutorial.teams[car.team].step];
+    const lessonDone = tutorial && (!lesson || lesson === 'depot');
+    if (identifying || lessonDone || car.disabled || car.respawnUntil>now) {
       car.speed = 0;
       car.velocity = { x: 0, y: 0 };
       return;

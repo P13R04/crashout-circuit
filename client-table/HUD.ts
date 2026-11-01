@@ -5,7 +5,7 @@
  */
 import type { GameState, Team, Car } from '../server/types.js';
 import {
-  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, steerArea,
+  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, ITEM_SLOT_LOCAL, steerArea,
   type PanelLayout,
 } from '../server/layout.js';
 import { TEAM_COLOR, type View } from './view.js';
@@ -113,7 +113,7 @@ export class HUD {
     ctx.textAlign = 'left';
     const left = -PANEL_W / 2 + 18;
     icon(ctx, panel.role === 'pilot' ? 'wheel' : 'power', left + 8, -62, 20, color);
-    ctx.fillText(panel.role === 'pilot' ? 'PILOTE' : 'COPILOTE', left + 28, -57);
+    ctx.fillText(`${panel.team === 'A' ? 'CYAN' : 'ROSE'} · ${panel.role === 'pilot' ? 'PILOTE' : 'COPILOTE'}`, left + 28, -60);
   }
 
   private drawPilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
@@ -145,14 +145,16 @@ export class HUD {
       const p=PEDAL_LOCAL,active=view.localPedals[team];ctx.fillStyle=active?color+'55':'#ffffff09';ctx.strokeStyle=active?'#fff':color;ctx.lineWidth=active?3:2;
       ctx.beginPath();ctx.roundRect(p.x-p.w/2,p.y-p.h/2,p.w,p.h,12);ctx.fill();ctx.stroke();icon(ctx,'pedal',p.x,p.y,32,active?'#fff':color);
     }
-    icon(ctx,'flag',55,-60,15,color);ctx.fillStyle=look.ink;ctx.font='bold 14px monospace';ctx.textAlign='left';
-    ctx.fillText(state.sessionMode==='tangibles-test'?`${car.lap+1}`:`${Math.min(state.params.lapsToWin,car.lap+1)}/${state.params.lapsToWin}`,68,-55);
+    if(!state.tutorial){
+      icon(ctx,'flag',55,-60,15,color);ctx.fillStyle=look.ink;ctx.font='bold 14px monospace';ctx.textAlign='left';
+      ctx.fillText(state.sessionMode==='tangibles-test'?`${car.lap+1}`:`${Math.min(state.params.lapsToWin,car.lap+1)}/${state.params.lapsToWin}`,68,-55);
+    }
     void now;
   }
 
   private drawCopilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
     const look=themeLook(view.theme),car=state.cars[panel.team],color=TEAM_COLOR[panel.team],armed=car.itemArmed&&!!car.heldItem,b=POWER_BTN_LOCAL;
-    const locked=!!state.tangiblePlacement||!!armedPickup(state)&&!armed;
+    const locked=!!armedPickup(state)&&!armed;
     const ink=armed?NEON.gold:car.heldItem&&!locked?color:'#586078';
     if(car.heldItem)glow(ctx,b.x,b.y,52,ink,armed?.25:.12);
     ctx.fillStyle=armed?'#ffce661f':car.heldItem?color+'24':look.button;
@@ -160,7 +162,7 @@ export class HUD {
     if(view.theme==='toy'){ctx.strokeStyle='#ffffff25';ctx.lineWidth=3;ctx.beginPath();ctx.arc(b.x,b.y-2,b.r-5,Math.PI,Math.PI*1.8);ctx.stroke();}
     ring(ctx,b.x,b.y,b.r,1,ink,armed?4:2);icon(ctx,'power',b.x,b.y,30,ink);
     if(car.heldItem){
-      drawItemIcon(ctx,car.heldItem,b.x,-43,12,ink);
+      drawItemIcon(ctx,car.heldItem,ITEM_SLOT_LOCAL.x,ITEM_SLOT_LOCAL.y,12,ink);
       ctx.strokeStyle=ink;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(b.x,-30);ctx.lineTo(b.x,-25);ctx.stroke();
     }
     if(armed){

@@ -10,21 +10,22 @@ type Ctx = CanvasRenderingContext2D;
 export class NeonTrack {
   private layer: HTMLCanvasElement | null = null;
   private version = -1;
+  private finishVisible = true;
   private paths: Path2D[] = [];
   private endLights: Vec2[] = [];
   builds = 0;
 
-  draw(ctx: Ctx, track: TrackGeometry, version: number, time: number, reduced: boolean): void {
+  draw(ctx: Ctx, track: TrackGeometry, version: number, time: number, reduced: boolean, finishVisible = true): void {
     const canvas = ctx.canvas;
     const resize = !this.layer || this.layer.width !== canvas.width || this.layer.height !== canvas.height;
     // The server increments trackVersion for every geometry change, including final relaxation.
-    if (resize || this.version !== version) {
+    if (resize || this.version !== version || this.finishVisible !== finishVisible) {
       this.layer ??= document.createElement('canvas');
       if (resize) { this.layer.width = canvas.width; this.layer.height = canvas.height; }
       const c = this.layer.getContext('2d')!;
       c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, this.layer.width, this.layer.height);
       c.scale(this.layer.width / 1920, this.layer.height / 1080);
-      this.prepareEdges(track); this.paint(c, track);
+      this.prepareEdges(track); this.paint(c, track, finishVisible); this.finishVisible=finishVisible;
       this.version = version; this.builds++;
     }
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(this.layer!, 0, 0); ctx.restore();
@@ -66,7 +67,7 @@ export class NeonTrack {
     }
   }
 
-  private paint(ctx: Ctx, track: TrackGeometry): void {
+  private paint(ctx: Ctx, track: TrackGeometry, finishVisible: boolean): void {
     // The extrusion is dark and below the edge; the upper drivable band stays exact.
     ctx.save(); ctx.translate(0, 9); this.band(ctx, track, '#01030b', 9); ctx.restore();
     this.band(ctx, track, '#080e1b', 5);
@@ -81,11 +82,13 @@ export class NeonTrack {
     // Quiet centre marks distinguish the road from the code drifting beneath it.
     const center = new Path2D(); track.centerline.forEach((p, i) => i ? center.lineTo(p.x, p.y) : center.moveTo(p.x, p.y)); center.closePath();
     ctx.setLineDash([5, 22]); ctx.strokeStyle = '#c4e4ff16'; ctx.lineWidth = 1; ctx.stroke(center); ctx.setLineDash([]);
-    for (const cp of track.checkpoints.slice(1)) {
+    if(finishVisible)for (const cp of track.checkpoints.slice(1)) {
       ctx.save(); ctx.translate(cp.pos.x, cp.pos.y); ctx.rotate(Math.atan2(cp.normal.y, cp.normal.x) - Math.PI / 2);
       ctx.strokeStyle = '#b5d5e628'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(-4, -6); ctx.lineTo(2, 0); ctx.lineTo(-4, 6); ctx.stroke(); ctx.restore();
     }
+    this.endLights=[];
+    if(!finishVisible)return;
     const sl = track.startLine;
     let index = 0, distance = Infinity;
     track.centerline.forEach((p, i) => { const d = Math.hypot(p.x - sl.pos.x, p.y - sl.pos.y); if (d < distance) { distance = d; index = i; } });

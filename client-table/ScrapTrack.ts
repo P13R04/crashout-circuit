@@ -12,16 +12,17 @@ export class ScrapTrack {
   private surface: HTMLCanvasElement | null = null;
   private paths: Path2D[] = [];
   private version = -1;
+  private finishVisible = true;
   private lamps: Vec2[] = [];
   builds = 0;
 
-  draw(ctx: Ctx, track: TrackGeometry, version: number, time: number, reduced: boolean): void {
-    if (!this.layer || this.layer.width !== ctx.canvas.width || this.layer.height !== ctx.canvas.height || this.version !== version) {
+  draw(ctx: Ctx, track: TrackGeometry, version: number, time: number, reduced: boolean, finishVisible = true): void {
+    if (!this.layer || this.layer.width !== ctx.canvas.width || this.layer.height !== ctx.canvas.height || this.version !== version || this.finishVisible !== finishVisible) {
       this.layer ??= document.createElement('canvas'); this.surface ??= document.createElement('canvas');
       for (const layer of [this.layer, this.surface]) { layer.width = ctx.canvas.width; layer.height = ctx.canvas.height; }
       const c = this.layer.getContext('2d')!, s = this.surface.getContext('2d')!;
       for (const target of [c, s]) target.scale(this.layer.width / 1920, this.layer.height / 1080);
-      this.paint(c, s, track); this.version = version; this.builds++;
+      this.paint(c, s, track, finishVisible); this.finishVisible=finishVisible; this.version = version; this.builds++;
     }
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(this.layer, 0, 0); ctx.restore();
     ctx.save(); ctx.lineCap = 'butt';
@@ -64,7 +65,7 @@ export class ScrapTrack {
     return samples;
   }
 
-  private paint(ctx: Ctx, surface: Ctx, track: TrackGeometry): void {
+  private paint(ctx: Ctx, surface: Ctx, track: TrackGeometry, finishVisible: boolean): void {
     const visible = visibleTrackEdges(track);
     this.paths = [track.outerEdge, track.innerEdge].map((edge, e) => {
       const path = new Path2D();
@@ -152,7 +153,8 @@ export class ScrapTrack {
         ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
       }
     }
-    this.finish(ctx, track);
+    this.lamps=[];
+    if(finishVisible)this.finish(ctx, track);
   }
 
   private finish(ctx: Ctx, track: TrackGeometry): void {

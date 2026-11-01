@@ -14,6 +14,9 @@ import { NeonVehicles } from '../client-table/NeonVehicles.js';
 import { generatePreset, generate, selfCrossings } from '../server/MapGenerator.js';
 import { createInitialState } from '../server/GameRules.js';
 import { THEMES, loadTheme, saveTheme, THEME_STORAGE_KEY } from '../client-table/themes.js';
+import { TRACK_PRESENTATION_MS,TRACK_REVEAL_MS,FINISH_ROULETTE_MS } from '../server/trackPresentation.js';
+import { tutorialSteps } from '../server/Tutorial.js';
+import { drawTangibleTouchPreview } from '../client-table/TangibleTouchPreview.js';
 import { createView } from '../client-table/view.js';
 import type { TrackGeometry, Vec2 } from '../server/types.js';
 
@@ -230,6 +233,46 @@ function scene() {
   const surface = canvas(), renderer = new Renderer(surface.getContext('2d')!);
   return { view, state, renderer, surface };
 }
+test('four-player lessons render every animated pose in each theme without operator text or state changes', () => {
+  const {view,state,renderer}=scene();state.phase='RACE';state.mapMode='table';
+  const steps=tutorialSteps('table');
+  state.tutorial={steps,teams:{A:{step:0,sub:0},B:{step:0,sub:0}},finished:false};
+  for(const theme of THEMES)for(let i=0;i<steps.length;i++)for(const time of [0,450,1450,2950]){
+    view.theme=theme.id;view.visualTime=time;view.reducedMotion=time===0;
+    state.tutorial.teams.A={step:i,sub:0};state.tutorial.teams.B={step:i,sub:1};
+    recordedText=[];const before=JSON.stringify(state);renderer.render(view);
+    assert.equal(JSON.stringify(state),before);assert.ok(recordedText.every(t=>!/\boz\b|magicien|placeholder/i.test(t)));
+    assert.ok(recordedText.some(t=>t==='CYAN · PILOTE'));assert.ok(recordedText.some(t=>t==='CYAN · COPILOTE'));
+    assert.ok(recordedText.some(t=>t==='ROSE · PILOTE'));assert.ok(recordedText.some(t=>t==='ROSE · COPILOTE'));
+  }
+  state.tutorial.finished=true;recordedText=[];renderer.render(view);
+  assert.equal(recordedText.filter(t=>t==='CRÉER LE CIRCUIT ›').length,2);recordedText=null;
+});
+test('operator preparation alone draws no tangible waiting symbol; real contacts retain feedback', () => {
+  const {view,state,surface}=scene();state.phase='RACE';state.tangiblePlacementMode='touch';
+  state.tangiblePlacement={id:1,token:1,expiresAt:view.now()+20000};
+  calls.clear();drawTangibleTouchPreview(surface.getContext('2d')!,view);
+  assert.equal(calls.size,0,'no remote-selection badge or ghost before actual contact');
+  view.tangibleTouch={points:[{x:800,y:450}],valid:false};drawTangibleTouchPreview(surface.getContext('2d')!,view);
+  assert.ok((calls.get('arc')??0)>0,'a real finger still receives local feedback');
+});
+
+test('track reveal and roulette render in all themes with two deck builds, stable geometry and no premature controls',()=>{
+  for(const reduced of [false,true]){
+    const {view,state,renderer}=scene();state.phase='READY';view.reducedMotion=reduced;
+    let now=1_000_000;view.now=()=>now;state.trackPresentation={startedAt:now,originIndex:16};
+    view.strokes.set(1,{team:'A',pts:state.track!.centerline.slice(0,80),done:true});
+    for(const theme of THEMES){view.theme=theme.id;
+      for(const age of [0,140,900,TRACK_REVEAL_MS-1,TRACK_REVEAL_MS,3000,TRACK_REVEAL_MS+FINISH_ROULETTE_MS,TRACK_PRESENTATION_MS-1,TRACK_PRESENTATION_MS,8000]){
+        now=1_000_000+age;view.visualTime=age;recordedText=[];
+        const before=JSON.stringify(state);renderer.render(view);assert.equal(JSON.stringify(state),before);
+        if(age<TRACK_PRESENTATION_MS)assert.equal(recordedText.some(t=>t.includes('PILOTE')),false,'stations wait until the finish is fixed');
+      }
+    }
+    recordedText=null;assert.equal(renderer.stats.trackBuilds,THEMES.length*2,'one finish-free deck plus the final markings, never one build per frame');
+  }
+});
+
 test('every phase, both motion preferences and all feedback effects render without changing authoritative state', () => {
   const { view, state, renderer } = scene();
   for (const theme of THEMES) for (const track of [generatePreset(), eight]) for (const reduced of [false, true]) {
@@ -237,8 +280,8 @@ test('every phase, both motion preferences and all feedback effects render witho
     view.reducedMotion = reduced;
     for (const phase of ['LOBBY', 'MAP', 'READY', 'RACE', 'PAUSED', 'RESULT'] as const) {
       state.phase = phase; state.winner = 'A'; state.pausedAt = 1_000_000;
-      view.effects = ['pickup', 'itemArmed', 'itemLost', 'stoneImpact', 'stoneHit', 'hit', 'electricHit', 'wallDestroyed', 'repairDone', 'boostHit', 'boostGate', 'fall', 'carDisabled', 'checkpoint', 'trackDeformed']
-        .map(kind => ({ kind, x: 900, y: 600, team: 'A', start: 0, dur: 900 }));
+      view.effects = ['pickup', 'itemArmed', 'itemUsed', 'itemLost', 'stoneImpact', 'stoneHit', 'hit', 'electricHit', 'wallDestroyed', 'repairDone', 'boostHit', 'boostGate', 'fall', 'carDisabled', 'checkpoint', 'trackDeformed']
+        .map(kind => ({ kind, itemKind:'slingshot', x: 900, y: 600, team: 'A', start: 0, dur: 900 }));
       const before = JSON.stringify(state);
       renderer.render(view);
       assert.equal(JSON.stringify(state), before);
@@ -349,6 +392,7 @@ test('changing theme after a fall never reveals the vanished car, but repair sti
 });
 test('switching themes preserves race data, reuses each deck and clears incompatible trails', () => {
   const { view, state, renderer } = scene(); state.phase = 'RACE';
+  view.theme = 'neon';
   renderer.render(view); view.visualTime += 40; state.cars.A.pos.x += 2; renderer.render(view);
   assert.ok(renderer.stats.trailPoints > 1);
   const before = JSON.stringify(state);
@@ -359,12 +403,17 @@ test('switching themes preserves race data, reuses each deck and clears incompat
   assert.equal(renderer.stats.trackBuilds, 2, 'the previous theme is retained, including its cached road');
   assert.equal(JSON.stringify(state), before);
 });
+test('the public lobby has only the tutorial and race; test tools require the host opt-in',()=>{
+ const {view,state,renderer}=scene();state.phase='LOBBY';state.developerTools=false;recordedText=[];renderer.render(view);
+ assert.ok(recordedText.includes('TUTORIEL'));assert.ok(recordedText.includes('COURSE'));assert.ok(!recordedText.some(t=>/ESSAI|CLAVIER|TEST TANGIBLES/.test(t)));
+ state.developerTools=true;recordedText=[];renderer.render(view);assert.ok(recordedText.includes('ESSAI OBJETS'));recordedText=null;
+});
 test('theme preference survives reload, tolerates invalid values and unavailable storage', () => {
   const values = new Map<string, string>();
   const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
-  assert.equal(loadTheme(storage), 'neon');for(const theme of THEMES){saveTheme(storage,theme.id);assert.equal(loadTheme(storage),theme.id);}
-  values.set(THEME_STORAGE_KEY, 'unknown'); assert.equal(loadTheme(storage), 'neon');
-  assert.equal(loadTheme({ getItem() { throw Error('denied'); } }), 'neon');
+  assert.equal(loadTheme(storage), 'scrap');for(const theme of THEMES){saveTheme(storage,theme.id);assert.equal(loadTheme(storage),theme.id);}
+  values.set(THEME_STORAGE_KEY, 'unknown'); assert.equal(loadTheme(storage), 'scrap');
+  assert.equal(loadTheme({ getItem() { throw Error('denied'); } }), 'scrap');
   assert.doesNotThrow(() => saveTheme({ setItem() { throw Error('denied'); } }, 'scrap'));
 });
 console.log(`\n${passed} visual checks passed`);

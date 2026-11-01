@@ -13,7 +13,7 @@ npm start
 ```
 
 - **Table** : `http://localhost:3000/` sur l’ordinateur relié à la table, en plein écran.
-- **Magicien d’Oz** : `http://<ip-de-la-table>:3000/oz` sur un autre ordinateur du même Wi-Fi. L’adresse exacte est affichée au démarrage. `localhost` désigne toujours l’ordinateur sur lequel le navigateur est ouvert.
+- **Magicien d’Oz** : `http://<ip-de-la-table>:3000/oz` sur un ordinateur, une tablette ou un téléphone du même Wi-Fi. Saisir le **code opérateur** affiché dans le terminal du serveur ; il change à chaque redémarrage (ou se fixe avec `CRASHOUT_OPERATOR_CODE=123456 npm start`). L’adresse exacte est affichée au démarrage. `localhost` désigne toujours l’ordinateur sur lequel le navigateur est ouvert.
 - Pour changer le port : `PORT=3100 npm start`.
 
 Le serveur doit rester ouvert pendant la séance. Les deux appareils doivent pouvoir communiquer sur le réseau local (un Wi-Fi invité qui isole les appareils ne convient pas). Ce prototype est prévu pour le réseau local de la séance ; il n’implémente pas de compte utilisateur.
@@ -31,16 +31,18 @@ Ouvrir `http://localhost:5173/client-table/` et `http://localhost:5173/client-oz
 
 Les partenaires d’une équipe sont en diagonale : pilote cyan en bas à gauche et copilote cyan en haut à droite ; pilote rose en haut à gauche et copilote rose en bas à droite. Chaque poste fait face à son bord de table. Les dépôts tangibles et l’attribution des gestes suivent la position du copilote.
 
-1. Choisir **TABLE** (main) ou **PC** (souris).
-2. Cyan place P1, Rose place P2 ; Cyan relie les deux points, puis Rose les relie dans sa moitié ; chacun peut commencer par P1 ou P2. Les deux modes utilisent cette création guidée et séquentielle. Le circuit suit les tracés, y compris les boucles et croisements ; les refus sont expliqués à l’écran.
-3. Toucher le bouton à icône de circuit, puis **▶** sur la table. Le lancement, la pause et la remise à zéro appartiennent aux joueurs.
+1. Choisir **TUTORIEL** pour découvrir le jeu à quatre, ou **COURSE** pour créer directement un circuit. Le thème initial est **Ferraille** ; les autres ambiances restent disponibles dans les paramètres.
+2. Cyan place P1, Rose place P2 ; Cyan relie les deux points, puis Rose les relie dans sa moitié ; chacun peut commencer par P1 ou P2. La création est guidée et séquentielle. Le circuit suit les tracés, y compris les boucles et croisements ; les refus sont expliqués à l’écran.
+3. Toucher le bouton à icône de circuit : le revêtement se dessine progressivement, puis la ligne à damier fait plusieurs tours et ralentit jusqu’à sa position aléatoire. Quand elle est fixée, **▶** permet de lancer la course sur la table. Le lancement, la pause et la remise à zéro appartiennent aux joueurs.
 4. Le pilote conduit avec la bande gauche / droite. **Paramètres → Conduite**, séparément pour chaque équipe, bascule entre l’avance automatique et une pédale maintenue pour accélérer, à vitesse maximale réduite. Le pilote n’a plus de bouton pour utiliser les objets.
 5. Le copilote utilise **POWER** pour son objet ramassé, réalise les gestes et répare avec le pilote. Oz gère seul l’activation des tangibles.
 6. Une sortie de piste immobilise la voiture. Maintenir les deux pads de réparation pour la remettre en jeu. La pause fige la course et les durées des effets.
 
 ## Tester les tangibles avec deux personnes
 
-**TEST TANGIBLES** est un mode distinct de TABLE, PC et TUTORIEL. Il prépare le circuit prédéfini ; **▶** démarre les deux voitures avec deux secondes de décalage. La session n’a ni limite de temps ni victoire : pause avec **⏸ / Espace**, retour à l’accueil avec la maison.
+**Réservé à la préparation, jamais à la séance utilisateur.** Relancer le serveur avec `CRASHOUT_DEV_TOOLS=1 npm start` (PowerShell : `$env:CRASHOUT_DEV_TOOLS="1"; npm start`), puis recharger la table. Le bouton **ESSAI OBJETS** ouvre le mode de test autonome. En démarrage normal, ce bouton, le mode clavier, les simulations, F3/F4 et les paramètres de diagnostic sont désactivés ; le serveur refuse aussi les commandes de test. Supprimer cette variable puis redémarrer pour revenir à la version de séance.
+
+Ce mode reste distinct de COURSE et TUTORIEL. Il prépare le circuit prédéfini ; **▶** démarre les deux voitures avec deux secondes de décalage. La session n’a ni limite de temps ni victoire : pause avec **⏸ / Espace**, retour à l’accueil avec la maison.
 
 Les pilotes suivent le centre de la piste en envoyant des commandes de direction et d’accélération à la physique normale. Ils ne voient pas les obstacles et ne les évitent pas. Les murs provoquent de vrais rebonds, les piliers et arcs infligent leurs dégâts et leur ralentissement. Après une déviation, la voiture cherche progressivement le centre sans repositionnement artificiel. Un choc peut provoquer une sortie de piste et une panne.
 
@@ -51,11 +53,11 @@ Lorsqu’une réparation est nécessaire (voiture détruite ou moins de 60 HP), 
 ### Parcours conseillé sur la table
 
 1. Relancer la version à jour avec `npm run build` puis `npm start`. Ouvrir la table et la console Oz sur le même réseau.
-2. Sur la table : **Paramètres → Plein écran**, puis **TEST TANGIBLES → ▶**. Une icône de circuit remplace la conduite manuelle.
+2. Sur la table : **Paramètres → Plein écran**, puis **ESSAI OBJETS → ▶** (outils de développement activés). Une icône de circuit remplace la conduite manuelle.
 3. Faire quelques tours sans obstacle, puis poser un mur diagonal depuis Oz. Observer le rebond, les HP et le retour vers le centre. Si une voiture tombe, désactiver le mur pour isoler la réparation, puis maintenir seulement son pad copilote.
 4. Poser un pilier, puis le second à portée : vérifier les champs électriques, la liaison, les dégâts et le ralentissement sur chaque voiture. Les objets sont réutilisables immédiatement, sans recharge.
 5. Tester aussi POWER et les gestes du copilote. Le mode ne donne pas de bonus gratuits : les voitures les ramassent normalement.
-6. La maison permet de retrouver TABLE, PC et TUTORIEL avec leurs règles habituelles.
+6. **Paramètres → Accueil** retrouve le menu. Désactiver `CRASHOUT_DEV_TOOLS` et redémarrer avant d’accueillir les participants.
 
 ### Plein écran
 
@@ -63,16 +65,19 @@ Lorsqu’une réparation est nécessaire (voiture détruite ou moins de 60 HP), 
 
 ## Tutoriel guidé
 
-Le bouton **TUTORIEL** du lobby lance une course sur le circuit prédéfini, sans tours ni victoire et sans dégâts (les chutes remettent la voiture sur la piste). Chaque équipe suit **sa propre progression**, avec un bandeau orienté vers elle, un contour qui pulse sur la commande à utiliser et un bouton **PASSER**. Chaque étape est validée par l'événement réel du jeu, jamais par un minuteur :
+Le bouton **TUTORIEL** lance le parcours à quatre sur le circuit prédéfini, sans victoire ni perte de vie. Les quatre joueurs identifient leur poste en touchant leur clé de réparation avant les feux de départ. Chaque poste reçoit une consigne courte orientée vers son joueur, une démonstration animée et un rappel de sa couleur ; les coéquipiers sont en diagonale.
 
-1. direction à gauche puis à droite ; mode de conduite (pédale, puis retour en auto, indépendamment pour chaque pilote) ;
-2. ramasser un objet (le serveur impose le lance-pierre), POWER, tir ; ramasser un boost, POWER, portail, le traverser ;
-3. déformer un bord de piste (deux doigts ; absente en mode PC, une souris n'a qu'un contact) ;
-4. réparation à deux : le serveur met la voiture en panne à cette étape ;
-5. un mur puis un arc adverses posés sur la route par le serveur ;
-6. un arc de deux piliers activés par l'opérateur Oz (facultative : à passer si Oz est absent).
+Les équipes essaient ensuite la direction, les objets ramassés, POWER, le lance-pierre, le boost, la déformation à deux doigts et la réparation à deux. La partie tangible utilise les vrais objets : pose du mur, contact de la voiture, pose des deux piliers et essai de leur effet électrique. Les deux équipes terminent en rangeant les trois objets dans la réserve. **CRÉER LE CIRCUIT** ouvre directement la création d’une course normale, avec les paramètres choisis auparavant.
 
-Un objet armé ne périme pas. Si un portail déjà créé n’est pas traversé, l’équipe peut recommencer la leçon avec un nouveau boost. Le mode (table ou PC) est déduit du pointeur qui touche le bouton ; les interrupteurs de test PC sont désactivés. À la fin des deux équipes, un écran renvoie à l'accueil. La logique est dans `server/Tutorial.ts`, l'affichage dans `client-table/TutorialOverlay.ts`.
+La console guide l’opérateur pour annoncer chaque pose juste avant les contacts, et retirer chaque objet soulevé. Aucune sélection de la console ne produit de symbole d’attente sur la table. Le [protocole de séance](docs/sessions-de-test.md) décrit les interventions réservées à l’opérateur et les vérifications sur la table. Avec les outils de développement activés côté serveur, le tutoriel clavier reste accessible avec `/client-table/?tutorial=pc` ; un clic à la souris sur TUTORIEL conserve par défaut le parcours tactile.
+
+### Révélation du circuit et tirage de la ligne
+
+Après validation des deux tracés, le revêtement se révèle en **1,8 s**. Une ligne à damier fait ensuite au moins deux tours : vitesse constante au début, puis décélération sur **3,4 s**, et fixation lumineuse de **0,45 s**. Aucun texte supplémentaire n’est nécessaire. De petits clics accompagnent le ralentissement ; le signal « circuit prêt » attend la fixation.
+
+Le serveur tire la position parmi les portions les moins courbées, en évitant les croisements pour la ligne et les voitures. Il recale ensemble les voitures, les checkpoints et les objets ramassables. La présentation partage une horloge commune : une reconnexion reprend au bon moment et ne refait pas le tirage. Un appui anticipé sur le départ est ignoré. Les circuits prédéfinis du tutoriel et du test tangibles restent immédiats.
+
+Les cinq thèmes gardent leurs matériaux et leurs bordures ; le cache du revêtement est réutilisé pendant toute l’animation. Le réglage de réduction des animations remplace le parcours rapide par un fondu et une ligne fixe. Pour tester : **COURSE → tracer les deux moitiés → icône de circuit**, observer la révélation et le ralentissement, puis démarrer une course avec **▶**.
 
 ## Priorité des gestes et reprise après réparation
 
@@ -84,7 +89,7 @@ Une voiture réparée attend **3 secondes** au point de reprise : trois feux rou
 
 ## Réglages de course
 
-Dans l’engrenage **à gauche entre les pilotes** : **Easy** (50 %, par défaut), **Medium** (75 %) ou **Hard** (vitesse de référence), nombre de tours (1–99) et chronomètre facultatif (désactivé par défaut). Le réglage de vitesse s’applique aussi aux pédales et aux pilotes automatiques de test. Les valeurs sont partagées avec les clients et conservées au retour à l’accueil. Activer ou changer un chrono pendant la course démarre la nouvelle durée à cet instant ; la pause le fige. Accueil se trouve uniquement dans les paramètres.
+Dans l’engrenage **à gauche entre les pilotes** : **Facile** (50 %, par défaut), **Moyen** (75 %) ou **Difficile** (vitesse de référence), nombre de tours (1–99) et chronomètre facultatif (désactivé par défaut). Le réglage de vitesse s’applique aussi aux pédales et aux pilotes automatiques de test. Les valeurs sont partagées avec les clients et conservées au retour à l’accueil. Activer ou changer un chrono pendant la course démarre la nouvelle durée à cet instant ; la pause le fige. Accueil se trouve uniquement dans les paramètres.
 
 La prise de piste accepte une marge intérieure/extérieure de **50 px logiques** autour de son bord et utilise la tangente locale dans les virages. Deux contacts immobiles peuvent créer un boost armé ; une traction engage la déformation.
 
@@ -102,7 +107,7 @@ La table tactile ne reconnaît pas l’identité d’une personne : l’équipe 
 
 ### Tester les gestes à la souris
 
-Le tiroir **Test PC**, fermé par défaut, apparaît en course avec une souris, ou avec `?sim=1`. Ramasser d’abord un objet avec la voiture, puis toucher le symbole **POWER** au poste copilote :
+Ces outils nécessitent **`CRASHOUT_DEV_TOOLS=1` sur le serveur**. Le tiroir de simulation apparaît alors en course avec une souris, ou avec `?sim=1`. Aucun paramètre d’URL ne les active dans une session normale. Ramasser d’abord un objet avec la voiture, puis toucher le symbole **POWER** au poste copilote :
 
 - **Lance-pierre** : maintenir le clic pour poser la fourche, tirer en arrière, puis relâcher. La trajectoire est prévisualisée et la pierre vole depuis la poche. En mode PC, ce geste est disponible directement dès qu’un lance-pierre est armé.
 - **Boost** puis deux clics définissent le portail. Son centre vient des contacts, sa largeur vaut au moins 110 px et son orientation suit la piste. Aux croisements, l’axe entre les contacts indique la branche à traverser.
@@ -115,14 +120,14 @@ En course **PC uniquement**, ce tiroir contient aussi **Invincibles** et **Objet
 
 Après `npm run build` puis `npm start`, ouvrir `http://localhost:3000/`.
 
-1. Choisir **TABLE** ou **PC**. Placer P1 puis P2 : les pastilles cyan et rose indiquent l’ordre. Essayer un P2 trop proche : un message bref apparaît et P1 reste en place.
+1. Choisir **COURSE**. Placer P1 puis P2 : les pastilles cyan et rose indiquent l’ordre. Essayer un P2 trop proche : un message bref apparaît et P1 reste en place.
 2. Relier les deux points dans la moitié éclairée, dans le sens de son choix ; dès le premier contact, l’autre point devient l’arrivée. L’arrivée devient verte au contact. Après le cyan, le rose prend la main. Les coches remplacent les messages de validation. Toucher le circuit, puis ▶ pour démarrer.
 3. Piloter avec la zone à volant. Basculer **AUTO / PÉDALE** dans Paramètres → Conduite ; sa pédale apparaît dans un poste légèrement élargi, sans changer le mode de l’autre équipe. Les tours se lisent près du drapeau de chaque pilote, le temps près du circuit.
 4. Ramasser un bonus : son icône se relie à POWER. Armer : le contour devient doré, l’anneau reste plein et les contacts indiquent le geste à deux ou trois doigts. Tester aussi le geste adverse, une longue attente et le lance-pierre (jauge de traction et cible).
 5. Déposer un tangible depuis Oz : la zone à empreintes devient occupée (contour continu et pastilles), puis verte avec un éclair après activation par Oz. POWER n’intervient pas dans ce changement.
 6. En panne, chercher la clé près de la voiture et dans les postes. Maintenir les deux clés : les deux témoins s’allument et l’anneau se remplit. Relâcher un poste interrompt la progression.
 7. Toucher ⏸ puis le grand ▶ central pour reprendre. À la fin, le trophée et le cadre indiquent le gagnant ; les cartes montrent tours et points de passage. ↶ relance une partie ; la maison retourne à l’accueil.
-8. Sur PC, ouvrir et refermer **Test PC** : les simulations et les deux options restent accessibles sans barre permanente sur le jeu. Une connexion perdue affiche un statut jusqu’au retour du serveur.
+8. Dans une séance normale, ouvrir les paramètres : aucun outil de simulation, d’invincibilité ou de bonus gratuits ne doit apparaître. Une connexion perdue affiche un statut jusqu’au retour du serveur.
 
 Vérifier les deux orientations de lecture sur la table réelle. Les pictogrammes des commandes sont partagés ; seuls les intitulés courts, le temps et les résultats utiles à chaque côté sont orientés pour leur lecteur. Le réglage système « réduire les animations » stabilise les halos, les chevrons et les clignotements décoratifs.
 
@@ -130,13 +135,13 @@ Vérifier les deux orientations de lecture sur la table réelle. Les pictogramme
 
 La console `/oz` gère **un mur** et **deux piliers** neutres. Ils sont disponibles immédiatement, sans recharge, cooldown ou limite de déplacement. Leurs effets concernent les deux voitures. Oz ne lance pas la partie et ne gère pas les bonus.
 
-Dans **Pose tactile**, cliquer **Mur / 1 (&)**, **Pilier 1 / 2 (é)** ou **Pilier 2 / 3 (")**, puis déposer l’objet avec deux contacts neufs. Les chiffres du pavé numérique fonctionnent aussi ; les raccourcis sont ignorés dans les champs et sélecteurs. Le milieu fixe le centre ; le grand axe du mur est perpendiculaire à l’axe des doigts. Les dimensions LEGO restent fixes. Deux contacts valides sont confirmés après 90 ms ; ils peuvent être décalés de 1,6 s, même si le premier doigt est levé. Lever les doigts ne retire pas l’objet.
+Dans **Pose avec les doigts** (mode initial), cliquer **Mur / 1 (&)**, **Pilier 1 / 2 (é)** ou **Pilier 2 / 3 (")**, puis déposer l’objet avec deux contacts neufs. Les chiffres du pavé numérique fonctionnent aussi ; les raccourcis sont ignorés dans les champs et sélecteurs. Le milieu fixe le centre ; le grand axe du mur est perpendiculaire à l’axe des doigts. Les dimensions LEGO restent fixes. Deux contacts valides sont confirmés après 90 ms ; ils peuvent être décalés de 1,6 s, même si le premier doigt est levé. Lever les doigts ne retire pas l’objet.
 
 La zone neutre **à droite, entre les deux copilotes** présente les trois tangibles au début de la partie. Une pose dans cette zone les désactive : ni collision, ni champ, ni arc électrique. Ils peuvent être reposés sur le circuit immédiatement, après une nouvelle annonce d’Oz. Cliquer un objet sur la carte Oz signale aussi son retrait et le renvoie inactif au dépôt. Sélectionner directement un objet déjà posé prépare son replacement et coupe son ancien effet.
 
 L’attente d’Oz dure 20 secondes avec **Annuler / Échap** ; ce délai concerne seulement l’annonce de pose, pas un bonus armé. Pause, reset, déconnexion et changement de mode annulent cette attente. Les anciens contacts, paumes, prises ambiguës et paquets périmés sont rejetés. Pendant l’attente, les nouveaux contacts sur la carte servent uniquement à la pose ; le pilotage et la réparation continuent.
 
-Le **Placement manuel** conserve les outils de Baptiste : deux points pour les piliers/arc ou pour le mur, déplacement au clic ou au glissement et rotation du mur à la molette. Aucun passage par un poste copilote n’est nécessaire.
+La **Pose sur la carte** conserve les outils de Baptiste : deux points pour les piliers/arc ou pour le mur, déplacement au toucher ou au glissement, rotation en tirant la poignée du mur et boutons **−15° / +15°** dans **Objets et orientation**. La molette reste utilisable sur ordinateur. Les cartes des trois objets proposent **Activer / Désactiver / Retirer**, utilisables sans clavier ni clic droit. Le bouton ↻ tourne la carte ; une vue portrait s’adapte automatiquement au téléphone. La connexion est conservée dans un cookie local pendant douze heures au maximum, tant que le serveur ne redémarre pas. Le journal se télécharge dans **Objets et orientation**. Aucun passage par un poste copilote n’est nécessaire.
 
 Un pilier seul produit un champ au sol ; deux piliers actifs forment un arc jusqu’à **350 px logiques**. Les dégâts, collisions et ralentissements restent calculés par le serveur. Le [briefing et la recette sur dalle](docs/pose-tactile.md) décrivent les essais.
 
@@ -158,14 +163,14 @@ Le module nominal est documenté par LEGO : brique 2 × 4 d’environ 32 × 16 m
 **Essai sur la vraie table :**
 
 1. Afficher le jeu en plein écran sans marge, puis comparer le mur avec une base 10 × 4 et le socle avec une 4 × 4. Si la diagonale réelle diffère, régler `tableDiagonalInches`, puis relancer le serveur. Une fenêtre de navigateur réduite ne peut pas conserver les dimensions physiques.
-2. Dans **Pose tactile**, annoncer le mur, puis le poser avec deux contacts autour de sa largeur : comparer son centre et son orientation au LEGO. Vérifier les deux sens de prise, le retrait des doigts et une pose près d’un bord de piste.
+2. Dans **Pose avec les doigts** (mode initial), annoncer le mur, puis le poser avec deux contacts autour de sa largeur : comparer son centre et son orientation au LEGO. Vérifier les deux sens de prise, le retrait des doigts et une pose près d’un bord de piste.
 3. Enlever le mur physiquement et le cliquer sur la carte Oz : son effet doit disparaître. Sans nouvelle annonce, deux contacts ne doivent pas le replacer. Après une nouvelle annonce, essayer ailleurs ou dans le dépôt neutre. Les deux voitures doivent subir le même mur.
 4. Poser un pilier : vérifier le champ au sol et le ralentissement des deux voitures. Poser le second à portée : vérifier l’arc. Désactiver un pilier ou le remettre en station : le champ et l’arc disparaissent.
-5. Décaler volontairement le LEGO de 5 à 10 mm et observer depuis les deux côtés. Au-delà de cette marge, corriger Oz ou refaire la pose après recharge. L’alignement et le confort restent à valider avec les objets sur la dalle réelle.
+5. Décaler volontairement le LEGO de 5 à 10 mm et observer depuis les deux côtés. Au-delà de cette marge, corriger Oz ou refaire la pose après une nouvelle sélection. L’alignement et le confort restent à valider avec les objets sur la dalle réelle.
 
 ## Intégration des branches fonctionnelles
 
-Les travaux #41 (postes et conduite par équipe), #30 (corridor de boost), #31 (retours des tangibles), #32 (tutoriel) et #34 (console Oz) sont réunis avec leur historique. L’inversion des copilotes n’est appliquée qu’une fois. Les deux thèmes, les animations, les commandes sémantiques et les bonus autonomes sont conservés. Le tutoriel utilise les commandes de conduite par équipe et les piliers neutres ; il peut être parcouru sans Oz en passant son étape dédiée.
+Les travaux #41 (postes et conduite par équipe), #30 (corridor de boost), #31 (retours des tangibles), #32 (tutoriel) et #34 (console Oz) sont réunis avec leur historique. L’inversion des copilotes n’est appliquée qu’une fois. Les cinq thèmes, les animations, les commandes sémantiques et les bonus autonomes sont conservés. Le tutoriel utilise les commandes de conduite par équipe et les piliers neutres ; ses étapes tangibles nécessitent les manipulations réelles, avec une commande pour passer une étape bloquée si nécessaire.
 
 La branche `baptiste` est maintenant intégrée : dessin possible dans les deux sens pour l’équipe active, bonus qui suivent la piste déformée et placement sûr des bonus. Le parcours guidé, les zones hors postes et les thèmes récents sont conservés. Le [bilan d’intégration](docs/integration-equipe.md) précise les apports de chaque branche et les adaptations.
 
@@ -207,11 +212,11 @@ npm run test:tangible-touch
 npm run build
 ```
 
-Les tests couvrent génération, conduite, collisions neutres, réparation, armement, vol, pause, présence des trois tangibles fixes, pose atomique, rotation autour du centre et à pivot fixe, raccourcis AZERTY, annulation groupée, transformations dans les quatre vues, commandes rapides avec anciens états réseau, déconnexion, journal serveur rejoué et séparation des rôles réseau. La validation matérielle des contacts simultanés et de la latence sur la table réelle reste à réaliser ; voir `measures.md`. L’affichage de diagnostic s’active avec `?debug=1` ou F3 ; il liste aussi les dernières décisions du recognizer tactile (F4 télécharge le journal), et les seuils des gestes se règlent par l’URL (`?cluster=`, `?palm=`...) : voir le [protocole d’essai des seuils tactiles](docs/seuils-tactiles.md). La préparation, le lancement et l’observation des essais avec des personnes extérieures sont décrits dans [docs/sessions-de-test.md](docs/sessions-de-test.md). Le journal des événements tangibles du serveur est disponible sur `/api/oz-log`.
+Les tests couvrent génération, conduite, collisions neutres, réparation, armement, vol, pause, présence des trois tangibles fixes, pose atomique, rotation autour du centre et à pivot fixe, raccourcis AZERTY, annulation groupée, transformations dans les quatre vues, commandes rapides avec anciens états réseau, déconnexion, journal serveur rejoué et séparation des rôles réseau. La validation matérielle des contacts simultanés et de la latence sur la table réelle reste à réaliser ; voir `measures.md`. Uniquement avec `CRASHOUT_DEV_TOOLS=1` côté serveur, l’affichage de diagnostic s’active avec `?debug=1` ou F3 ; il liste aussi les dernières décisions du recognizer tactile (F4 télécharge le journal), et les seuils des gestes se règlent par l’URL (`?cluster=`, `?palm=`...) : voir le [protocole d’essai des seuils tactiles](docs/seuils-tactiles.md). La préparation, le lancement et l’observation des essais avec des personnes extérieures sont décrits dans [docs/sessions-de-test.md](docs/sessions-de-test.md). Le journal des événements tangibles du serveur se télécharge depuis la console authentifiée, ou via `/api/oz-log` avec sa session opérateur.
 
 ## Structure
 
-L’audit graphique, les trois directions proposées et la liste de sons à chercher sont dans [docs/direction-artistique.md](docs/direction-artistique.md). Cinq thèmes sont disponibles dans **Paramètres → Ambiance** : **Néon**, **Ferraille**, **Toy Circuit**, **F1 Classic** et **Mayhem**. Chaque ambiance possède son décor animé, sa piste, sa voiture et ses commandes ; le cyan et le rose identifient toujours les équipes. Le choix est mémorisé localement et peut changer pendant la partie. Voir [les thèmes et leur parcours de vérification](docs/themes.md) et [les détails du rendu néon](docs/rendu-neon.md). L’[audit des textes et de l’orientation](docs/lisibilite.md) documente les choix de lisibilité des issues #26 et #35.
+L’audit graphique, les trois directions proposées et la liste de sons à chercher sont dans [docs/direction-artistique.md](docs/direction-artistique.md). Cinq thèmes sont disponibles dans **Paramètres → Ambiance** : **Néon**, **Ferraille**, **Circuit miniature**, **Grand Prix** et **Castagne**. Chaque ambiance possède son décor animé, sa piste, sa voiture et ses commandes ; le cyan et le rose identifient toujours les équipes. **Ferraille est le choix initial.** Le choix est ensuite mémorisé localement et peut changer pendant la partie. Voir [les thèmes et leur parcours de vérification](docs/themes.md) et [les détails du rendu néon](docs/rendu-neon.md). L’[audit des textes et de l’orientation](docs/lisibilite.md) documente les choix de lisibilité des issues #26 et #35.
 
 ```text
 server/          état autoritaire, règles, physique, génération, tutoriel, WebSocket
@@ -227,3 +232,7 @@ Les anciennes règles expérimentales fantôme / destruction restent dans le mot
 ### Audio
 
 **Paramètres → Audio** permet de couper le son et de régler effets, ambiance et musique séparément. Les sons physiques utilisent des extraits CC0 téléchargés ; les clics, alertes et confirmations utilisent des signaux simples. Ferraille possède une ambiance industrielle et une proposition de musique. Voir [l’inventaire complet, les sons à rechercher et le parcours d’essai](docs/audio.md), ainsi que [les crédits et licences](client-table/audio/CREDITS.md). `npm run test:audio` fait partie de `check` et `verify`.
+
+## Audit avant les essais du 2 novembre
+
+L’[audit des branches et des issues du 1er novembre 2026](docs/audit-pretests-2026-11-01.md) couvre toutes les branches locales et distantes, les issues et les critères qui nécessitent encore la vraie table. Les ramassables sont répartis aléatoirement à chaque création humaine de circuit, espacés entre eux et de la ligne de départ ; leur réapparition conserve leur position pendant la course. Le tutoriel garde ses positions prévisibles.

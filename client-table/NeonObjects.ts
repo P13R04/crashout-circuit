@@ -13,20 +13,27 @@ function ownerAlpha(state: GameState, team: Team | null, p: Vec2): number {
   return Math.hypot(own.x - p.x, own.y - p.y) < 90 ? .35 : 1;
 }
 export class NeonObjects {
+  private pickupLife=new Map<number,{available:boolean;born:number}>();
+  clearPickups():void{this.pickupLife.clear();}
   constructor(private theme: ThemeId = 'neon') {}
   private get electric(): string { return themeLook(this.theme).electric; }
   drawPickups(ctx: Ctx, state: GameState, time: number, reduced: boolean): void {
+    const ids=new Set(state.pickups.map(p=>p.id));for(const id of this.pickupLife.keys())if(!ids.has(id))this.pickupLife.delete(id);
     for (const p of state.pickups) {
       const available = p.respawnAt === 0, color = p.kind === 'slingshot' ? '#ffb08a' : themeLook(this.theme).accent;
+      const previous=this.pickupLife.get(p.id),born=available&&(!previous||!previous.available)?time:previous?.born??time;
+      this.pickupLife.set(p.id,{available,born});
+      const birth=reduced?1:Math.max(0,Math.min(1,(time-born)/380));
       const lift = reduced ? 0 : Math.sin(time / 650 + p.id * 1.7) * 2.5;
-      ctx.save(); ctx.globalAlpha = available ? 1 : .16;
+      ctx.save(); ctx.globalAlpha = available ? birth : .13;
       ctx.fillStyle = '#00000050'; ctx.beginPath(); ctx.ellipse(p.pos.x, p.pos.y + 5, 12, 5, 0, 0, TAU); ctx.fill();
       if (available) glow(ctx, p.pos.x, p.pos.y, 34, color, .3, .7);
       ctx.translate(p.pos.x, p.pos.y - 3 + lift);
+      const scale=available?.65+.35*birth+.1*Math.sin(birth*Math.PI):1;ctx.scale(scale,scale);
       ctx.beginPath();
       for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; const x = Math.cos(a) * 16, y = Math.sin(a) * 16; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
       ctx.closePath(); ctx.fillStyle = themeLook(this.theme).button; ctx.fill(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
-      drawItemIcon(ctx, p.kind, 0, 0, 9, color);
+      if(available)drawItemIcon(ctx, p.kind, 0, 0, 9, color);
       if (available) { ctx.fillStyle = NEON.white; ctx.fillRect(-3, -18, 6, 1); }
       ctx.restore();
     }

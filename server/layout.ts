@@ -47,6 +47,7 @@ export const steerArea = (mode: DriveMode = 'auto') => ({...STEER_AREA_LOCAL, x:
 /** Pedal shown only in manual-drive mode, held to accelerate. */
 export const PEDAL_LOCAL = { x: 40, y: 23, w: 80, h: 78 };
 export const POWER_BTN_LOCAL = { x: -65, y: 14, r: 40 };
+export const ITEM_SLOT_LOCAL = {x:POWER_BTN_LOCAL.x,y:-43};
 /** Historical coordinates for journal compatibility; no charging surface exists. */
 export const CHARGE_ZONE_LOCAL = { x: -43, y: 12, w: 144, h: 144 };
 

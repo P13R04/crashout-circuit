@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
+import {TRACK_REVEAL_MS,FINISH_ROULETTE_MS} from '../server/trackPresentation.js';
 import {AudioTimeline,CueGate,audioSettings,DEFAULT_AUDIO} from '../client-table/AudioPlan.js';
 import {TableAudio} from '../client-table/Sound.js';
 import {AUDIO_ASSETS} from '../client-table/AudioAssets.js';
@@ -29,6 +30,25 @@ await test('countdowns follow the authoritative clock once, and never replay lat
   assert.deepEqual(kinds(timeline.step(s,13001)),['go']);assert.deepEqual(kinds(timeline.step(s,14000)),[]);
   assert.deepEqual(kinds(new AudioTimeline().step(s,20000)),[],'joining an ongoing race has no stale GO');
 });
+await test('the tutorial start lights stay silent until all four stations have identified themselves',()=>{
+  const s=createInitialState(),timeline=new AudioTimeline();s.phase='RACE';s.sessionStartAt=13000;
+  s.tutorial={steps:['identify','steer'],teams:{A:{step:0,sub:1},B:{step:1,sub:0}},finished:false};
+  assert.deepEqual(kinds(timeline.step(s,10000)),[]);
+  s.tutorial.teams.A.step=1;s.sessionStartAt=23000;
+  assert.deepEqual(kinds(timeline.step(s,20000)),['countdown']);
+  timeline.step(s,24000);s.cars.A.lap++;assert.deepEqual(kinds(timeline.step(s,25000)),[],'practice laps never announce a final lap');
+});
+await test('roulette ticks slow with the draw, confirm only at the landing, and never replay after joining',()=>{
+  const s=createInitialState(),timeline=new AudioTimeline();s.phase='MAP';timeline.step(s,1000);
+  s.phase='READY';s.trackPresentation={startedAt:1000,originIndex:0};
+  assert.deepEqual(kinds(timeline.step(s,1000)),[],'no ready chime when construction has just begun');
+  timeline.step(s,1000+TRACK_REVEAL_MS);
+  assert.deepEqual(kinds(timeline.step(s,1000+TRACK_REVEAL_MS+200)),['rouletteTick']);
+  assert.deepEqual(kinds(timeline.step(s,1000+TRACK_REVEAL_MS+200)),[]);
+  const landing=1000+TRACK_REVEAL_MS+FINISH_ROULETTE_MS;
+  assert.deepEqual(kinds(timeline.step(s,landing)),['raceReady']);assert.deepEqual(kinds(timeline.step(s,landing+100)),[]);
+  assert.deepEqual(kinds(new AudioTimeline().step(s,landing+10000)),[],'late viewers do not hear an old landing');
+});
 await test('pause shifts the countdown without duplicate beeps or a backlog',()=>{
   const s=createInitialState(),timeline=new AudioTimeline();s.phase='RACE';s.sessionStartAt=13000;timeline.step(s,10000);timeline.step(s,11001);
   s.phase='PAUSED';s.pausedAt=11001;assert.deepEqual(kinds(timeline.step(s,15000)),['pause']);
@@ -43,14 +63,14 @@ await test('repair restart lights have their own countdown and checkpoints stay 
   s.cars.A.checkpointIndex++;assert.deepEqual(kinds(timeline.step(s,14000)),[]);
   s.cars.A.lap++;assert.ok(kinds(timeline.step(s,15000)).includes('lap'),'only complete laps are signalled');
 });
-await test('repair, warning and Oz placement state transitions are sparse and cancellable',()=>{
+await test('repair and warning signals remain sparse; operator selections stay silent',()=>{
   const s=createInitialState(),timeline=new AudioTimeline();s.phase='RACE';s.sessionStartAt=1;timeline.step(s,10000);
   s.cars.A.hp=20;s.repairProgress.A=.1;
   assert.deepEqual(kinds(timeline.step(s,10020)),['lowHealth','repairBegin']);
   assert.deepEqual(kinds(timeline.step(s,10030)),[]);
   s.repairProgress.A=0;assert.deepEqual(kinds(timeline.step(s,10040)),['repairInterrupted']);
-  s.tangiblePlacement={id:1,token:1,expiresAt:20000};assert.deepEqual(kinds(timeline.step(s,10050)),['placementWaiting']);
-  s.tangiblePlacement=null;assert.deepEqual(kinds(timeline.step(s,10060)),['placementCancelled']);
+  s.tangiblePlacement={id:1,token:1,expiresAt:20000};assert.deepEqual(kinds(timeline.step(s,10050)),[]);
+  s.tangiblePlacement=null;assert.deepEqual(kinds(timeline.step(s,10060)),[]);
 });
 await test('simultaneous impacts and button repeats are rate limited by family',()=>{
   const gate=new CueGate();assert.ok(gate.accept('impact',0,.09));assert.equal(gate.accept('impact',.01,.09),false);assert.ok(gate.accept('impact',.1,.09));

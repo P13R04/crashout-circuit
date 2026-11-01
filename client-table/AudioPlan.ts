@@ -1,3 +1,4 @@
+import { presentationFrame, presentationEnd } from '../server/trackPresentation.js';
 import type { GameState, Team } from '../server/types.js';
 export interface AudioSettings { enabled:boolean; effects:number; ambience:number; music:number; }
 export const AUDIO_STORAGE_KEY='crashout.audio';
@@ -13,21 +14,29 @@ interface CarAudio { lap:number; countdown:number|null; repair:number; low:boole
 export class AudioTimeline {
   private phase:GameState['phase']|null=null;
   private countdown:number|null=null;
+  private presentation:{key:number;bucket:number;locked:boolean}|null=null;
   private cars:Partial<Record<Team,CarAudio>>={};
-  private placement:number|null=null;
-  private pendingId:number|null=null;
-  reset():void {this.phase=null;this.countdown=null;this.cars={};this.placement=null;this.pendingId=null;}
+  reset():void {this.phase=null;this.countdown=null;this.cars={};this.presentation=null;}
   step(s:GameState,now:number):AudioCue[]{
     const cues:AudioCue[]=[],emit=(kind:string,team?:Team,x?:number)=>cues.push({kind,team,x});
     const previous=this.phase,active=s.phase==='RACE';
     if(previous&&previous!==s.phase){
       if(s.phase==='PAUSED')emit('pause');
       else if(previous==='PAUSED'&&active)emit('resume');
-      else if(s.phase==='READY')emit('raceReady');
+      else if(s.phase==='READY'&&!s.trackPresentation)emit('raceReady');
       else if(s.phase==='RESULT')emit('raceFinish');
       else if(s.phase==='MAP')emit('mapBegin');
     }
-    if(active){
+    if(s.phase==='READY'&&s.trackPresentation){
+      const p=s.trackPresentation,f=presentationFrame(p,now),bucket=Math.floor(f.travel*40),prev=this.presentation;
+      if(prev?.key===p.startedAt){
+        if(f.stage==='roulette'&&bucket!==prev.bucket)emit('rouletteTick');
+        if(f.stage==='lock'&&!prev.locked&&now<presentationEnd(p)+250)emit('raceReady');
+      }
+      this.presentation={key:p.startedAt,bucket,locked:f.stage==='lock'};
+    }else this.presentation=null;
+    const identifying = s.tutorial && (['A','B'] as const).some(t=>s.tutorial!.steps[s.tutorial!.teams[t].step]==='identify');
+    if(active&&!identifying){
       const count=Math.max(0,Math.ceil((s.sessionStartAt-now)/1000));
       if(count>0&&count<=3&&count!==this.countdown)emit('countdown');
       if(count===0&&this.countdown!==null&&this.countdown>0)emit('go');
@@ -40,17 +49,14 @@ export class AudioTimeline {
       if(active){
         if(count!==null&&count>0&&count<=3&&prev?.countdown!==count)emit('countdown',team,car.pos.x);
         if(count===0&&prev?.countdown&&prev.countdown>0)emit('go',team,car.pos.x);
-        if(prev&&car.lap>prev.lap)emit(car.lap===s.params.lapsToWin-1?'finalLap':'lap',team,car.pos.x);
+        if(prev&&!s.tutorial&&car.lap>prev.lap)emit(car.lap===s.params.lapsToWin-1?'finalLap':'lap',team,car.pos.x);
         if(prev&&low&&!prev.low)emit('lowHealth',team,car.pos.x);
         if(quarter>0&&quarter!==prev?.repair)emit(quarter===1?'repairBegin':'repairProgress',team,car.pos.x);
         if(quarter===0&&prev?.repair&&!(car.respawnUntil>now)&&car.hp< s.params.hpMax)emit('repairInterrupted',team,car.pos.x);
       }
       this.cars[team]={lap:car.lap,countdown:count,repair:quarter,low};
     }
-    const placement=s.tangiblePlacement?.token??null;
-    if(placement!==null&&placement!==this.placement)emit('placementWaiting');
-    if(placement===null&&this.placement!==null&&this.pendingId!==null&&s.tangibles[this.pendingId]?.status!=='placed'&&['RACE','READY'].includes(s.phase))emit('placementCancelled');
-    this.placement=placement;this.pendingId=s.tangiblePlacement?.id??null;this.phase=s.phase;
+    this.phase=s.phase;
     return cues;
   }
 }

@@ -12,14 +12,15 @@ import type {
   GameState, Team, Vec2, Phase, ItemKind, Car, Wall, MapTargets, TrackGeometry, Tangible,
   StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg,
   PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg,
-  TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg,
+  TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg, TrackPresentation,
 } from './types.js';
+import { presentingTrack } from './trackPresentation.js';
 import { orientBoostGate, hitsBoostGate } from './boostGeometry.js';
 import { armedPickup, RESPAWN_COUNTDOWN_MS } from './armedPickup.js';
 import { AutomaticPilot } from './AutomaticPilot.js';
 import { config } from './config.js';
 import { dist, distToSegment, nearestOnTrack, trackTangent, segmentsIntersect, slingshotShot, wrapAngle, clampToTrackRibbon } from './geometry.js';
-import { generate, generatePreset, validateStroke, rebuildEdges } from './MapGenerator.js';
+import { generate, generatePreset, randomizeRaceStart, validateStroke, rebuildEdges } from './MapGenerator.js';
 import { nearestStationTeam, LOGICAL_W, checkDivider, insidePanel, inTangibleDepot, depotPose, TANGIBLE_DEPOT, rectContains } from './layout.js';
 import { activeMapTeam, mapEndpointError, mapStrokeEndpoints } from './mapCreation.js';
 import { Tutorial, TUTORIAL_ARM_WINDOW_S, TUTORIAL_PICKUP_RESPAWN_S, TUTORIAL_OBSTACLE_PREFIX } from './Tutorial.js';
@@ -36,7 +37,7 @@ const PICKUP_RADIUS = 30;
 const TEAMS: Team[] = ['A', 'B'];
 
 export interface RulesHost {
-  feedback(kind: string, x: number, y: number, team: Team): void;
+  feedback(kind: string, x: number, y: number, team: Team, itemKind?: ItemKind): void;
   transition(phase: Phase, data?: unknown): void;
   /** Broadcast the full state (including the heavy track / QR fields). */
   broadcastFull(): void;
@@ -87,6 +88,7 @@ export function createInitialState(): GameState {
   return {
     phase: 'LOBBY',
     sessionMode: 'race',
+    developerTools: false,
     driveMode: { A: 'auto', B: 'auto' },
     tick: 0,
     cars: { A: makeCar('A'), B: makeCar('B') },
@@ -118,6 +120,7 @@ export function createInitialState(): GameState {
     mapMode: null,
     repairProgress: { A: 0, B: 0 },
     trackVersion: 0,
+    trackPresentation: null,
     tangibles: {},
     tangiblePlacementMode: 'manual',
     tangiblePlacement: null,
@@ -194,8 +197,8 @@ export class GameRules {
     const base = host;
     this.host = {
       ...base,
-      feedback: (kind, x, y, team) => {
-        base.feedback(kind, x, y, team);
+      feedback: (kind, x, y, team, itemKind) => {
+        base.feedback(kind, x, y, team, itemKind);
         this.tutorial?.onFeedback(kind, team);
       },
     };
@@ -221,6 +224,7 @@ export class GameRules {
     s.mapDeadline = 0;
     s.mapMode = mode;
     s.track = null;
+    s.trackPresentation = null;
     s.deformations = [];
     s.trackVersion++;
     this.strokes = { A: null, B: null };
@@ -318,23 +322,26 @@ export class GameRules {
     if (this.generating) return;
     this.generating = true;
     await Promise.resolve();
-    const t = this.state.mapTargets!;
+    if(this.state.phase!=='MAP'||!this.state.mapTargets){this.generating=false;return;}
+    const t = this.state.mapTargets;
     const a = this.strokes.A ?? [];
     const b = this.strokes.B ?? [];
     const started = Date.now();
     const track = generate(a, b, t.A[0], t.A[1], t.B[0], t.B[1]);
     console.log(`[GameRules] Track generated in ${Date.now() - started} ms`);
-    this.startRace(track, true);
+    const originIndex=nearestOnTrack(t.A[0],track).index;
+    this.startRace(randomizeRaceStart(track,this.rng), true, {startedAt:this.now+120,originIndex});
   }
 
   // ─── RACE start ────────────────────────────────────────────────────────────
 
-  startRace(track = generatePreset(), waitForPlayers = false): void {
+  startRace(track = generatePreset(), waitForPlayers = false, presentation: TrackPresentation | null = null): void {
     this.state.tangiblePlacement = null;
     const s = this.state;
     this.generating = true;
     this.automaticPilot.reset();
     s.track = track;
+    s.trackPresentation = presentation;
     s.pausedAt = 0;
     this.pausedAt = 0;
     s.deformations = [];
@@ -354,7 +361,7 @@ export class GameRules {
     for (const pad of Object.values(s.repairPads)) { pad.held = false; pad.startedAt = 0; }
     s.walls = []; s.arcs = []; s.boostGates = []; s.stones = [];
     s.pickups = track.pickupPositions.map((pos, i) => ({
-      id: i, pos: clampToTrackRibbon(pos, track, 25), kind: this.randomItem(), respawnAt: 0,
+      id: i, pos: clampToTrackRibbon(pos, track, 25), kind: s.tutorial ? (i%2===0?'slingshot':'boost') : this.randomItem(), respawnAt: 0,
     }));
     s.winner = null;
     s.sessionStartAt = waitForPlayers ? 0 : this.now + COUNTDOWN_MS;
@@ -367,7 +374,8 @@ export class GameRules {
 
   /** The generated circuit can be inspected before the actual race countdown. */
   beginRace(): void {
-    if (this.state.phase !== 'READY') return;
+    if (this.state.phase !== 'READY' || presentingTrack(this.state,this.now)) return;
+    this.state.trackPresentation=null;
     this.state.sessionStartAt = this.now + COUNTDOWN_MS;
     this.state.raceDeadline=this.state.params.sessionMaxSeconds>0?this.state.sessionStartAt+this.state.params.sessionMaxSeconds*1000:0;
     this.host.transition('RACE', { startsAt: this.state.sessionStartAt });
@@ -429,7 +437,29 @@ export class GameRules {
   }
 
   tutorialSkip(team: Team): void {
-    if (this.state.phase === 'RACE' && (team === 'A' || team === 'B')) this.tutorial?.skip(team);
+    if (this.state.phase !== 'RACE' || (team !== 'A' && team !== 'B')) return;
+    const wasIdentifying = this.tutorialIdentifying();
+    this.tutorial?.skip(team);
+    this.launchTutorialIfReady(wasIdentifying);
+  }
+
+  private tutorialIdentifying(): boolean {
+    const tut=this.state.tutorial;
+    return !!tut && TEAMS.some(t=>tut.steps[tut.teams[t].step]==='identify');
+  }
+
+  private launchTutorialIfReady(wasIdentifying: boolean): void {
+    if (wasIdentifying && !this.tutorialIdentifying()) {
+      this.state.sessionStartAt = this.now + COUNTDOWN_MS;
+      for(const team of TEAMS) this.inputs[team].steer=0;
+    }
+  }
+
+  tutorialRace(): void {
+    if (this.state.phase !== 'RACE' || !this.state.tutorial?.finished) return;
+    const mode = this.state.mapMode ?? 'table';
+    this.resetToLobby();
+    this.enterMap(mode);
   }
 
   /** PC-only test switches: ignored unless the session was started in PC mode. */
@@ -490,6 +520,7 @@ export class GameRules {
     const s = this.state;
     s.winner = null;
     s.track = null;
+    s.trackPresentation = null;
     s.trackVersion++;
     s.walls = []; s.arcs = []; s.boostGates = []; s.stones = []; s.pickups = [];
     s.tangibles = {};
@@ -605,10 +636,11 @@ export class GameRules {
   }
 
   private consumeItem(team: Team): void {
-    const car = this.state.cars[team];
+    const car = this.state.cars[team],kind=car.heldItem;
     car.heldItem = null;
     car.itemArmed = false;
     car.itemArmExpiry = 0;
+    if(kind)this.host.feedback('itemUsed',car.pos.x,car.pos.y,team,kind);
   }
 
   /**
@@ -734,6 +766,11 @@ export class GameRules {
     if (!pad) return;
     pad.held = !!msg.on;
     pad.startedAt = pad.held ? this.now : 0;
+    if (pad.held && this.state.phase === 'RACE' && this.state.tutorial) {
+      const wasIdentifying = this.tutorialIdentifying();
+      this.tutorial?.onStation(msg.team, msg.role);
+      this.launchTutorialIfReady(wasIdentifying);
+    }
   }
 
   releaseAllPads(): void {
@@ -871,6 +908,7 @@ export class GameRules {
     s.tangibles[msg.id]={...pose,kind:definition.kind,team:null,active:!parked,status:parked?'parked':'placed',dockTeam:null,placementOrigin:{...pose}};
     this.tangibleLog.push({t:this.now,type:'TangibleMoved',id:msg.id,...pose,active:!parked});
     this.rebuildTangibles();
+    this.tutorial?.onTangiblePlaced(msg.id);
     this.host.broadcastFull();
   }
 
@@ -909,6 +947,7 @@ export class GameRules {
       dockTeam: null, status: parked?'parked':'placed', placementOrigin };
     this.tangibleLog.push({ t: this.now, type: 'TangibleMoved', id, x, y, angle, active });
     this.rebuildTangibles();
+    this.tutorial?.onTangiblePlaced(id);
   }
 
   onTangibleRemoved(msg: TangibleRemovedMsg): void {
@@ -1107,7 +1146,7 @@ export class GameRules {
 
     for (const p of s.pickups) {
       if (p.respawnAt !== 0 && p.respawnAt <= now) {
-        p.respawnAt = 0; p.kind = this.randomItem();
+        p.respawnAt = 0; p.kind = s.tutorial ? (p.id%2===0?'slingshot':'boost') : this.randomItem();
         if (s.track) p.pos = clampToTrackRibbon(s.track.pickupPositions[p.id] ?? p.pos, s.track, 25);
       }
     }
@@ -1132,10 +1171,11 @@ export class GameRules {
     // Pickups (R-11): picked up only when the stock is empty
     if (car.heldItem === null) {
       for (const p of s.pickups) {
-        if (p.respawnAt === 0 && dist(car.pos, p.pos) <= PICKUP_RADIUS) {
-          car.heldItem = this.tutorial?.forcedItem(team) ?? p.kind;
+        const expected = this.tutorial?.forcedItem(team);
+        if (p.respawnAt === 0 && (!expected || p.kind===expected) && dist(car.pos, p.pos) <= PICKUP_RADIUS) {
+          car.heldItem = p.kind;
           p.respawnAt = now + (s.tutorial ? TUTORIAL_PICKUP_RESPAWN_S : config.pickupRespawnS) * 1000;
-          this.host.feedback('pickup', p.pos.x, p.pos.y, team);
+          this.host.feedback('pickup', p.pos.x, p.pos.y, team, p.kind);
           break;
         }
       }
@@ -1180,6 +1220,7 @@ export class GameRules {
           car.invulnUntil = now + config.invulnAfterHitS * 1000;
           car.slowUntil = now + config.arcSlowS * 1000;
           car.speed *= config.arcSlowFactor;
+          this.tutorial?.onObstacleHit(team, 'arc');
           break;
         }
       }

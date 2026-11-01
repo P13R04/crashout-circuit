@@ -11,12 +11,13 @@ export class CircuitTrack {
   private layer: HTMLCanvasElement | null = null;
   private surface: HTMLCanvasElement | null = null;
   private version = -1;
+  private finishVisible = true;
   private edges: Path2D[] = [];
   builds = 0;
   constructor(private theme: CircuitTheme) {}
 
-  draw(ctx: Ctx, track: TrackGeometry, version: number, time: number, reduced: boolean): void {
-    if (!this.layer || this.layer.width !== ctx.canvas.width || this.layer.height !== ctx.canvas.height || version !== this.version) {
+  draw(ctx: Ctx, track: TrackGeometry, version: number, time: number, reduced: boolean, finishVisible = true): void {
+    if (!this.layer || this.layer.width !== ctx.canvas.width || this.layer.height !== ctx.canvas.height || version !== this.version || this.finishVisible !== finishVisible) {
       this.layer ??= document.createElement('canvas');
       this.layer.width = ctx.canvas.width; this.layer.height = ctx.canvas.height;
       this.surface ??= document.createElement('canvas');this.surface.width=ctx.canvas.width;this.surface.height=ctx.canvas.height;
@@ -32,7 +33,7 @@ export class CircuitTrack {
         });
         return path;
       });
-      this.paint(c, track, visible); this.version = version; this.builds++;
+      this.paint(c, track, visible, finishVisible); this.finishVisible=finishVisible; this.version = version; this.builds++;
     }
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(this.layer, 0, 0); ctx.restore();
     // Plastic edge reflectors only: F1 paint and mud never become moving neon rails.
@@ -52,7 +53,7 @@ export class CircuitTrack {
     });
   }
 
-  private paint(ctx: Ctx, track: TrackGeometry, visibility:boolean[][]): void {
+  private paint(ctx: Ctx, track: TrackGeometry, visibility:boolean[][], finishVisible: boolean): void {
     const toy=this.theme==='toy',mud=this.theme==='mayhem';
     ctx.save();ctx.translate(2,toy?12:5);this.band(ctx,track,'#06101266',toy?22:26);ctx.restore();
     if(toy){
@@ -119,7 +120,7 @@ export class CircuitTrack {
         surface.restore();next+=toy?96:mud?66:90;seed++;
       }travelled+=len;
     }
-    if(this.theme==='classic'){
+    if(this.theme==='classic'&&finishVisible){
       surface.strokeStyle='#eeeece99';surface.lineWidth=1.5;surface.lineJoin='round';
       for(const points of racingGrid(track)){
         surface.beginPath();points.forEach((p,i)=>i?surface.lineTo(p.x,p.y):surface.moveTo(p.x,p.y));surface.stroke();
@@ -152,7 +153,7 @@ export class CircuitTrack {
         }
       }
     }
-    this.finish(ctx,track);
+    if(finishVisible)this.finish(ctx,track);
   }
 
   private finish(ctx: Ctx, track: TrackGeometry): void {
