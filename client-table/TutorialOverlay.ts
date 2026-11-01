@@ -1,4 +1,8 @@
-/** Role-facing lessons at the four real stations. Game events, not animation timers, validate progress. */
+/**
+ * Consignes, cartes et mises en évidence du tutoriel sur la table.
+ * lessonOf contient les textes ; drawGestureDemo vient de TutorialGestures.ts.
+ * La validation des étapes reste dans server/Tutorial.ts.
+ */
 import type { GameState, Team, Vec2, TutorialStepId } from '../server/types.js';
 import {
   LOGICAL_W, LOGICAL_H, PANELS, panelOf, localToWorld, worldToLocal, padLocal,

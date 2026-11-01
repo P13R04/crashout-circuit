@@ -1,3 +1,4 @@
+/** Lecture des sons. AudioPlan.ts choisit les signaux ; AudioAssets.ts référence les fichiers. */
 import type { GameState,Vec2 } from '../server/types.js';
 import type { View } from './view.js';
 import { AUDIO_ASSETS,type AudioAsset } from './AudioAssets.js';
@@ -101,6 +102,7 @@ export class TableAudio {
     const v=this.output(source,volume,x);this.keep(v);source.start();return true;
   }
   /** Feedback happens once on confirmation. Similar simultaneous impacts share one voice. */
+  // Sons ponctuels des actions : clics, bonus, impacts, pose et réparation.
   feedback(kind:string,position?:Partial<Vec2>):void {
     if(!this.available()||this.phase==='PAUSED'&&!['ui','pause','resume'].includes(kind))return;
     const x=position?.x??960,t=this.audio!.currentTime;
@@ -169,6 +171,7 @@ export class TableAudio {
     }
     if(this.music.paused&&!this.musicPlaying){this.musicPlaying=true;void this.music.play().then(()=>{if(!this.musicWanted){this.music?.pause();this.musicPlaying=false;}}).catch(()=>{this.musicPlaying=false;this.musicBlocked=true;});}
   }
+  // Ambiances continues : moteurs, électricité, tension du lance-pierre et musique.
   update(view:Pick<View,'state'|'theme'|'sling'|'now'>,localNow=performance.now()):void {
     const s=view.state;if(!s)return;
     if(localNow-this.lastUpdate<40)return;this.lastUpdate=localNow;

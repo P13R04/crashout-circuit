@@ -1,3 +1,4 @@
+/** Interface de la console : boutons tactiles, raccourcis, journal et connexion réseau. */
 import { StateSync, connectWs, type Connection } from '../client-shared/net.js';
 import { OzMap, type OzTool } from './OzMap.js';
 import { OzController, ozShortcut } from './OzController.js';
@@ -33,7 +34,7 @@ const sync = new StateSync();
 let conn: Connection | undefined;
 let wasTouch = false;
 
-// Controller kept for state tracking, optimistic reconciliation & unit tests
+// OzController suit les modifications locales ; OzMap gère les contacts sur la carte.
 const controller = new OzController((type, params) => {
   if (!conn?.isOpen()) return false;
   conn.send({ type, ...params });
@@ -180,6 +181,7 @@ btnArc.addEventListener('click', () => {
   map.setTool(current === 'arc' ? null : 'arc');
 });
 
+// Annonce de pose avec les doigts, annulation et orientation manuelle du mur.
 placementMode.addEventListener('change',()=>{
   map.cancel();
   if(conn?.isOpen())conn.send({type:'TangiblePlacementMode',mode:placementMode.value});
@@ -234,6 +236,7 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// État des commandes et consignes opérateur, y compris pendant le tutoriel.
 function refresh(): void {
   const enabled = controller.enabled;
   const s=controller.state,touch=s?.tangiblePlacementMode==='touch',pending=s?.tangiblePlacement;

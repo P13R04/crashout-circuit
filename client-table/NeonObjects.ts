@@ -1,3 +1,4 @@
+/** Apparence des bonus, murs, piliers et arcs dans les cinq thèmes. Les collisions sont côté serveur. */
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import { boostFrame } from '../server/boostGeometry.js';
 import { themeLook, type ThemeId } from './themes.js';

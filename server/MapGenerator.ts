@@ -1,15 +1,10 @@
 /**
- * MapGenerator — builds TrackGeometry from two freehand strokes.
+ * Géométrie du circuit et emplacement de ses éléments.
  *
- * Pipeline (REQ-2.2.x, REQ-2.3.x, T-01):
- *  1. validate(stroke)          — length ≥ 150 px, endpoints inside a target ring
- *  2. closedFromHalves(A, B)    — the two half-strokes, hooked on P1 and P2, ARE the loop
- *  3. shapeHalf(half)           — d' = |d|, amplitude ≥ 150 px (context.md §5.2 step 4)
- *  4. smoothed loop             — zero-lag Gaussian smoothing, σ grows only until the
- *                                 tightest bend is drivable; 256 points
- *  5. fitToPlayArea             — translate (then shrink) into the free area of the table
- *  6. computeGeometry / placeFeatures / validateGeometry
- *     → if invalid: more amplitude, then the old fallbacks (R-06: mirror/merge, preset)
+ * Pour suivre le dessin des joueurs, partir de generate puis faithfulTrack
+ * et smoothestTrack. computeGeometry calcule la chaussée ; placeFeatures
+ * place départ et checkpoints ; randomizePickups répartit les ramassables.
+ * generatePreset fournit le circuit du tutoriel et de l’essai autonome.
  */
 
 import type { Vec2, TrackGeometry } from './types.js';

@@ -1,3 +1,4 @@
+/** Pose réelle par deux contacts : délais de prise et calcul de tangibleTouchPose. */
 import type { GameParams, Tangible, Vec2 } from './types.js';
 import { insidePanel } from './layout.js';
 import { validTangiblePose } from './tangibles.js';

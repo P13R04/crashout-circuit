@@ -1,3 +1,4 @@
+/** Connexions table/Oz et aiguillage des messages. Les règles sont dans GameRules.ts. */
 import { WebSocket, WebSocketServer } from 'ws';
 import { IncomingMessage } from 'http';
 import type {
@@ -99,6 +100,7 @@ export class GameServer {
     return path.startsWith('/oz') ? 'oz' : 'table';
   }
 
+  // Commandes acceptées par rôle ; les outils de développement sont filtrés ici.
   private handleMessage(client: ConnectedClient, msg: ClientMessage): void {
     const fromTable = client.role === 'table';
     const fromOz = client.role === 'oz';
@@ -214,6 +216,7 @@ export class GameServer {
   }
 
   /** Send geometry on a version change, including the final frame of a deformation. */
+  // Synchronisation : snapshots allégés par tick, géométrie complète lors d’un changement.
   private broadcastTick(): void {
     const changed = this.broadcastTrackVersion !== this.state.trackVersion;
     this.broadcast({

@@ -1,15 +1,8 @@
 /**
- * Tutorial — guided first session on the predefined circuit (issue #32).
- *
- * It is the race phase with `state.tutorial` set: physics, gestures and HUD are the
- * real ones, but there are no laps and no damage. Each team has its own progression
- * through the lessons of `tutorialSteps`; a lesson is done by the real game event
- * that proves the interaction (the same `Feedback` the clients get, plus a few direct
- * hooks), never by a timer. A team can also skip its current lesson.
- *
- * GameRules owns one instance and forwards the events; this class only moves the
- * progression and prepares what a lesson needs (forced item, scripted breakdown,
- * real tangible handling, or a scripted obstacle for the PC alternative).
+ * Progression des deux équipes dans le tutoriel.
+ * STEPS et tutorialSteps définissent les leçons ; enter/leave les préparent ;
+ * les méthodes on… valident les actions. Les textes et les démonstrations
+ * sont dans client-table/TutorialOverlay.ts et TutorialGestures.ts.
  */
 import type { GameState, Team, ItemKind, Vec2, TutorialStepId, TutorialState } from './types.js';
 import { config } from './config.js';
@@ -104,7 +97,7 @@ export class Tutorial {
     if (lesson.sub === 3) this.complete(team);
   }
 
-  // ─── Events ────────────────────────────────────────────────────────────────
+  // --- Événements qui valident les leçons ---
 
   onFeedback(kind: string, team: Team): void {
     const id = this.current(team);
@@ -173,7 +166,7 @@ export class Tutorial {
     }
   }
 
-  // ─── Progression ───────────────────────────────────────────────────────────
+  // --- Préparation et passage d’une leçon à l’autre ---
 
   private complete(team: Team): void {
     const id = this.current(team);
@@ -256,7 +249,7 @@ export class Tutorial {
     else if (lesson.sub === 2 && !pedal) this.complete(team);
   }
 
-  // ─── Hostile obstacles ─────────────────────────────────────────────────────
+  // --- Obstacles de démonstration du tutoriel clavier ---
 
   /**
    * A wall or an electric arc across the road, owned by the opposing team so that it

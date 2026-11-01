@@ -1,10 +1,8 @@
 /**
- * PhysicsLoop — authoritative 60 Hz vehicle simulation.
- *
- * Per tick (Δt = 1/physicsHz): housekeeping, vehicle integration, track-edge
- * fall detection, then game rules (pickups, gates, hostile
- * elements, checkpoints, stones, repair, victory). The state is broadcast every
- * `physicsHz / broadcastHz` ticks (30 Hz).
+ * Simulation des voitures.
+ * step orchestre les mises à jour ; integrate règle vitesse et direction ;
+ * checkTrackFall détecte les sorties. Les murs, champs, bonus et checkpoints
+ * sont traités dans GameRules.afterMove, les tirs dans GameRules.updateStones.
  */
 import type { GameState, Team, Car } from './types.js';
 import { config } from './config.js';

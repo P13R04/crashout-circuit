@@ -1,7 +1,7 @@
 /**
- * HUD — the four corner panels (REQ-6.2), each rotated towards its own table edge.
- * Pilot panel: HP over steering and repair. Copilot: POWER and repair.
- * Armed items remain available without a countdown.
+ * Dessin des postes pilote et copilote.
+ * drawPilot affiche direction, santé et tours ; drawCopilot affiche POWER
+ * et le stock ; drawPad affiche la réparation. Les positions sont dans server/layout.ts.
  */
 import type { GameState, Team, Car } from '../server/types.js';
 import {

@@ -1,12 +1,10 @@
 /**
- * GameRules — everything that changes the game state in response to a message
- * or a timer: MAP strokes, pickups and arming, slingshot, boost gates, abilities,
- * tangible lifecycle, synchronous repair, border pull, PC test switches, victory,
- * and the guided tutorial (progression in Tutorial.ts, this class forwards the events).
+ * Règles de course et modifications de GameState.
  *
- * Vehicle motion and collisions live in PhysicsLoop; this class is driven by it
- * (`expire`, `afterMove`, `updateStones`, `updateRepair`, `checkEnd`, `tickMap`).
- * Time comes from an injectable clock so sessions can be replayed in tests (T-11).
+ * Repères : création du circuit, départ et tutoriel, conduite et bonus,
+ * réparation, tangibles, déformation, puis collisions et fin de course.
+ * PhysicsLoop.ts intègre le mouvement ; les contacts avec les objets sont
+ * traités ici dans afterMove. La progression des leçons est dans Tutorial.ts.
  */
 import type {
   GameState, Team, Vec2, Phase, ItemKind, Car, Wall, MapTargets, TrackGeometry, Tangible,
@@ -212,7 +210,7 @@ export class GameRules {
     return `${prefix}${++this.idCounter}`;
   }
 
-  // ─── MAP phase (task 2) ────────────────────────────────────────────────────
+  // --- Création du circuit avec les deux tracés ---
 
   /** Open the shared map setup. The first two table contacts define the divider. */
   enterMap(mode: 'table' | 'pc' = 'table'): void {
@@ -333,7 +331,7 @@ export class GameRules {
     this.startRace(randomizeRaceStart(track,this.rng), true, {startedAt:this.now+120,originIndex});
   }
 
-  // ─── RACE start ────────────────────────────────────────────────────────────
+  // --- Préparation du départ et lancement de la course ---
 
   startRace(track = generatePreset(), waitForPlayers = false, presentation: TrackPresentation | null = null): void {
     this.state.tangiblePlacement = null;
@@ -383,6 +381,7 @@ export class GameRules {
   }
 
   /** One operator and one copilot can exercise real tangible rules without drivers. */
+  // Essai autonome des tangibles ; entrée masquée et filtrée dans GameServer.ts.
   startTangibleTest(): void {
     const s = this.state;
     if (s.phase !== 'LOBBY') return;
@@ -406,6 +405,7 @@ export class GameRules {
    * its own lessons (Tutorial.ts), nobody wins and nothing costs HP. `mode` only tells
    * the table whether a mouse (PC) or fingers (table) are used.
    */
+  // Tutoriel : démarrage, identification des postes et passage à une course normale.
   startTutorial(mode: 'table' | 'pc' = 'table'): void {
     const s = this.state;
     if (s.phase !== 'LOBBY') return;
@@ -481,6 +481,7 @@ export class GameRules {
   }
 
   /** Pause freezes physics and timers; resuming shifts the race clock accordingly. */
+  // Pause et reprise ; resetToLobby, plus bas, nettoie toute la session.
   togglePause(): void {
     this.cancelTangiblePlacement();
     const s = this.state;
@@ -555,7 +556,7 @@ export class GameRules {
     this.host.broadcastFull();
   }
 
-  // ─── Pilot input & items (task 5, 7) ───────────────────────────────────────
+  // --- Conduite et réglages de course ---
 
   onPilotInput(team: Team, msg: PilotInputMsg): void {
     if (this.state.sessionMode === 'tangibles-test') return;
@@ -611,6 +612,7 @@ export class GameRules {
   }
 
   /** POWER only arms the copilot team’s pickup; tangible activation belongs to Oz. */
+  // POWER arme le stock du copilote ; la réservation commune est dans armedPickup.ts.
   onPower(team: Team, _msg?: PowerMsg): void {
     if (this.state.phase !== 'RACE' || this.state.tangiblePlacement || armedPickup(this.state)) return;
     const car = this.state.cars[team];
@@ -622,7 +624,7 @@ export class GameRules {
     }
   }
 
-  // ─── Slingshot (C-01) ──────────────────────────────────────────────────────
+  // --- Stock armé et lance-pierre ---
 
   /** Resolve the armed stock owner; the gesturing team may steal that stock. */
   private resolveArmedTeam(kind: ItemKind, at: Vec2): Team | null {
@@ -689,7 +691,7 @@ export class GameRules {
     s.stones = remaining;
   }
 
-  // ─── Boost gate (C-02) ─────────────────────────────────────────────────────
+  // --- Zones d’accélération ---
 
   onBoostGate(msg: BoostGateMsg): void {
     this.tickTangiblePlacement(this.now);
@@ -730,7 +732,7 @@ export class GameRules {
     return clamp(dist(a, b) / config.boostLenMaxPx, 0.3, 1);
   }
 
-  // ─── Abilities (C-03, C-04) ────────────────────────────────────────────────
+  // --- Anciennes capacités fantôme et destruction, hors interface actuelle ---
 
   onAbility(msg: AbilityMsg): void {
     const s = this.state;
@@ -758,7 +760,7 @@ export class GameRules {
     }
   }
 
-  // ─── Synchronous repair (C-06) ─────────────────────────────────────────────
+  // --- Réparation coopérative et réapparition ---
 
   onPadHold(msg: PadHoldMsg): void {
     if (this.state.sessionMode === 'tangibles-test' && msg.role === 'pilot') return;
@@ -826,7 +828,7 @@ export class GameRules {
     car.velocity = { x: 0, y: 0 };
   }
 
-  // ─── Damage ────────────────────────────────────────────────────────────────
+  // --- Dégâts et sortie de piste ---
 
   damage(car: Car, amount: number, now: number,feedback='hit'): void {
     if (car.disabled || this.state.testMode.invincible) return;
@@ -861,7 +863,7 @@ export class GameRules {
     void now;
   }
 
-  // ─── Tangible pylons (C-05) ────────────────────────────────────────────────
+  // --- Tangibles : annonce, pose, activation, retrait et arc électrique ---
 
   setTangiblePlacementMode(mode: TangiblePlacementMode): void {
     if (mode !== 'manual' && mode !== 'touch') return;
@@ -981,7 +983,7 @@ export class GameRules {
     return [{ x: w.pos.x - hx, y: w.pos.y - hy }, { x: w.pos.x + hx, y: w.pos.y + hy }];
   }
 
-  // ─── Local border pull (C-07) ──────────────────────────────────────────────
+  // --- Déformation temporaire du circuit ---
 
   onBorderPull(msg: BorderPullMsg): void {
     this.tickTangiblePlacement(this.now);
@@ -1137,7 +1139,7 @@ export class GameRules {
     return this.state.deformations.some(d => d.releaseAt !== null);
   }
 
-  // ─── Periodic housekeeping (driven by PhysicsLoop) ─────────────────────────
+  // --- Expiration des effets et contacts après déplacement ---
 
   expire(now: number): void {
     const s = this.state;
@@ -1168,7 +1170,7 @@ export class GameRules {
     const track = s.track;
     if (!track || car.disabled || car.respawnUntil>now) return;
 
-    // Pickups (R-11): picked up only when the stock is empty
+    // Ramassage des bonus ; la réapparition est réglée dans expire.
     if (car.heldItem === null) {
       for (const p of s.pickups) {
         const expected = this.tutorial?.forcedItem(team);
@@ -1181,7 +1183,7 @@ export class GameRules {
       }
     }
 
-    // Allied boost gates
+    // Traversée d’une zone d’accélération de son équipe.
     if (car.boostUntil <= now) {
       for (const g of s.boostGates) {
         if (g.team !== team) continue;
@@ -1196,7 +1198,7 @@ export class GameRules {
       }
     }
 
-    // Neutral obstacles affect both teams; legacy owned obstacles still spare their owner.
+    // Chocs contre les murs, champs des piliers et arcs électriques.
     if (car.ghostUntil <= now && car.invulnUntil <= now && !s.testMode.invincible) {
       for (const w of s.walls) {
         if (w.team === team || w.disabledUntil > now) continue;
@@ -1239,7 +1241,7 @@ export class GameRules {
       }
     }
 
-    // Checkpoints, in order (R-07)
+    // Checkpoints et comptage des tours.
     const cp = track.checkpoints[car.checkpointIndex];
     if (cp) {
       const half = 110;
@@ -1285,7 +1287,7 @@ export class GameRules {
     car.speed = forward ? sp : -sp;
   }
 
-  // ─── Victory (task 5) ──────────────────────────────────────────────────────
+  // --- Tours, chronomètre et résultat ---
 
   checkEnd(now: number): void {
     const s = this.state;

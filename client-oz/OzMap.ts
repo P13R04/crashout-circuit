@@ -1,3 +1,4 @@
+/** Carte de la console : circuit, objets, sélection, glissement et poignée de rotation. */
 import type { GameState, Tangible, Vec2, Team } from '../server/types.js';
 import { wallEndpoints, rotateWall, wallCorners, type TangiblePose } from '../client-shared/tangibleGeometry.js';
 import { tangibleDefinition, validTangiblePose, type TangibleId } from '../server/tangibles.js';

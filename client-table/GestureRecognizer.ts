@@ -1,23 +1,11 @@
 /**
- * GestureRecognizer — turns raw Pointer Events on the table into the semantic
- * messages of the protocol (REQ-9.4): the server never sees a raw touch.
+ * Reconnaissance des contacts tactiles de la table.
  *
- * Contacts are tracked by pointerId in a Map limited to 10 entries (REQ-9.1).
- * Every contact is classified at pointerdown, and only `free` contacts take part
- * in multi-finger gestures, so the repair pads and the buttons stay independent
- * of gameplay gestures (T-09):
- *
- *   steer      pilot left/right strip; the car advances automatically → PilotInput
- *   item       copilot POWER tap                     → Power(team, copilot)
- *   pad        finger on a repair pad                → PadHold(team, role, on)
- *   stroke     MAP phase drawing                     → StrokeDraw(creator, pts)
- *   free       3 nearby fingers, one pulled back  → Slingshot (released)
- *              2 contacts, together or within 1.6 s  → BoostGate
- *              2 fingers dragged off a track edge    → BorderPull
- *
- * Team attribution (R-03): pad/button → station's team; free gesture → the team
- * of the closest copilot station; the armed stock can belong to either team.
- * No finger is ever tracked back to a person (REQ-5.1).
+ * Repères : syncState et updateTangibleContacts pour la pose des tangibles ;
+ * onDown/onMove/onUp pour les postes, boutons et tracés ; evaluate pour
+ * les bonus ; updateSling pour le lance-pierre ; tryBorderPull pour le circuit.
+ * Les marges et délais se règlent dans gestureTuning.ts.
+ * Les actions envoyées sont validées dans server/GameRules.ts.
  */
 import { presentingTrack } from '../server/trackPresentation.js';
 import { armedPickup } from '../server/armedPickup.js';
@@ -249,7 +237,7 @@ export class GestureRecognizer {
     return { x: ((e.clientX - r.left) / r.width) * LOGICAL_W, y: ((e.clientY - r.top) / r.height) * LOGICAL_H };
   }
 
-  // ─── Pointer events ───────────────────────────────────────────────────────
+  // --- Aiguillage des contacts vers les boutons, postes et gestes ---
 
   private onDown(e: PointerEvent): void {
     e.preventDefault();
@@ -541,7 +529,7 @@ export class GestureRecognizer {
     if (c.zone === 'free') this.scheduleEvaluation();
   }
 
-  // ─── Divider (the two shared contacts) ───────────────────────────────────
+  // --- Création du circuit : pose des points P1 et P2 ---
 
   /** P1 persists until P2 is accepted or the session is reset, on table and PC alike. */
   private placeDividerPoint(p: Vec2): void {
@@ -561,7 +549,7 @@ export class GestureRecognizer {
     this.send({ type: 'MapDivider', a: first, b: { ...p } });
   }
 
-  // ─── Remote-control steering ─────────────────────────────────────────────
+  // --- Direction et pédale du pilote ---
 
   private updateSteer(c: Contact): void {
     if (!c.panel) return;
@@ -608,7 +596,7 @@ export class GestureRecognizer {
     this.controls.steer(team, steer, throttle);
   }
 
-  // ─── Repair pads ──────────────────────────────────────────────────────────
+  // --- Appuis de réparation ---
 
   private padDown(key: string, team: Team, role: Role, id: number): void {
     let set = this.padTouches.get(key);
@@ -666,7 +654,7 @@ export class GestureRecognizer {
     this.view.debug.contacts = 0;
   }
 
-  // ─── Free gestures ────────────────────────────────────────────────────────
+  // --- Reconnaissance du bonus armé, dont la zone d’accélération ---
 
   private scheduleEvaluation(): void {
     if (this.settleTimer) clearTimeout(this.settleTimer);
@@ -710,7 +698,7 @@ export class GestureRecognizer {
     }
   }
 
-  // ─── Slingshot ────────────────────────────────────────────────────────────
+  // --- Lance-pierre : fourche, traction et relâchement ---
 
   /**
    * Three reserved fingers, with a tolerant fork landing window, form the sling.
@@ -840,6 +828,7 @@ export class GestureRecognizer {
     this.onSimChange('');
   }
 
+  // Déformation du circuit : prise du bord à deux doigts et déplacement envoyé au serveur.
   private tryBorderPull(c: Contact): void {
     const state = this.state;
     if (!state || state.phase !== 'RACE' || this.pendingPlacement || (this.slingContacts&&!this.view.sling?.idle)) return;

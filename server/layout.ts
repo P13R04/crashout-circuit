@@ -1,6 +1,7 @@
 /**
- * Table layout shared by the server and the table client (no Node imports).
- * Logical space is 1920×1080; every corner panel faces its own table edge (REQ-5.3).
+ * Emplacement des postes, commandes, réserve et zone de dessin.
+ * PANELS définit les quatre places ; les constantes locales placent leurs boutons.
+ * localToWorld/worldToLocal convertissent les coordonnées orientées des postes.
  */
 import type { Team, Vec2, DriveMode } from './types.js';
 
@@ -49,6 +50,7 @@ export const PEDAL_LOCAL = { x: 40, y: 23, w: 80, h: 78 };
 export const POWER_BTN_LOCAL = { x: -65, y: 14, r: 40 };
 export const ITEM_SLOT_LOCAL = {x:POWER_BTN_LOCAL.x,y:-43};
 /** Historical coordinates for journal compatibility; no charging surface exists. */
+// Ancien repère conservé pour compatibilité ; la réserve active est TANGIBLE_DEPOT.
 export const CHARGE_ZONE_LOCAL = { x: -43, y: 12, w: 144, h: 144 };
 
 /** Compatibility for old journals: copilot stations no longer contain a charging zone. */

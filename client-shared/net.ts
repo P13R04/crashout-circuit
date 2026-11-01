@@ -1,10 +1,7 @@
 /**
- * Client-side networking helpers shared by the table and the Oz console.
- *
- * - `StateSync` re-attaches the heavy fields (track) that the server only
- *   sends on change, so every consumer sees a complete GameState.
- * - the server clock offset lets rings and timers use server timestamps even when
- *   the browser's clock differs.
+ * Connexion WebSocket et état reçu par les deux interfaces.
+ * connectWs gère envoi et reconnexion ; StateSync conserve la géométrie
+ * du circuit lorsque les snapshots suivants ne la renvoient pas.
  */
 import type { GameState, TrackGeometry, ServerMessage } from '../server/types.js';
 

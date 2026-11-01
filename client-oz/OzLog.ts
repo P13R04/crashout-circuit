@@ -1,7 +1,7 @@
 /**
- * OzLog — timestamped journal of every event the operator emits (REQ-7.3).
- * Entries are `{ t, type, params }`; the exported JSON can be loaded later and
- * replayed with the original delays (T-11).
+ * Utilitaire de journal et de relecture conservé pour les tests.
+ * La console actuelle télécharge le journal serveur via /api/oz-log
+ * dans client-oz/main.ts ; elle ne crée pas d’instance de cette classe.
  */
 export interface OzLogEntry {
   t: number;                       // ms since epoch

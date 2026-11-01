@@ -1,9 +1,8 @@
 /**
- * Renderer — Canvas 2D neon rendering of the table (REQ-6.1, §11 of the brief).
- * The caller scales the context to the 1920×1080 logical space.
- *
- * Static deck, lights, code sheets and vehicle bodies are cached in dedicated layers.
- * Only local energy paths, bounded trails and feedback change every frame.
+ * Composition des écrans et des couches graphiques de la table.
+ * render choisit les couches ; drawLobby, drawMap et drawResult dessinent
+ * les écrans. HUD.ts porte les postes et TutorialOverlay.ts les consignes.
+ * Les textures et décors sont délégués aux classes de chaque thème.
  */
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PLAY_AREA, TANGIBLE_DEPOT, NEUTRAL_CONTROLS, SETTINGS_BUTTON, inTangibleDepot } from '../server/layout.js';
@@ -107,6 +106,7 @@ export class Renderer {
       if(buildFrame?.stage==='lock')for(const team of ['A','B'] as const)vehicles.draw(ctx,state.cars[team],this.time,now,this.reducedMotion,[]);
       return;
     }
+    // Course : piste, objets, voitures, retours visuels, puis postes et tutoriel.
     if (state.track) track.draw(ctx, state.track, state.trackVersion, this.time, this.reducedMotion);
     vehicles.drawTrails(ctx, state, this.time, now, this.reducedMotion);
     objects.drawPickups(ctx, state, this.time, this.reducedMotion);
@@ -442,6 +442,7 @@ export class Renderer {
     this.drawAction(ctx, RESULT_BUTTON, 'replay'); ctx.restore();
   }
 
+  // Création : tracés, points de raccord, repères des joueurs et validation.
   private drawMap(ctx: Ctx, state: GameState, view: View): void {
     const t = performance.now();
     const motion = this.reducedMotion ? 0 : this.time;

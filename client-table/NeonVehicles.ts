@@ -1,3 +1,4 @@
+/** Dessin des voitures et de leurs traînées dans les cinq thèmes ; aucune physique ici. */
 import type { Car, GameState, Team } from '../server/types.js';
 import type { Effect } from './view.js';
 import { TEAM_COLOR } from './view.js';

@@ -1,3 +1,4 @@
+/** Identité fixe des trois tangibles, validation des poses et liaison entre les piliers. */
 import type { ArcElectric, Tangible, Vec2 } from './types.js';
 import { insidePanel, PANELS, PANEL_H, panelWidth, localToWorld } from './layout.js';
 import { segmentsIntersect } from './geometry.js';

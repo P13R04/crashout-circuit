@@ -1,3 +1,4 @@
+/** Point d’entrée de la table : paramètres HTML, clavier, réseau et boucle de rendu. */
 import type { ServerMessage } from '../server/types.js';
 import { createControls } from '../client-shared/controls.js';
 import { StateSync, connectWs } from '../client-shared/net.js';
@@ -82,6 +83,7 @@ const sendTable=(m:{type:string}&Record<string,unknown>)=>{tableAudio.uiCommand(
 const controls = createControls(sendTable);
 const gestures = new GestureRecognizer(canvas, view, sendTable);
 
+// Paramètres de séance : accueil, difficulté, tours et chronomètre.
 document.getElementById('settings-home')!.addEventListener('click',()=>{conn.send({type:'Reset'});pcTools.open=false;});
 const difficultyInput=document.getElementById('race-difficulty') as HTMLSelectElement;
 const lapsInput=document.getElementById('race-laps') as HTMLInputElement;
@@ -104,6 +106,7 @@ function syncRaceOptions(): void {
   if(s.params.sessionMaxSeconds>0&&document.activeElement!==minutesInput)minutesInput.value=String(s.params.sessionMaxSeconds/60);
 }
 
+// Choix de conduite et simulations conservés pour le lancement de développement.
 const driveOptions=document.getElementById('drive-options')!;
 const driveButtons={A:document.getElementById('drive-A')!,B:document.getElementById('drive-B')!};
 for(const team of ['A','B'] as const)driveButtons[team].addEventListener('click',()=>conn.send({type:'ToggleDriveMode',team}));
@@ -163,6 +166,7 @@ function syncTestBar(): void {
   testItems.setAttribute('aria-pressed', String(!!st?.testMode.allItems));
 }
 
+// Son : volumes du menu et déverrouillage audio au premier contact.
 window.addEventListener('pointerdown',unlock,{capture:true});
 window.addEventListener('keydown',e=>{if(!e.repeat)unlock();},{capture:true});
 document.addEventListener('click',e=>{if(e.target instanceof Element&&e.target.closest('button,summary'))playFeedback('ui');},{capture:true});
@@ -280,6 +284,7 @@ document.addEventListener('visibilitychange', () => { tableAudio.focus(!document
 // Round-trip time (server echo), used by the debug overlay (task 18)
 setInterval(() => conn.send({ type: 'Ping' }), 2000);
 
+// Retours du serveur : état synchronisé, changements de phase et effets visuels.
 function handleMessage(msg: ServerMessage): void {
   switch (msg.type) {
     case 'State': {

@@ -1,5 +1,5 @@
-// ─── Shared types ────────────────────────────────────────────────────────────
-// Used by server code and imported by clients via the @shared alias.
+// État et protocole partagés entre le serveur, la table et la console Oz.
+// Repères : Car, TrackGeometry, TutorialState, GameState, puis les messages WebSocket.
 import type { TangibleId } from './tangibles.js';
 
 export interface Vec2 {
@@ -339,7 +339,7 @@ export interface BorderPullMsg extends BaseMsg {
   team?: Team;
 }
 
-// Pilot joystick / item button on the table → Server
+// Conduite et bouton POWER du copilote → serveur
 export interface PilotInputMsg extends BaseMsg {
   type: 'PilotInput';
   team: Team;
