@@ -53,7 +53,6 @@ export function connectWs(
     onMessage(msg: ServerMessage): void;
     onOpen?(): void;
     onClose?(): void;
-    onUnauthorized?(): void;
   },
 ): Connection {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -70,10 +69,9 @@ export function connectWs(
       try { handlers.onMessage(JSON.parse(ev.data as string) as ServerMessage); }
       catch { console.warn('[net] bad message', ev.data); }
     });
-    ws.addEventListener('close', event => {
+    ws.addEventListener('close', () => {
       handlers.onClose?.();
       if(stopped)return;
-      if(event.code===4401){stopped=true;handlers.onUnauthorized?.();return;}
       reconnectTimer=setTimeout(open, 2000);
     });
     ws.addEventListener('error', () => ws?.close());

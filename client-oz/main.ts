@@ -16,10 +16,6 @@ const touchTools = document.getElementById('touch-tools')!;
 const touchCancel = document.getElementById('touch-cancel') as HTMLButtonElement;
 const touchButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-tangible]')];
 
-const login=document.getElementById('operator-login')!;
-const consolePanel=document.getElementById('operator-console')!;
-const loginError=document.getElementById('operator-error')!;
-const loginSubmit=document.getElementById('operator-submit') as HTMLButtonElement;
 const objectList=document.getElementById('object-list')!;
 const objectCards=new Map<number,{state:HTMLElement;toggle:HTMLButtonElement;remove:HTMLButtonElement}>();
 for(const id of [1,2,3]){
@@ -214,7 +210,6 @@ document.getElementById('download-log')!.addEventListener('click',async()=>{
   const status=document.getElementById('journal-status')!;button.disabled=true;status.textContent='';
   try{
     const response=await fetch('/api/oz-log',{cache:'no-store'});
-    if(response.status===401){requireLogin('Saisissez de nouveau le code opérateur.');return;}
     if(!response.ok)throw Error('journal');
     const file=new Blob([JSON.stringify(await response.json(),null,2)],{type:'application/json'}),url=URL.createObjectURL(file);
     const link=document.createElement('a');link.href=url;link.download=`tangibles-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -322,27 +317,9 @@ new ResizeObserver(()=>{
   map.draw();
 }).observe(document.getElementById('map-container')!);
 
-function requireLogin(message=''):void {
-  conn?.close();conn=undefined;map.cancel();controller.setConnected(false);
-  consolePanel.hidden=true;login.hidden=false;loginError.textContent=message;
-}
-function connectOperator():void {
-  login.hidden=true;consolePanel.hidden=false;loginError.textContent='';conn?.close();
-  conn=connectWs('/ws/oz',{
-    onOpen:()=>controller.setConnected(true),
-    onClose:()=>{map.cancel();controller.setConnected(false);},
-    onUnauthorized:()=>requireLogin('Saisissez le code affiché sur l’ordinateur du jeu.'),
-    onMessage:msg=>{if(msg.type==='State')controller.applyState(sync.apply(msg.state,msg.t));},
-  });
-}
-document.getElementById('operator-form')!.addEventListener('submit',async event=>{
-  event.preventDefault();loginSubmit.disabled=true;loginError.textContent='';
-  try{
-    const code=(document.getElementById('operator-code') as HTMLInputElement).value;
-    const response=await fetch('/api/operator/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
-    if(!response.ok){loginError.textContent='Code incorrect. Réessayez.';return;}
-    (document.getElementById('operator-code') as HTMLInputElement).value='';connectOperator();
-  }catch{loginError.textContent='Connexion au jeu indisponible.';}finally{loginSubmit.disabled=false;}
+conn=connectWs('/ws/oz',{
+  onOpen:()=>controller.setConnected(true),
+  onClose:()=>{map.cancel();controller.setConnected(false);},
+  onMessage:msg=>{if(msg.type==='State')controller.applyState(sync.apply(msg.state,msg.t));},
 });
-void fetch('/api/operator/session',{cache:'no-store'}).then(r=>r.json()).then(value=>{if(value.authorized)connectOperator();}).catch(()=>{loginError.textContent='Connexion au jeu indisponible.';});
 refresh();

@@ -9,7 +9,7 @@ import type { GameState, ServerMessage } from '../server/types.js';
 
 const httpServer = http.createServer();
 const wss = new WebSocketServer({ server: httpServer });
-const game = new GameServer(wss,{developerTools:true,authorizeOperator:()=>true});
+const game = new GameServer(wss,{developerTools:true});
 httpServer.listen(0, '127.0.0.1');
 await once(httpServer, 'listening');
 const port = (httpServer.address() as { port: number }).port;

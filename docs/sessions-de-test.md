@@ -30,9 +30,9 @@ Il n'y a pas de présentation : l'application est testée par des personnes qui 
    npm start
    ```
 
-   Le terminal affiche les adresses, un **code opérateur** et « Outils de test : désactivés ». Si les outils sont activés, supprimer la variable `CRASHOUT_DEV_TOOLS` et redémarrer avant la séance. Laisser le terminal ouvert.
+   Le terminal affiche les adresses et « Outils de test : désactivés ». Si les outils sont activés, supprimer la variable `CRASHOUT_DEV_TOOLS` et redémarrer avant la séance. Laisser le terminal ouvert.
 3. Ouvrir `http://localhost:3000/` dans Chrome ou Edge, puis **Paramètres → Plein écran**. **Ferraille** est l’ambiance initiale. Les diagnostics, simulations et modes de test sont inaccessibles dans ce lancement normal, y compris par leurs anciens raccourcis et paramètres d’URL.
-4. Sur l'autre ordinateur (même réseau Wi-Fi, pas un réseau invité qui isole les appareils), ouvrir `http://<adresse-de-la-table>:3000/oz`. L’adresse exacte et le code sont écrits au démarrage du serveur. Saisir ce code dans la console. Un téléphone ou une tablette convient aussi ; le bouton ↻ oriente la carte.
+4. Sur l'autre ordinateur (même réseau Wi-Fi, pas un réseau invité qui isole les appareils), ouvrir `http://<adresse-de-la-table>:3000/oz`. L’adresse exacte est écrite au démarrage du serveur. La console s’ouvre directement, sans code. Un téléphone ou une tablette convient aussi ; le bouton ↻ oriente la carte.
 5. Dans la console, garder **Pose avec les doigts**. Sur la table, choisir **TUTORIEL** (un clic à la souris lance aussi le parcours tactile). Chaque personne touche la clé de son poste : le départ attend les quatre personnes. Les coéquipiers de même couleur sont en diagonale.
 6. À la fin du tutoriel, ranger les trois tangibles dans la réserve à droite, entre les copilotes. Choisir **CRÉER LE CIRCUIT**, tracer le circuit à deux équipes, puis toucher le bouton de départ. Les tours, dégâts, réparations et paramètres de course redeviennent ceux d’une partie normale.
 
@@ -40,7 +40,7 @@ Il n'y a pas de présentation : l'application est testée par des personnes qui 
 
 La table ne signale jamais qu’une sélection attend dans la console. Les participants voient uniquement les contacts de leurs doigts, la pose et les effets de l’objet. Ne pas leur annoncer les sélections internes.
 
-- Avant la séance : poser les trois objets dans la réserve à droite. Choisir le thème, la vitesse **Facile**, **3 tours**, le timer désactivé et un volume confortable. Préparer la grille de notes ; le journal des objets se télécharge dans la console opérateur.
+- Avant la séance : poser les trois objets dans la réserve à droite. Vérifier le thème Ferraille, la vitesse **Facile**, **3 tours**, le timer désactivé et un volume confortable. Préparer la grille de notes ; le journal des objets se télécharge dans la console opérateur.
 - Pendant les gestes de bonus et la conduite : ne rien sélectionner dans la console. Une sélection de tangible réserve les prochains contacts et interrompt la reconnaissance des autres gestes jusqu’à la pose, l’annulation ou l’expiration.
 - À l’étape du mur : sélectionner **1** juste avant la pose. Le copilote saisit le mur de part et d’autre de sa largeur et touche la table avec ses deux doigts. Le mur apparaît centré, sa longueur perpendiculaire à l’axe des contacts. Le pilote le touche pour constater le blocage, sans perte de vie dans le tutoriel. Toucher le mur dans la console lorsqu’il est physiquement soulevé.
 - À l’étape des piliers : sélectionner **2**, puis **3**, juste avant chaque pose. Les doigts encadrent le pilier ; son centre sera au milieu des contacts. Rapprocher les deux piliers pour former un arc. Les pilotes essaient ensuite l’effet électrique réel, sans dégâts pendant le tutoriel. Une ancienne paire déjà sur la table ne valide pas la manipulation : chaque pilier doit être posé pendant l’étape.
@@ -91,7 +91,7 @@ Rappel des types :
 
 - **Préparation technique uniquement**, avec `CRASHOUT_DEV_TOOLS=1` : **F4** (ou `?log=1`) télécharge `session-<date>.csv` : contacts avec leur largeur, décisions des gestes, retours du serveur (ramassages, tirs, réparations, chutes) et changements de phase, avec l'heure. Le format est décrit dans [seuils-tactiles.md](seuils-tactiles.md).
 - **Préparation technique uniquement**, dans ce même lancement : l’affichage `?debug=1` donne fps, durée de frame, RTT, latence doigt→image et nombre de contacts : à relever en début et en fin de séance dans [measures.md](../measures.md) §2.
-- **Pendant la séance**, télécharger le journal des objets depuis **Console → Objets et orientation → Télécharger le journal**. Il contient les poses et retraits ; les contacts et gestes détaillés ne sont pas inclus dans ce journal. Compléter la grille et, si prévu, la vidéo. L’adresse `/api/oz-log` exige la même session opérateur ; le journal ne se télécharge pas sans le code.
+- **Pendant la séance**, télécharger le journal des objets depuis **Console → Objets et orientation → Télécharger le journal**. Il contient les poses et retraits ; les contacts et gestes détaillés ne sont pas inclus dans ce journal. Compléter la grille et, si prévu, la vidéo. Le journal est aussi disponible directement sur `/api/oz-log`, sans code.
 - Pour comparer le lance-pierre à de vraies parties, relever le nombre de `stoneHit` par minute et le temps entre une panne (`carDisabled`) et la réparation (`repairDone`), puis relancer `npm run sim:sling` après avoir adapté `PLAYERS` (issue #39, [measures.md](../measures.md) §5).
 
 ## 5. Après la session

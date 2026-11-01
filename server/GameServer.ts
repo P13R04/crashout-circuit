@@ -26,7 +26,6 @@ interface ConnectedClient {
 
 export interface GameServerOptions {
   developerTools?: boolean;
-  authorizeOperator?: (request:IncomingMessage)=>boolean;
 }
 
 export class GameServer {
@@ -57,7 +56,6 @@ export class GameServer {
   private onConnection(ws: WebSocket, req: IncomingMessage): void {
     const url = new URL(req.url ?? '/', `http://localhost`);
     const role = this.resolveRole(url);
-    if(role==='oz'&&!this.options.authorizeOperator?.(req)){ws.close(4401,'Code opérateur requis');return;}
 
     const client: ConnectedClient = { ws, role, connectedAt: Date.now() };
     this.clients.add(client);

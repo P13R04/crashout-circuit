@@ -59,15 +59,15 @@ for (const theme of THEMES) {
   const detail = document.createElement('small'); detail.textContent = theme.detail;
   button.append(swatch, name, detail); button.addEventListener('click', () => selectTheme(theme.id)); themeOptions.append(button);
 }
-function selectTheme(id: ThemeId): void {
-  view.theme = id; try { saveTheme(window.localStorage, id); } catch { /* Display preference still applies. */ }
+function selectTheme(id: ThemeId, persist=true): void {
+  view.theme = id; try { if(persist)saveTheme(window.localStorage, id); } catch { /* Display preference still applies. */ }
   document.body.dataset.theme = id; canvas.dataset.theme = id;
   const look=themeLook(id);
   for(const [key,value] of Object.entries(look))document.body.style.setProperty(`--look-${key}`,typeof value==='number'?`${value}px`:value);
   for (const button of themeOptions.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.theme === id));
 }
 // Access to localStorage itself can be denied in embedded/private contexts.
-try { selectTheme(loadTheme(window.localStorage)); } catch { selectTheme('scrap'); }
+selectTheme('scrap',false);
 view.debug.on = false;
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
 view.reducedMotion = motionPreference.matches || urlParams.get('motion') === '0';
@@ -87,17 +87,20 @@ const difficultyInput=document.getElementById('race-difficulty') as HTMLSelectEl
 const lapsInput=document.getElementById('race-laps') as HTMLInputElement;
 const timerInput=document.getElementById('race-timer') as HTMLInputElement;
 const minutesInput=document.getElementById('race-minutes') as HTMLInputElement;
+const timerDuration=document.getElementById('timer-duration')!;
+const raceOptions=document.getElementById('race-options')!;
 difficultyInput.addEventListener('change',()=>conn.send({type:'RaceSettings',difficulty:difficultyInput.value}));
 lapsInput.addEventListener('change',()=>{if(lapsInput.checkValidity())conn.send({type:'RaceSettings',lapsToWin:Number(lapsInput.value)});});
 const sendTimer=()=>{if(!timerInput.checked||minutesInput.checkValidity())conn.send({type:'RaceSettings',sessionMaxSeconds:timerInput.checked?Math.round(Number(minutesInput.value)*60):0});};
-timerInput.addEventListener('change',sendTimer);minutesInput.addEventListener('change',()=>{if(timerInput.checked)sendTimer();});
+timerInput.addEventListener('change',()=>{timerDuration.hidden=!timerInput.checked;sendTimer();});minutesInput.addEventListener('change',()=>{if(timerInput.checked)sendTimer();});
 function syncRaceOptions(): void {
   const s=view.state;if(!s)return;
+  raceOptions.hidden=!!s.tutorial||s.phase==='RESULT';
   const editable=!s.tutorial&&s.phase!=='RESULT';
   difficultyInput.disabled=!editable;lapsInput.disabled=!editable||s.sessionMode==='tangibles-test';timerInput.disabled=lapsInput.disabled;
   if(document.activeElement!==difficultyInput)difficultyInput.value=s.params.difficulty;
   if(document.activeElement!==lapsInput)lapsInput.value=String(s.params.lapsToWin);
-  timerInput.checked=s.params.sessionMaxSeconds>0;minutesInput.disabled=!timerInput.checked||timerInput.disabled;
+  timerInput.checked=s.params.sessionMaxSeconds>0;timerDuration.hidden=!timerInput.checked;minutesInput.disabled=!timerInput.checked||timerInput.disabled;
   if(s.params.sessionMaxSeconds>0&&document.activeElement!==minutesInput)minutesInput.value=String(s.params.sessionMaxSeconds/60);
 }
 
@@ -105,7 +108,7 @@ const driveOptions=document.getElementById('drive-options')!;
 const driveButtons={A:document.getElementById('drive-A')!,B:document.getElementById('drive-B')!};
 for(const team of ['A','B'] as const)driveButtons[team].addEventListener('click',()=>conn.send({type:'ToggleDriveMode',team}));
 function syncDriveOptions(): void {
-  const s=view.state;driveOptions.hidden=!s||!['LOBBY','READY','RACE','PAUSED'].includes(s.phase)||s.sessionMode==='tangibles-test';
+  const s=view.state;driveOptions.hidden=!s?.developerTools||!['LOBBY','READY','RACE','PAUSED'].includes(s.phase)||s.sessionMode==='tangibles-test';
   for(const team of ['A','B'] as const){const mode=s?.driveMode[team]??'auto';driveButtons[team].textContent=`${team==='A'?'Cyan':'Rose'} · ${mode==='auto'?'AUTO':'PÉDALE'}`;driveButtons[team].setAttribute('aria-pressed',String(mode==='pedal'));}
 }
 
@@ -128,6 +131,7 @@ const setSim = (k: 'slingshot' | 'boost' | null): void => {
 };
 sim3.addEventListener('click', () => setSim('slingshot'));
 sim2.addEventListener('click', () => setSim('boost'));
+document.addEventListener('pointerdown',event=>{if(pcTools.open&&event.target instanceof Node&&!pcTools.contains(event.target))pcTools.open=false;});
 pcTools.addEventListener('toggle', () => { if (!pcTools.open && simKind) setSim(null); });
 gestures.onSimChange = (hint) => {
   simHint.textContent = hint;
@@ -282,7 +286,8 @@ function handleMessage(msg: ServerMessage): void {
       const prev = view.state;
       view.state = sync.apply(msg.state, msg.t);
       gestures.syncState();
-      if(!prev&&view.state.developerTools){view.debug.on=urlParams.get('debug')==='1';applyTuning(location.search);}
+      document.getElementById('theme-settings')!.hidden=!view.state.developerTools;
+      if(!prev&&view.state.developerTools){view.debug.on=urlParams.get('debug')==='1';applyTuning(location.search);try{selectTheme(loadTheme(window.localStorage));}catch{/* Keep Ferraille. */}}
       if(!view.state.developerTools){view.debug.on=false;simBar.remove();testBar.remove();}
       view.tutorialMode=view.state.developerTools&&urlParams.get('tutorial')==='pc'?'pc':'table';
       syncDriveOptions();

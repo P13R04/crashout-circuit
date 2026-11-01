@@ -408,6 +408,12 @@ test('the public lobby has only the tutorial and race; test tools require the ho
  assert.ok(recordedText.includes('TUTORIEL'));assert.ok(recordedText.includes('COURSE'));assert.ok(!recordedText.some(t=>/ESSAI|CLAVIER|TEST TANGIBLES/.test(t)));
  state.developerTools=true;recordedText=[];renderer.render(view);assert.ok(recordedText.includes('ESSAI OBJETS'));recordedText=null;
 });
+test('seat labels appear during circuit creation and never on the home screen',()=>{
+ const {view,state,renderer}=scene();state.phase='LOBBY';recordedText=[];renderer.render(view);
+ assert.equal(recordedText.filter(t=>t==='PILOTE'||t==='COPILOTE').length,0);
+ state.phase='MAP';recordedText=[];renderer.render(view);
+ assert.equal(recordedText.filter(t=>t==='PILOTE').length,2);assert.equal(recordedText.filter(t=>t==='COPILOTE').length,2);recordedText=null;
+});
 test('theme preference survives reload, tolerates invalid values and unavailable storage', () => {
   const values = new Map<string, string>();
   const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };

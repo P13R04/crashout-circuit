@@ -197,7 +197,6 @@ export class Renderer {
         ctx.fillStyle = '#fff'; ctx.font = `bold ${button.w<300?14:22}px monospace`; ctx.fillText(label, 0, button.w<300?21:28); ctx.restore();
       }
     }
-    drawStationLabels(ctx, this.theme);
     ctx.restore();
   }
 
@@ -516,6 +515,7 @@ export class Renderer {
       }
     }
 
+    drawStationLabels(ctx, this.theme);
     // Stable instruction bands outside the drawing area, facing both long edges.
     this.drawMapInstructions(ctx, state, view, t);
     ctx.restore();
