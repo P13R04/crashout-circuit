@@ -1,16 +1,22 @@
 /**
- * Small 2D geometry helpers shared by the server modules.
+ * Fournit les calculs de distance, d’intersection, de repérage sur la piste et de trajectoire du
+ * lance-pierre.
+ * Liens : server/types.ts.
+ * Référencé notamment par client-oz/OzMap.ts, client-table/GestureRecognizer.ts, client-table/RaceGrid.ts.
  */
 import type { Vec2, TrackGeometry } from './types.js';
 
+/** Mesure la distance entre deux points. */
 export function dist(a: Vec2, b: Vec2): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
+/** Mesure la distance entre un point et sa projection sur le segment. */
 export function distToSegment(p: Vec2, a: Vec2, b: Vec2): number {
   return dist(p, closestOnSegment(p, a, b));
 }
 
+/** Projette un point sur le segment en bornant la position entre ses extrémités. */
 export function closestOnSegment(p: Vec2, a: Vec2, b: Vec2): Vec2 {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
@@ -20,7 +26,7 @@ export function closestOnSegment(p: Vec2, a: Vec2, b: Vec2): Vec2 {
   return { x: a.x + dx * t, y: a.y + dy * t };
 }
 
-/** True when segment (a1,a2) crosses segment (b1,b2). */
+/** Teste si les deux segments se coupent. */
 export function segmentsIntersect(a1: Vec2, a2: Vec2, b1: Vec2, b2: Vec2): boolean {
   const d1x = a2.x - a1.x, d1y = a2.y - a1.y;
   const d2x = b2.x - b1.x, d2y = b2.y - b1.y;
@@ -31,6 +37,7 @@ export function segmentsIntersect(a1: Vec2, a2: Vec2, b1: Vec2, b2: Vec2): boole
   return t >= 0 && t <= 1 && u >= 0 && u <= 1;
 }
 
+/** Décrit le point de chaussée le plus proche et la largeur locale qui sert aux contacts. */
 export interface TrackHit {
   index: number;      // centerline segment index
   closest: Vec2;      // closest point on the centerline
@@ -38,7 +45,7 @@ export interface TrackHit {
   halfWidth: number;  // interpolated half-width at that point
 }
 
-/** Nearest point on the closed centerline, with the local half-width. */
+/** Retrouve le segment central le plus proche et les caractéristiques locales de la chaussée. */
 export function nearestOnTrack(p: Vec2, track: Pick<TrackGeometry, 'centerline' | 'widths'>): TrackHit {
   const c = track.centerline;
   const n = c.length;
@@ -61,15 +68,14 @@ export function nearestOnTrack(p: Vec2, track: Pick<TrackGeometry, 'centerline' 
   return best;
 }
 
+/** Ramène l’angle dans l’intervalle compris entre moins pi et pi. */
 export function wrapAngle(a: number): number {
   while (a > Math.PI) a -= Math.PI * 2;
   while (a < -Math.PI) a += Math.PI * 2;
   return a;
 }
 
-/**
- * Check if a point is within the drivable track ribbon (with an optional safety margin from the outer edge).
- */
+/** Vérifie qu’un point reste dans la chaussée en conservant la marge demandée. */
 export function isInsideTrackRibbon(p: Vec2, track: Pick<TrackGeometry, 'centerline' | 'widths'>, marginPx = 25): boolean {
   if (!track || !track.centerline || track.centerline.length === 0) return false;
   const hit = nearestOnTrack(p, track);
@@ -77,9 +83,8 @@ export function isInsideTrackRibbon(p: Vec2, track: Pick<TrackGeometry, 'centerl
 }
 
 /**
- * Clamp a position so that it is guaranteed to lie within the drivable track ribbon.
- * If the position is already inside (with marginPx from the edge), it is unchanged.
- * If it is outside or too close to the neon edge, it is pulled onto the ribbon towards the centerline.
+ * Ramène un point à l’intérieur de la chaussée lorsqu’il dépasse sa marge autorisée.
+ * La position reste inchangée si la marge est respectée ; sinon elle est ramenée vers le centre de la chaussée.
  */
 export function clampToTrackRibbon(p: Vec2, track: Pick<TrackGeometry, 'centerline' | 'widths'>, marginPx = 25): Vec2 {
   if (!track || !track.centerline || track.centerline.length === 0) return { ...p };
@@ -100,6 +105,7 @@ export function clampToTrackRibbon(p: Vec2, track: Pick<TrackGeometry, 'centerli
 
 // ─── Slingshot ──────────────────────────────────────────────────────────────
 
+/** Regroupe les limites de traction et de portée utilisées pour calculer un tir. */
 export interface SlingshotParams {
   slingMinPullPx: number;
   slingMaxPullPx: number;
@@ -109,6 +115,7 @@ export interface SlingshotParams {
   logicalHeight: number;
 }
 
+/** Décrit le départ, la cible et la portée de la pierre calculée. */
 export interface SlingshotShot {
   /** Pull long enough to shoot. */
   valid: boolean;
@@ -123,9 +130,8 @@ export interface SlingshotShot {
 }
 
 /**
- * Shared by the server (authoritative) and the table (live preview): the stone flies
- * in the direction opposite to the pull, and the range grows linearly with the pull
- * length between `slingMinPullPx` and `slingMaxPullPx`.
+ * Calcule la trajectoire et la zone d’impact à partir de la fourche et de la poche du lance-pierre.
+ * Le serveur et la prévisualisation partagent ce calcul : direction opposée à la traction et portée linéaire entre slingMinPullPx et slingMaxPullPx.
  */
 export function slingshotShot(anchor: Vec2, pouch: Vec2, p: SlingshotParams): SlingshotShot {
   const dx = anchor.x - pouch.x;
@@ -141,14 +147,14 @@ export function slingshotShot(anchor: Vec2, pouch: Vec2, p: SlingshotParams): Sl
   return { valid: pull >= p.slingMinPullPx, pull, dir, range, target };
 }
 
-/** Smoothed local tangent, stable at sampled bends and across the loop seam. */
+/** Calcule la direction moyenne de la piste autour de l’indice demandé. */
 export function trackTangent(track: Pick<TrackGeometry,'centerline'>, index:number): Vec2 {
   const points=track.centerline,n=points.length;if(n<2)return{x:1,y:0};
   const a=points[(index-2+n)%n],b=points[(index+2)%n];
   const length=Math.hypot(b.x-a.x,b.y-a.y)||1;return{x:(b.x-a.x)/length,y:(b.y-a.y)/length};
 }
 
-/** Nearest rendered bank, including the folded inner edge of a tight corner. */
+/** Retrouve le bord effectivement visible le plus proche, même à l’intérieur d’un virage. */
 export function nearestTrackEdge(p:Vec2,track:TrackGeometry,maxDistance=64){
   let best:{index:number;bank:'outer'|'inner';distance:number;point:Vec2}|null=null;
   for(const bank of ['outer','inner'] as const){const points=bank==='outer'?track.outerEdge:track.innerEdge;

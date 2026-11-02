@@ -1,7 +1,12 @@
+/**
+ * Place les emplacements décoratifs du départ Grand Prix le long de la piste, même dans une courbe.
+ * Liens : server/geometry.ts, server/types.ts.
+ * Référencé par client-table/CircuitTrack.ts, scripts/visuals.ts.
+ */
 import type { TrackGeometry,Vec2 } from '../server/types.js';
 import { nearestOnTrack,isInsideTrackRibbon } from '../server/geometry.js';
 
-/** Decorative start boxes are a local coordinate system carried along the real road. */
+/** Suit le bord du départ pour placer les cases décoratives sans sortir de la chaussée. */
 export function racingGrid(track:TrackGeometry):Vec2[][] {
   const c=track.centerline,n=c.length;if(n<3)return[];
   const cumulative=[0];
@@ -11,6 +16,7 @@ export function racingGrid(track:TrackGeometry):Vec2[][] {
   const start=cumulative[hit.index]+Math.hypot(hit.closest.x-a.x,hit.closest.y-a.y);
   const forward={x:track.startLine.normal.y,y:-track.startLine.normal.x};
   const direction=(b.x-a.x)*forward.x+(b.y-a.y)*forward.y>=0?1:-1;
+  /** Retrouve le centre et la direction de la piste à une distance donnée derrière la ligne. */
   const at=(behind:number,lane:number,side:number):Vec2=>{
     const d=((start-direction*behind)%total+total)%total;
     let i=0;while(i<n-1&&cumulative[i+1]<d)i++;
@@ -27,7 +33,7 @@ export function racingGrid(track:TrackGeometry):Vec2[][] {
     for(let step=1;step<=8;step++)points.push(at(front,lane,-1+step/4));
     for(let d=2;d<=20;d+=2)points.push(at(front+d,lane,1));
     // At an acute kink, omit a box that cannot fit, rather than drawing on the grass.
-    if(points.every(p=>isInsideTrackRibbon(p,track,8)))marks.push(points);
+    if(points.every(/* Vérifie que tous les coins de la case décorative restent à l’intérieur de la chaussée. */ p=>isInsideTrackRibbon(p,track,8)))marks.push(points);
   }
   return marks;
 }

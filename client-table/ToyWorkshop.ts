@@ -1,15 +1,24 @@
+/**
+ * Construit l’atelier miniature et ses objets reconnaissables, puis anime les petits avions du décor.
+ * Liens : client-table/SceneryLayout.ts, client-table/neon.ts.
+ * Référencé par client-table/ThemeWorld.ts.
+ */
 import type { SceneryLayout, SceneryAnchor } from './SceneryLayout.js';
 import { plate } from './neon.js';
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx=CanvasRenderingContext2D;
 const TAU=Math.PI*2;
+/** Décrit la pose et l’échelle d’un jouet conservé pour son animation. */
 interface ToyPose { x:number;y:number;angle:number;scale:number; }
 
-/** A lovingly assembled miniature racing set, with tools and toys that have a purpose. */
+/** Construit l’atelier miniature et ses objets reconnaissables, puis anime les petits avions du décor. */
 export class ToyWorkshop {
   private planes:ToyPose[]=[];
   private garage:ToyPose|null=null;
+  /** Répartit le garage et les jouets dans les emplacements libres du décor. */
   paint(c:Ctx,layout:SceneryLayout):void {
     this.planes=[];this.garage=null;
+    /** Place chaque jouet dans le repère et les limites de son emplacement de décor. */
     layout.anchors.forEach((p,i)=>{
       const s=Math.min(1,p.room/(i===0?175:i%3===2?155:125));
       c.save();c.translate(p.x,p.y);c.rotate(p.angle);c.scale(s,s);
@@ -29,6 +38,7 @@ export class ToyWorkshop {
     });
   }
 
+  /** Dessine le garage miniature avec sa base, sa voie de stand et ses accessoires. */
   private paintGarage(c:Ctx):void {
     // Die-cut cardboard base, a real miniature pit lane and a red roof at the rear.
     plate(c,-135,-85,270,178,16,'#042a3a80');
@@ -63,6 +73,7 @@ export class ToyWorkshop {
     c.strokeStyle='#152e3c';c.lineWidth=2;c.beginPath();c.moveTo(-105,17);c.bezierCurveTo(-94,17,-97,34,-106,30);c.stroke();
   }
 
+  /** Dessine une petite voiture de décor distincte des voitures jouables. */
   private miniCar(c:Ctx,x:number,y:number,color:string):void {
     c.save();c.translate(x,y);
     for(const yy of [-12,9]){plate(c,-18,yy,10,4,1,'#0d2939');plate(c,10,yy,10,4,1,'#0d2939');}
@@ -73,6 +84,7 @@ export class ToyWorkshop {
     c.restore();
   }
 
+  /** Dessine l’avion miniature réutilisé par l’animation de décor. */
   private paintPlane(c:Ctx):void {
     c.save();c.translate(3,7);c.fillStyle='#06293877';c.beginPath();c.ellipse(0,0,48,39,0,0,TAU);c.fill();c.restore();
     // Main wing, two-tone fuselage, tailplane and clear cockpit: recognisable from above.
@@ -87,6 +99,7 @@ export class ToyWorkshop {
     c.strokeStyle='#663b34';c.lineWidth=1;c.beginPath();c.moveTo(-29,0);c.lineTo(-7,0);c.stroke();
   }
 
+  /** Dessine une boîte d’atelier avec ses marques et son volume. */
   private paintBox(c:Ctx):void {
     c.save();c.rotate(-.09);
     plate(c,-91,-61,182,122,4,'#102f3d80');
@@ -102,6 +115,7 @@ export class ToyWorkshop {
     this.pencil(c,-16,76,-.06,'#c49b4b');this.paintWrench(c,109,-12);
     c.restore();
   }
+  /** Dessine un crayon orienté parmi les accessoires de l’atelier. */
   private pencil(c:Ctx,x:number,y:number,a:number,color:string):void {
     c.save();c.translate(x,y);c.rotate(a);
     plate(c,-65,-4,124,9,1,'#0a2b3b55');plate(c,-66,-6,120,9,1,color,'#d9c38e');
@@ -109,18 +123,21 @@ export class ToyWorkshop {
     c.fillStyle='#293f40';c.beginPath();c.moveTo(67,-3);c.lineTo(73,-1.5);c.lineTo(67,0);c.closePath();c.fill();
     c.fillStyle='#d3c8aa';c.fillRect(-65,-6,11,9);c.fillStyle='#ac6c67';c.fillRect(-75,-6,10,9);c.restore();
   }
+  /** Dessine une bille avec son ombre et son reflet. */
   private marble(c:Ctx,x:number,y:number,r:number,color:string):void {
     c.fillStyle='#082d3d70';c.beginPath();c.ellipse(x+3,y+4,r,r*.7,0,0,TAU);c.fill();
     const glass=c.createRadialGradient(x-r*.3,y-r*.4,0,x,y,r);glass.addColorStop(0,'#dbe5ca');glass.addColorStop(.3,color);glass.addColorStop(1,'#204d5b');
     c.fillStyle=glass;c.beginPath();c.arc(x,y,r,0,TAU);c.fill();c.strokeStyle='#d9e6cd80';c.lineWidth=1;c.beginPath();c.arc(x,y,r*.72,2.6,4.7);c.stroke();
     c.fillStyle='#eaf4d8';c.beginPath();c.ellipse(x-r*.35,y-r*.4,r*.18,r*.1,-.6,0,TAU);c.fill();
   }
+  /** Dessine une clé miniature dans le décor d’atelier. */
   private paintWrench(c:Ctx,x:number,y:number):void {
     c.save();c.translate(x,y);c.rotate(.4);c.strokeStyle='#0c2f3d77';c.lineWidth=9;c.beginPath();c.moveTo(2,-18);c.lineTo(2,25);c.stroke();
     c.strokeStyle='#9eb6ae';c.lineWidth=6;c.beginPath();c.moveTo(0,-18);c.lineTo(0,25);c.stroke();
     c.lineWidth=4;c.beginPath();c.arc(0,-23,8,.2,Math.PI-.2);c.stroke();c.beginPath();c.arc(0,29,6,0,TAU);c.stroke();c.restore();
   }
 
+  /** Anime les avions et leurs ombres sans reconstruire les autres jouets. */
   draw(c:Ctx,time:number,reduced:boolean):void {
     const t=reduced?0:time;
     for(const p of this.planes){

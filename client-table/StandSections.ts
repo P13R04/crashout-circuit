@@ -1,16 +1,24 @@
+/**
+ * Découpe les gradins en sections cohérentes et empêche leurs surfaces de se chevaucher dans les virages.
+ * Liens : server/types.ts, client-table/SceneryLayout.ts.
+ * Référencé par client-table/SceneryLayout.ts, scripts/visuals.ts.
+ */
 import type { Vec2 } from '../server/types.js';
 import type { VenueFrame } from './SceneryLayout.js';
 
+/** Associe le contour d’une terrasse à ses limites pour détecter les chevauchements. */
 interface Footprint { points:Vec2[]; minX:number;maxX:number;minY:number;maxY:number; }
-/** Includes end rails, rear canopies and front furniture, rather than only the seat centreline. */
+/** Construit le quadrilatère occupé par une portion de gradin. */
 export function standFootprint(a:VenueFrame,b:VenueFrame):Vec2[]{
+  /** Projette un coin du gradin à la distance demandée derrière le bord de piste. */
   const at=(f:VenueFrame,d:number)=>({x:f.x+f.nx*(f.half+d),y:f.y+f.ny*(f.half+d)});
   return[at(a,18),at(b,18),at(b,136),at(a,136)];
 }
+/** Associe un contour à sa boîte englobante pour accélérer les recherches de chevauchement. */
 function footprint(points:Vec2[]):Footprint {
-  return{points,minX:Math.min(...points.map(p=>p.x)),maxX:Math.max(...points.map(p=>p.x)),minY:Math.min(...points.map(p=>p.y)),maxY:Math.max(...points.map(p=>p.y))};
+  return{points,minX:Math.min(...points.map(/* Extrait les abscisses pour calculer la limite gauche du volume. */ p=>p.x)),maxX:Math.max(...points.map(/* Extrait les abscisses pour calculer la limite droite du volume. */ p=>p.x)),minY:Math.min(...points.map(/* Extrait les ordonnées pour calculer la limite haute du volume. */ p=>p.y)),maxY:Math.max(...points.map(/* Extrait les ordonnées pour calculer la limite basse du volume. */ p=>p.y))};
 }
-/** Convex SAT, with a small real-world aisle between separate sections. */
+/** Teste le chevauchement de deux gradins en tenant compte de l’allée à préserver. */
 export function standFootprintsOverlap(a:readonly Vec2[],b:readonly Vec2[],gap=0):boolean {
   for(const poly of [a,b])for(let i=0;i<poly.length;i++){
     const p=poly[i],q=poly[(i+1)%poly.length],length=Math.hypot(q.x-p.x,q.y-p.y);if(length<1e-5)continue;
@@ -22,9 +30,11 @@ export function standFootprintsOverlap(a:readonly Vec2[],b:readonly Vec2[],gap=0
   }
   return true;
 }
+/** Écarte rapidement deux volumes dont les boîtes englobantes restent séparées. */
 function overlaps(a:Footprint,b:Footprint,gap:number):boolean {
   return !(a.maxX+gap<=b.minX||b.maxX+gap<=a.minX||a.maxY+gap<=b.minY||b.maxY+gap<=a.minY)&&standFootprintsOverlap(a.points,b.points,gap);
 }
+/** Vérifie qu’une terrasse garde une orientation cohérente et ne se replie pas dans un virage. */
 function unfolded(a:VenueFrame,b:VenueFrame,points:Vec2[]):boolean {
   if(a.tx*b.tx+a.ty*b.ty<.8)return false;
   const tx=a.tx+b.tx,ty=a.ty+b.ty;
@@ -41,11 +51,12 @@ function unfolded(a:VenueFrame,b:VenueFrame,points:Vec2[]):boolean {
   return true;
 }
 
-/** Only map changes run this planner. Adjacent tiles may share an edge; every other volume is reserved. */
+/** Découpe les tribunes avant les replis et les chevauchements, puis conserve les sections assez longues. */
 export function planStandSections(frames:VenueFrame[],allowed:(f:VenueFrame)=>boolean):VenueFrame[][] {
   const sections:VenueFrame[][]=[],committed:Footprint[]=[];
   let run:VenueFrame[]=[],pending:Footprint[]=[];
   const valid=frames.map(allowed);
+  /** Valide la section de tribune en cours et remet à zéro ses volumes provisoires. */
   const finish=()=>{if(run.length>=6){sections.push(run);committed.push(...pending);}run=[];pending=[];};
   for(let i=1;i<frames.length;i++){
     const a=frames[i-1],b=frames[i],points=standFootprint(a,b);
@@ -53,7 +64,7 @@ export function planStandSections(frames:VenueFrame[],allowed:(f:VenueFrame)=>bo
     const shape=footprint(points);
     // Bounding boxes discard distant sections before the polygon test. Only the
     // immediately preceding tile is exempt: it is the legitimate shared seam.
-    const conflict=committed.some(other=>overlaps(shape,other,8))||pending.slice(0,-1).some(other=>overlaps(shape,other,.5));
+    const conflict=committed.some(/* Détecte un chevauchement avec une section de tribune déjà validée. */ other=>overlaps(shape,other,8))||pending.slice(0,-1).some(/* Détecte un repli sur une portion plus ancienne de la même terrasse. */ other=>overlaps(shape,other,.5));
     if(conflict){finish();continue;}
     if(!run.length)run.push(a);run.push(b);pending.push(shape);
   }

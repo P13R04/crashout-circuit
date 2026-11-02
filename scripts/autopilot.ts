@@ -1,4 +1,9 @@
-/** Full-physics sessions: no animation fixtures, invincibility or position snapping. */
+/**
+ * Vérifie le suivi du circuit, les collisions et la réparation du mode d’essai à voitures autonomes.
+ * Liens : server/GameRules.ts, server/PhysicsLoop.ts, server/MapGenerator.ts, server/geometry.ts,
+ * server/config.ts et les utilitaires importés ci-dessous.
+ * Lancé depuis les scripts npm de package.json.
+ */
 import assert from 'node:assert/strict';
 import { createInitialState, GameRules } from '../server/GameRules.js';
 import { PhysicsLoop } from '../server/PhysicsLoop.js';
@@ -8,22 +13,29 @@ import { dist, nearestOnTrack, wrapAngle } from '../server/geometry.js';
 import type { Team, Vec2 } from '../server/types.js';
 
 let passed = 0;
+/** Enregistre ou exécute le scénario et l’ajoute au bilan de vérification. */
 function test(name: string, run: () => void): void { run(); passed++; console.log(`  ✓ ${name}`); }
+/** Prépare l’état, l’horloge et les dépendances contrôlées nécessaires au scénario. */
 function rig(begin = true) {
   const state = createInitialState(), clock = { now: 1_000_000 };
   state.params.difficulty='hard'; // Preserve the reference-speed scenarios; ratios have dedicated tests.
   const feedback: Array<{ kind: string; team: Team }> = [];
   const rules = new GameRules(state, {
-    transition: phase => { state.phase = phase; }, broadcastFull() {},
+    /** Applique la phase demandée à l’état contrôlé du test. */
+    transition: phase => { state.phase = phase; }, /* Remplace la diffusion réseau inutile dans ce test de règles locales. */ broadcastFull() {},
+    /** Enregistre le retour des règles pour pouvoir vérifier les événements produits. */
     feedback: (kind, _x, _y, team) => feedback.push({ kind, team }),
-  }, () => clock.now, () => .1);
-  const physics = new PhysicsLoop(state, rules, () => {}, () => clock.now);
+  }, /* Fournit l’heure contrôlée du scénario au composant qui consulte son horloge. */ () => clock.now, /* Fixe le tirage aléatoire des bonus pour rendre l’essai autonome reproductible. */ () => .1);
+  const physics = new PhysicsLoop(state, rules, /* Laisse cette notification sans effet dans le scénario local. */ () => {}, /* Fournit l’heure contrôlée du scénario au composant qui consulte son horloge. */ () => clock.now);
+  /** Fait avancer le scénario d’un pas de physique avec son horloge contrôlée. */
   const step = () => { clock.now += 1000 / 60; physics.step(clock.now, 1 / 60); };
+  /** Fait avancer l’horloge et la simulation pendant la durée demandée. */
   const advance = (ms: number) => { for (let i = 0; i < Math.ceil(ms / (1000 / 60)); i++) step(); };
   rules.startTangibleTest();
   if (begin) { rules.beginRace(); advance(5100); }
   return { state, rules, clock, feedback, step, advance };
 }
+/** Pose le tangible avec les coordonnées du scénario en passant par les règles serveur. */
 function place(r: ReturnType<typeof rig>, id: 1|2|3, at: Vec2, angle = 0): void {
   r.rules.onTangibleControl({ type:'TangibleControl', t:0, id, action:'dock', team:'A' });
   r.rules.onTangibleControl({ type:'TangibleControl', t:0, id, action:'activate' });
@@ -31,6 +43,7 @@ function place(r: ReturnType<typeof rig>, id: 1|2|3, at: Vec2, angle = 0): void 
   assert.equal(r.state.tangibles[id]?.status, 'placed', 'fixture uses the real charged placement rule');
 }
 
+/** Vérifie l’attente du départ et le décalage des voitures dans la session autonome. */
 test('separate preset session waits for PLAY; countdown and delayed second start stay physical', () => {
   const r = rig(false), initial = structuredClone(r.state.cars);
   assert.equal(r.state.phase,'READY'); assert.equal(r.state.sessionMode,'tangibles-test');
@@ -43,6 +56,7 @@ test('separate preset session waits for PLAY; countdown and delayed second start
   assert.deepEqual(r.state.cars.B.pos,initial.B.pos,'B starts two seconds after A');
   r.advance(2100); assert.ok(dist(r.state.cars.B.pos,initial.B.pos)>1);
 });
+/** Vérifie plusieurs tours autonomes sans victoire ni réparation superflue. */
 test('automatic pilots complete many laps without ending the test or repairing healthy cars', () => {
   const r=rig(); let worst=0;
   for(let i=0;i<360*60;i++){
@@ -57,6 +71,7 @@ test('automatic pilots complete many laps without ending the test or repairing h
   assert.ok(worst<25,`centre-line error ${worst.toFixed(1)} px`);
   assert.equal(r.state.phase,'RACE','no lap or five-minute limit in the test');
 });
+/** Vérifie le retour progressif au centre d’une voiture déviée sans la téléporter. */
 test('a displaced and rotated vehicle steers back gradually with no positional snap', () => {
   const r=rig(),car=r.state.cars.A,track=r.state.track!,hit=nearestOnTrack(car.pos,track);
   const a=track.centerline[hit.index],b=track.centerline[(hit.index+1)%track.centerline.length];
@@ -67,6 +82,7 @@ test('a displaced and rotated vehicle steers back gradually with no positional s
   r.advance(3000);assert.equal(car.disabled,false);
   assert.ok(nearestOnTrack(car.pos,track).distance<8);
 });
+/** Vérifie que le pilote autonome subit réellement le mur diagonal au lieu de l’éviter. */
 test('diagonal wall causes the real damage and rebound; pilots do not anticipate it', () => {
   const r=rig(),track=r.state.track!,at=track.centerline[218],next=track.centerline[219];
   const angle=Math.atan2(next.y-at.y,next.x-at.x)*180/Math.PI+65;
@@ -83,8 +99,9 @@ test('diagonal wall causes the real damage and rebound; pilots do not anticipate
   }
   assert.equal(hit.size,2,'both cars hit the obstacle instead of avoiding it');
   assert.ok(rebound,'wall reflection changes heading before the next pilot correction');
-  assert.ok(Object.values(r.state.cars).every(c=>c.hp<100));
+  assert.ok(Object.values(r.state.cars).every(/* Vérifie que les deux voitures ont réellement perdu de la santé au contact électrique. */ c=>c.hp<100));
 });
+/** Vérifie les dégâts et le ralentissement des deux voitures autonomes dans les champs électriques. */
 test('neutral electrical fields and the connecting arc hurt and slow both automatic cars', () => {
   const r=rig(),track=r.state.track!;
   place(r,2,track.centerline[217]);place(r,3,track.centerline[226]);
@@ -103,6 +120,7 @@ test('neutral electrical fields and the connecting arc hurt and slow both automa
   }
   assert.equal(slowed.size,2);
 });
+/** Vérifie que seul le pad pilote est automatique pendant la réparation et que le copilote doit maintenir le sien. */
 test('destruction holds only the pilot pad; the copilot must hold continuously to repair', () => {
   const r=rig(),car=r.state.cars.A;
   r.rules.damage(car,100,r.clock.now);const broken={...car.pos};r.advance(5000);
@@ -120,12 +138,14 @@ test('destruction holds only the pilot pad; the copilot must hold continuously t
   assert.equal(r.state.repairPads['A-pilot'].held,false);
   const repaired={...car.pos};r.advance(1000);assert.deepEqual(car.pos,repaired);r.advance(3000);assert.ok(dist(repaired,car.pos)>20);
 });
+/** Vérifie la réparation humaine d’une voiture affaiblie sans soin automatique. */
 test('low health can also be repaired by the human copilot; no automatic healing', () => {
   const r=rig(),car=r.state.cars.B;r.rules.damage(car,50,r.clock.now);r.advance(1000);
   assert.equal(car.hp,50);assert.equal(r.state.repairPads['B-pilot'].held,true);
   r.rules.onPadHold({type:'PadHold',t:0,team:'B',role:'copilot',on:true});r.advance(2100);
   assert.equal(car.hp,config.repairHpRestore);assert.equal(r.state.repairPads['B-pilot'].held,false);
 });
+/** Vérifie la reprise de la bonne direction après plusieurs réparations au checkpoint. */
 test('repeated checkpoint repairs reacquire the forward route without affecting the other car', () => {
   const r=rig();
   for(let i=0;i<8;i++){
@@ -136,6 +156,7 @@ test('repeated checkpoint repairs reacquire the forward route without affecting 
     assert.equal(r.state.cars.B.disabled,false);assert.equal(r.state.cars.B.hp,100);
   }
 });
+/** Vérifie la pause et la reprise de l’essai autonome avec relâchement des pads. */
 test('pause freezes autonomous movement and releases pads; resume continues the same test', () => {
   const r=rig();r.rules.damage(r.state.cars.B,100,r.clock.now);r.advance(100);
   r.rules.togglePause();const cars=structuredClone(r.state.cars);
@@ -144,6 +165,7 @@ test('pause freezes autonomous movement and releases pads; resume continues the 
   assert.equal(r.state.sessionMode,'tangibles-test');assert.equal(r.state.repairPads['B-pilot'].held,true);
   assert.ok(dist(cars.A.pos,r.state.cars.A.pos)>20);
 });
+/** Vérifie l’absence de reprise manuelle ou de triche tout en conservant POWER et les gestes du copilote. */
 test('pilot commands and PC cheats cannot override the test; the copilot keeps POWER and theft', () => {
   const r=rig();const inputs=structuredClone(r.rules.inputs),modes=structuredClone(r.state.driveMode);
   r.rules.onPilotInput('A',{type:'PilotInput',t:0,team:'A',throttle:0,steer:-1});r.rules.toggleDriveMode('A');
@@ -154,6 +176,7 @@ test('pilot commands and PC cheats cannot override the test; the copilot keeps P
   r.rules.onBoostGate({type:'BoostGate',t:0,team:'B',a:{x:900,y:700},b:{x:1100,y:700}});
   assert.equal(r.state.cars.A.heldItem,null);assert.equal(r.state.boostGates[0].team,'B');
 });
+/** Vérifie le retour aux modes habituels sans conserver les appuis automatiques de réparation. */
 test('return to lobby restores normal table, PC and tutorial sessions without automatic repair', () => {
   const r=rig();r.rules.resetToLobby();assert.equal(r.state.sessionMode,'race');
   r.rules.enterMap('pc');assert.equal(r.state.mapMode,'pc');assert.equal(r.state.phase,'MAP');
@@ -161,9 +184,11 @@ test('return to lobby restores normal table, PC and tutorial sessions without au
   assert.equal(r.state.repairPads['A-pilot'].held,false,'normal multiplayer still needs a pilot');
   r.rules.resetToLobby();r.rules.startTutorial('table');assert.equal(r.state.sessionMode,'race');assert.ok(r.state.tutorial);
 });
+/** Vérifie le suivi de la bonne branche dans un huit et sur une piste déformée. */
 test('a figure-eight crossing keeps its branch; local track deformations remain drivable', () => {
   const r=rig(false),a={x:560,y:540},b={x:1360,y:540};
-  const wave=(p:Vec2,q:Vec2)=>Array.from({length:121},(_,i)=>{const t=i/120;return{x:p.x+(q.x-p.x)*t,y:540-170*Math.sin(2*Math.PI*t)};});
+  /** Construit une portion ondulée pour tester les courbes et les croisements du circuit. */
+  const wave=(p:Vec2,q:Vec2)=>Array.from({length:121},/* Construit un point échantillonné de la courbe utilisée par le scénario. */ (_,i)=>{const t=i/120;return{x:p.x+(q.x-p.x)*t,y:540-170*Math.sin(2*Math.PI*t)};});
   const track=generate(wave(a,b),wave(b,a),a,b,b,a);assert.ok(selfCrossings(track.centerline).length);
   r.rules.startRace(track);r.advance(100_000);
   for(const car of Object.values(r.state.cars)){assert.equal(car.disabled,false);assert.ok(car.lap>1);}

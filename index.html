@@ -1,10 +1,12 @@
 <!DOCTYPE html>
+<!-- Redirige l’entrée Vite vers client-table/index.html en conservant les paramètres de l’URL. -->
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="refresh" content="0; url=/client-table/" />
   <title>Crashout Circuit</title>
   <script>
+    // Conserve la requête de l’URL lors de l’ouverture de la page de jeu.
     window.location.replace('/client-table/' + window.location.search);
   </script>
 </head>

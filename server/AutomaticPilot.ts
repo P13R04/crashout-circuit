@@ -1,11 +1,19 @@
+/**
+ * Produit les commandes des voitures autonomes du mode d’essai en suivant le centre du circuit sans éviter
+ * les obstacles.
+ * Liens : server/geometry.ts, server/types.ts, server/config.ts.
+ * Référencé par server/GameRules.ts.
+ */
 import type { Car, Team, TrackGeometry, Vec2 } from './types.js';
 import { closestOnSegment, dist, wrapAngle } from './geometry.js';
 import { config } from './config.js';
 
+/** Décrit la direction et l’accélération calculées par le pilote autonome. */
 export interface PilotCommand { throttle: number; steer: number }
+/** Borne la valeur dans l’intervalle autorisé. */
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-/** Centre-line follower: it produces controls, never positions, and cannot see obstacles. */
+/** Produit les commandes des voitures autonomes du mode d’essai en suivant le centre du circuit sans éviter les obstacles. */
 export class AutomaticPilot {
   private track: TrackGeometry | null = null;
   private version = -1;
@@ -13,12 +21,15 @@ export class AutomaticPilot {
   private length = 0;
   private indices: Partial<Record<Team, number>> = {};
 
+  /** Oublie le circuit et les repères des voitures au début d’un nouvel essai. */
   reset(): void {
     this.track = null; this.version = -1; this.indices = {};
   }
 
+  /** Oublie le point de suivi d’une voiture repositionnée ou réparée. */
   forget(team: Team): void { delete this.indices[team]; }
 
+  /** Calcule une direction et une accélération vers le centre sans tenir compte des obstacles. */
   command(car: Car, track: TrackGeometry, version: number): PilotCommand {
     if (this.track !== track || this.version !== version) {
       if (this.track !== track) this.indices = {};
@@ -33,6 +44,7 @@ export class AutomaticPilot {
     if (this.length < 1 || car.disabled) return { throttle: 0, steer: 0 };
     const points = track.centerline, n = points.length;
     const hint = this.indices[car.team];
+    /** Retrouve le segment le plus proche en privilégiant la continuité du suivi de la voiture. */
     const nearest = (local: boolean) => {
       let best = { index: 0, point: points[0], distance: Infinity };
       for (let i = 0; i < n; i++) {
@@ -68,6 +80,7 @@ export class AutomaticPilot {
     return { throttle: clamp(speed / config.vMaxFwd, 0, 1), steer: clamp(yaw / (config.turnRate * grip), -1, 1) };
   }
 
+  /** Retrouve une cible à la distance demandée sur le circuit de suivi. */
   private at(distance: number): { point: Vec2; heading: number } {
     const along = ((distance % this.length) + this.length) % this.length;
     let lo = 0, hi = this.cumulative.length - 1;

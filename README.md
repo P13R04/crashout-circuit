@@ -18,6 +18,25 @@ npm start
 
 Le serveur doit rester ouvert pendant la séance. Les deux appareils doivent pouvoir communiquer sur le réseau local (un Wi-Fi invité qui isole les appareils ne convient pas). Ce prototype est prévu pour le réseau local de la séance ; il n’implémente pas de compte utilisateur.
 
+### Récupérer la version des tests utilisateurs
+
+La préparation de séance se trouve sur **`feat/preparation-tests-utilisateurs`**. `main` ne contient pas encore l’identification initiale des quatre postes ni les dernières adaptations du tutoriel et de la console.
+
+Arrêter l’ancien serveur, puis, depuis le dossier du projet :
+
+```bash
+git fetch origin
+git switch feat/preparation-tests-utilisateurs
+git pull --ff-only origin feat/preparation-tests-utilisateurs
+npm ci
+npm run build
+npm start
+```
+
+Recharger ensuite la table sur `http://localhost:3000/`. `npm start` et `npm run dev:server` exécutent `dist/server/` : récupérer les sources sans reconstruire peut laisser fonctionner un ancien tutoriel. Ne pas définir `CRASHOUT_DEV_TOOLS` pendant la séance.
+
+Au lancement de **TUTORIEL**, les voitures attendent l’appui sur les quatre clés de réparation. Les contacts peuvent être successifs ; le quatrième poste identifié déclenche les trois secondes de feux communs. La réparation apprise plus tard demande, elle, de maintenir les deux clés de l’équipe ensemble.
+
 ### Développement
 
 ```bash
@@ -238,3 +257,18 @@ Les anciennes règles expérimentales fantôme / destruction restent dans le mot
 L’[audit des branches et des issues du 1er novembre 2026](docs/audit-pretests-2026-11-01.md) couvre toutes les branches locales et distantes, les issues et les critères qui nécessitent encore la vraie table. Les ramassables sont répartis aléatoirement à chaque création humaine de circuit, espacés entre eux et de la ligne de départ ; leur réapparition conserve leur position pendant la course. Le tutoriel garde ses positions prévisibles.
 
 Le menu de séance conserve Plein écran, les réglages de course, le son et Accueil. Les volumes détaillés se déplient à la demande ; la durée du chronomètre apparaît seulement s’il est activé. Pendant le tutoriel, les réglages de course sont masqués. Les repères des quatre postes apparaissent pendant la création, pas sur l’accueil.
+
+## Repères des fichiers de configuration
+
+Les en-têtes des sources indiquent leur responsabilité et leurs liens avec les autres fichiers. Les fonctions, les callbacks et les principaux blocs de données possèdent un résumé en français. Dans l’IDE, rechercher le nom de la fonctionnalité ou afficher les symboles du fichier pour rejoindre son point d’entrée.
+
+Les fichiers JSON stricts restent sans commentaires pour être lisibles par Node, npm et les tests. Leurs responsabilités sont les suivantes :
+
+| Fichier | Rôle et liens utiles |
+|---|---|
+| `package.json` | Commandes de lancement, de compilation et de test ; référence les fichiers de `scripts/`, Vite et les deux configurations TypeScript. |
+| `package-lock.json` | Versions exactes des dépendances de `package.json`, utilisées par `npm ci` et la CI. |
+| `config.json` | Valeurs de la course et de la table, chargées par `server/config.ts` puis utilisées par `GameRules.ts` et `PhysicsLoop.ts`. |
+| `client-table/audio/sources.json` | Provenance et licence des extraits audio référencés dans `AudioAssets.ts` et contrôlés par `scripts/audio.ts`. |
+
+`tsconfig.json` et `tsconfig.server.json` acceptent les commentaires JSONC ; leur en-tête précise leur partage entre clients, tests et serveur. Les dossiers `dist/` et `node_modules/` sont produits par les outils, et `prototypes/` reste la référence historique.

@@ -1,8 +1,14 @@
+/**
+ * Affiche uniquement les contacts réels et leur prévisualisation de pose, sans révéler la sélection de
+ * l’opérateur.
+ * Liens : client-table/view.ts, server/tangibles.ts, server/tangibleTouch.ts.
+ * Référencé par client-table/Renderer.ts, scripts/visuals.ts.
+ */
 import type { View } from './view.js';
 import { tangibleDefinition } from '../server/tangibles.js';
 import { tangibleTouchPose } from '../server/tangibleTouch.js';
 
-/** A neutral two-contact cue and physical-size preview; no duplicated instructions. */
+/** Dessine les vrais contacts de pose et leur aperçu sans afficher l’annonce de l’opérateur. */
 export function drawTangibleTouchPreview(ctx: CanvasRenderingContext2D,view: View): void {
   const s=view.state,pending=s?.tangiblePlacement;
   if(!s||s.tangiblePlacementMode!=='touch'||!pending||pending.expiresAt<=view.now()||!['READY','RACE'].includes(s.phase))return;

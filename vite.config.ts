@@ -1,3 +1,8 @@
+/**
+ * Définit les entrées de compilation des deux interfaces et les relais HTTP et WebSocket du serveur de
+ * développement.
+ * Liens : client-table/index.html, client-oz/index.html, package.json.
+ */
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 

@@ -1,6 +1,11 @@
+/**
+ * Fabrique la texture d’acier réutilisée par la piste et le décor Ferraille.
+ * Liens : client-table/neon.ts.
+ * Référencé par client-table/ScrapTrack.ts.
+ */
 import { noise } from './neon.js';
 let grain: HTMLCanvasElement | null = null;
-/** Baked micro-pitting and brushed scratches. A quiet material, not a moving noise filter. */
+/** Fabrique puis conserve le grain métallique réutilisé par les rendus Ferraille. */
 export function steelGrain(): HTMLCanvasElement {
   if (grain) return grain;
   grain = document.createElement('canvas'); grain.width = grain.height = 256;

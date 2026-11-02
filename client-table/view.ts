@@ -1,10 +1,18 @@
+/**
+ * Regroupe l’état d’affichage local de la table, ses messages de dessin, ses contacts et ses effets
+ * temporaires.
+ * Liens : server/layout.ts, server/geometry.ts, server/types.ts, client-table/themes.ts,
+ * client-table/GestureLog.ts.
+ * Référencé notamment par client-table/GestureRecognizer.ts, client-table/HUD.ts,
+ * client-table/NeonEffects.ts.
+ */
 import type { GameState, Team, Vec2, ItemKind } from '../server/types.js';
 import type { DividerCheck } from '../server/layout.js';
 import type { ThemeId } from './themes.js';
 import type { SlingshotShot } from '../server/geometry.js';
 import type { GestureLogEntry } from './GestureLog.js';
 
-/** Short-lived visual effect spawned by a server `Feedback` message. */
+/** Décrit un retour visuel temporaire avec son origine, son équipe et sa durée. */
 export interface Effect {
   kind: string;
   itemKind?:ItemKind;
@@ -15,7 +23,7 @@ export interface Effect {
   dur: number;   // ms
 }
 
-/** Slingshot being drawn on the table: fork anchors, pulled pouch and the predicted shot. */
+/** Conserve les appuis, la poche et la trajectoire provisoire du lance-pierre local. */
 export interface SlingPreview {
   team: Team | null;
   anchors: [Vec2, Vec2];
@@ -25,6 +33,7 @@ export interface SlingPreview {
   shot: SlingshotShot;
 }
 
+/** Suit un tracé local pendant son dessin et l’attente de sa validation serveur. */
 export interface LocalStroke {
   team: Team;
   pts: Vec2[];
@@ -33,7 +42,7 @@ export interface LocalStroke {
   submitting?: boolean;
 }
 
-/** Everything the renderer and the HUD need besides the authoritative GameState. */
+/** Regroupe les contacts, les préférences et les aperçus locaux qui ne modifient pas les règles serveur. */
 export interface View {
   state: GameState | null;
   reducedMotion: boolean;
@@ -67,6 +76,7 @@ export interface View {
   debug: { on: boolean; fps: number; frameMs: number; rtt: number; touchMs: number; contacts: number; gestures: GestureLogEntry[] };
 }
 
+/** Associe chaque refus de raccord à une consigne courte affichée sur la table. */
 const DIVIDER_REFUSAL: Record<Exclude<DividerCheck, 'ok'>, string> = {
   tooShort: 'Éloignez P2.',
   outOfZone: 'Restez dans la zone pointillée.',
@@ -74,10 +84,12 @@ const DIVIDER_REFUSAL: Record<Exclude<DividerCheck, 'ok'>, string> = {
 
 export const REFUSAL_COLOR = '#ff4040';
 
+/** Affiche temporairement un message de création dans les deux sens de lecture. */
 export function showMapNotice(view: View, text: string, color = REFUSAL_COLOR): void {
   view.mapNotice = { text, color, until: performance.now() + 4000 };
 }
 
+/** Associe un refus de tracé à une explication courte destinée à l’équipe concernée. */
 export function showMapError(view: View, kind: string, team: Team): void {
   const messages: Record<string, string> = {
     mapWrongStart: 'Partez d’un des deux points.',
@@ -91,7 +103,7 @@ export function showMapError(view: View, kind: string, team: Team): void {
   showMapNotice(view, messages[kind] ?? messages.mapError);
 }
 
-/** Tell the players why the dividing line was refused (a refusal is never silent). */
+/** Explique pourquoi les points de raccord ne peuvent pas encore être acceptés. */
 export function showDividerRefusal(view: View, reason: Exclude<DividerCheck, 'ok'>): void {
   view.mapNotice = { text: DIVIDER_REFUSAL[reason], reason, until: performance.now() + 4000, color: REFUSAL_COLOR };
 }
@@ -99,6 +111,7 @@ export function showDividerRefusal(view: View, reason: Exclude<DividerCheck, 'ok
 export const TEAM_COLOR: Record<Team, string> = { A: '#00e5ff', B: '#ff4081' };
 export const TEAM_NAME: Record<Team, string> = { A: 'CYAN', B: 'ROSE' };
 
+/** Prépare l’état d’affichage local sans créer ni modifier l’état de jeu du serveur. */
 export function createView(now: () => number): View {
   return {
     state: null,

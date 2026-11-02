@@ -1,8 +1,7 @@
 /**
- * Progression des deux équipes dans le tutoriel.
- * STEPS et tutorialSteps définissent les leçons ; enter/leave les préparent ;
- * les méthodes on… valident les actions. Les textes et les démonstrations
- * sont dans client-table/TutorialOverlay.ts et TutorialGestures.ts.
+ * Suit les leçons des deux équipes et valide leur progression à partir des actions réellement effectuées.
+ * Liens : server/geometry.ts, server/types.ts, server/config.ts.
+ * Référencé par server/GameRules.ts, scripts/visuals.ts.
  */
 import type { GameState, Team, ItemKind, Vec2, TutorialStepId, TutorialState } from './types.js';
 import { config } from './config.js';
@@ -21,6 +20,7 @@ const OBSTACLE_LIFE_MS = 10 * 60_000;
 const STEER_THRESHOLD = 0.5;
 const THROTTLE_THRESHOLD = 0.5;
 
+/** Fixe l’ordre de référence des leçons avant leur adaptation au mode de contact. */
 const STEPS: TutorialStepId[] = [
   'identify', 'steer', 'pedal',
   'pickup', 'power', 'sling',
@@ -28,18 +28,18 @@ const STEPS: TutorialStepId[] = [
   'borderPull', 'repair', 'wall', 'pylon', 'arc', 'depot',
 ];
 
-/** A mouse has one contact: the two-finger border pull cannot be done on PC. */
+/** Choisit les leçons adaptées aux contacts de la table ou à l’alternative clavier. */
 export function tutorialSteps(mode: 'table' | 'pc'): TutorialStepId[] {
-  return STEPS.filter(s => mode === 'pc' ? s !== 'borderPull' && s !== 'identify' && s !== 'depot' : s !== 'pedal');
+  return STEPS.filter(/* Retire les leçons incompatibles avec le périphérique utilisé pour l’entraînement. */ s => mode === 'pc' ? s !== 'borderPull' && s !== 'identify' && s !== 'depot' : s !== 'pedal');
 }
 
-/** The visible pickup kind a lesson asks a team to collect. */
+/** Associe les leçons de bonus au stock que la voiture doit pouvoir ramasser. */
 const ITEM_OF: Partial<Record<TutorialStepId, ItemKind>> = {
   pickup: 'slingshot', power: 'slingshot', sling: 'slingshot',
   boostPickup: 'boost', boostPower: 'boost', boost: 'boost',
 };
 
-/** `Feedback.kind` that completes a lesson, for the team the feedback is about. */
+/** Associe chaque leçon au retour de jeu réel qui prouve sa réussite. */
 const DONE_BY: Partial<Record<TutorialStepId, string>> = {
   pickup: 'pickup', boostPickup: 'pickup',
   power: 'itemArmed', boostPower: 'itemArmed',
@@ -50,6 +50,7 @@ const DONE_BY: Partial<Record<TutorialStepId, string>> = {
   repair: 'repairDone',
 };
 
+/** Expose au tutoriel l’horloge et les actions de règles nécessaires à ses exercices. */
 export interface TutorialContext {
   now(): number;
   arm(team:Team):void;
@@ -60,7 +61,9 @@ export interface TutorialContext {
   feedback(kind: string, x: number, y: number, team: Team): void;
 }
 
+/** Suit les leçons des deux équipes et valide leur progression à partir des actions réellement effectuées. */
 export class Tutorial {
+  /** Installe les étapes des deux équipes puis prépare leur première leçon. */
   constructor(private state: GameState, private ctx: TutorialContext, mode: 'table' | 'pc') {
     state.tutorial = {
       steps: tutorialSteps(mode),
@@ -70,26 +73,28 @@ export class Tutorial {
     for (const team of TEAMS) this.enter(team);
   }
 
+  /** Renvoie la progression de tutoriel installée dans l’état de jeu. */
   private get data(): TutorialState {
     return this.state.tutorial!;
   }
 
-  /** Current lesson of a team, null once it has been through all of them. */
+  /** Renvoie l’étape de tutoriel actuellement demandée à l’équipe. */
   current(team: Team): TutorialStepId | null {
     return this.data.steps[this.data.teams[team].step] ?? null;
   }
 
-  /** Pickup kind taught to this team right now; other kinds remain for its opponents. */
+  /** Renvoie le bonus que l’équipe doit ramasser pour sa leçon actuelle. */
   forcedItem(team: Team): ItemKind | null {
     const id = this.current(team);
     return (id && ITEM_OF[id]) || null;
   }
 
+  /** Termine l’étape actuelle de l’équipe sans attendre son événement de validation. */
   skip(team: Team): void {
     this.complete(team);
   }
 
-  /** Both partners identify their station by touching its repair key. */
+  /** Enregistre l’identification du poste pendant l’accueil des quatre joueurs dans le tutoriel. */
   onStation(team: Team, role: 'pilot' | 'copilot'): void {
     if (this.current(team) !== 'identify') return;
     const lesson = this.data.teams[team];
@@ -99,14 +104,15 @@ export class Tutorial {
 
   // --- Événements qui valident les leçons ---
 
+  /** Valide une leçon lorsque le retour de jeu attendu est réellement émis. */
   onFeedback(kind: string, team: Team): void {
     const id = this.current(team);
     if (id && DONE_BY[id] === kind) this.complete(team);
   }
 
-  /** `steer` is the raw [-1, 1] command, before the steering gain. */
+  /** Valide les essais de direction ou de pédale demandés à l’équipe par sa leçon. */
   onPilotInput(team: Team, steer: number, throttle: number): void {
-    if (TEAMS.some(t => this.current(t) === 'identify')) return;
+    if (TEAMS.some(/* Bloque la validation de conduite tant que les quatre postes ne sont pas présentés. */ t => this.current(t) === 'identify')) return;
     const id = this.current(team);
     const lesson = this.data.teams[team];
     if (id === 'steer') {
@@ -118,16 +124,17 @@ export class Tutorial {
     }
   }
 
-  /** Each lesson follows its own pilot’s drive mode. */
+  /** Actualise la leçon de pédale après un changement du mode de conduite. */
   onDriveMode(): void {
     for (const team of TEAMS) this.syncPedal(team);
   }
 
+  /** Valide le contact avec le mur ou l’arc demandé par la leçon. */
   onObstacleHit(team: Team, kind: 'wall' | 'arc'): void {
     if (this.current(team) === kind && (kind !== 'wall' || this.data.teams[team].sub === 1)) this.complete(team);
   }
 
-  /** Physical placement, rather than an activation toggle, validates the handling lesson. */
+  /** Enregistre une nouvelle pose réelle du mur ou des piliers pour l’étape concernée. */
   onTangiblePlaced(id: number): void {
     const tangible = this.state.tangibles[id];
     if (!tangible?.active || tangible.status !== 'placed') return;
@@ -139,28 +146,29 @@ export class Tutorial {
     this.onTangibles();
   }
 
+  /** Actualise les étapes liées à la présence des objets et à leur rangement commun. */
   onTangibles(): void {
     for(const team of TEAMS)if(this.current(team)==='wall'&&this.state.mapMode==='table'&&(!this.state.tangibles[1]?.active||this.state.tangibles[1]?.status!=='placed'))this.data.teams[team].sub=0;
-    if (TEAMS.every(t => this.current(t) === 'depot' || this.current(t) === null) && [1,2,3].every(id => this.state.tangibles[id]?.status === 'parked')) {
+    if (TEAMS.every(/* Vérifie que les deux équipes ont atteint le rangement ou terminé leurs exercices. */ t => this.current(t) === 'depot' || this.current(t) === null) && [1,2,3].every(/* Vérifie que les trois objets réels sont revenus dans la réserve. */ id => this.state.tangibles[id]?.status === 'parked')) {
       for (const team of TEAMS) this.complete(team);
       return;
     }
-    if (!this.state.arcs.some(a => !a.id.startsWith(TUTORIAL_OBSTACLE_PREFIX) && a.disabledUntil <= this.ctx.now())) return;
+    if (!this.state.arcs.some(/* Recherche un arc réel encore actif pour valider l’exercice des piliers. */ a => !a.id.startsWith(TUTORIAL_OBSTACLE_PREFIX) && a.disabledUntil <= this.ctx.now())) return;
     for (const team of TEAMS) {
       if (this.current(team) === 'pylon' && this.data.teams[team].sub === 3) this.complete(team);
     }
   }
 
-  /** A consumed stock or an expired portal can be retried from its arming lesson. */
+  /** Vérifie que chaque leçon conserve ses préconditions et laisse les voitures attendre lorsqu’une équipe a terminé. */
   tick(): void {
     for (const team of TEAMS) {
       const id = this.current(team);
       const car = this.state.cars[team];
       if ((id === 'sling' || id === 'boost') && !car.itemArmed) {
         this.relapse(team, id === 'sling' ? 'power' : 'boostPower');
-      } else if (id==='arc' && this.state.mapMode==='table' && !this.state.arcs.some(a=>!a.id.startsWith(TUTORIAL_OBSTACLE_PREFIX)&&a.disabledUntil<=this.ctx.now())) {
+      } else if (id==='arc' && this.state.mapMode==='table' && !this.state.arcs.some(/* Vérifie que l’arc réel existe toujours pendant l’exercice de traversée. */ a=>!a.id.startsWith(TUTORIAL_OBSTACLE_PREFIX)&&a.disabledUntil<=this.ctx.now())) {
         this.relapse(team,'pylon');
-      } else if (id === 'boostCross' && !this.state.boostGates.some(g => g.team === team)) {
+      } else if (id === 'boostCross' && !this.state.boostGates.some(/* Vérifie qu’une zone d’accélération de l’équipe reste disponible pour son essai. */ g => g.team === team)) {
         this.relapse(team, 'boostPower'); // the portal expired before the car went through it
       }
     }
@@ -168,6 +176,7 @@ export class Tutorial {
 
   // --- Préparation et passage d’une leçon à l’autre ---
 
+  /** Nettoie la leçon terminée puis prépare la suivante pour l’équipe. */
   private complete(team: Team): void {
     const id = this.current(team);
     if (!id) return;
@@ -177,10 +186,11 @@ export class Tutorial {
     lesson.sub = 0;
     const car = this.state.cars[team];
     this.ctx.feedback('tutorialStep', car.pos.x, car.pos.y, team);
-    if (TEAMS.every(t => this.current(t) === null)) this.data.finished = true;
+    if (TEAMS.every(/* Vérifie que les deux équipes ont fini toutes leurs leçons. */ t => this.current(t) === null)) this.data.finished = true;
     else this.enter(team);
   }
 
+  /** Ramène l’équipe à une étape à recommencer lorsque les conditions du geste ont changé. */
   private relapse(team: Team, to: TutorialStepId): void {
     const lesson = this.data.teams[team];
     lesson.step = this.data.steps.indexOf(to);
@@ -188,40 +198,49 @@ export class Tutorial {
     this.enter(team);
   }
 
-  /** Make the lesson doable whatever happened before (including a skipped lesson). */
+  /** Prépare les stocks, positions ou obstacles nécessaires à la nouvelle leçon. */
   private enter(team: Team): void {
     const id = this.current(team);
     if (!id) return;
     const car = this.state.cars[team];
     const item = ITEM_OF[id];
     switch (id) {
+      // Replace la voiture pour apprendre la conduite.
       case 'pedal':
         this.syncPedal(team);
         break;
+      // Vide le stock et rend les ramassables disponibles pour apprendre à les récupérer.
       case 'pickup': case 'boostPickup':
         // Empty hands and a pickup of the right kind ready on the road
         car.heldItem = null; car.itemArmed = false; car.itemArmExpiry = 0;
         for (const p of this.state.pickups) p.respawnAt = 0;
         break;
+      // Donne le bonus non armé pour apprendre le bouton du copilote.
       case 'power': case 'boostPower':
         car.heldItem = item!; car.itemArmed = false; car.itemArmExpiry = 0;
         break;
+      // Prépare le bonus nécessaire à la démonstration du geste.
       case 'sling': case 'boost':
         car.heldItem = item!;
         if (!car.itemArmed)this.ctx.arm(team);
         break;
+      // Passe la traversée si la zone de démonstration n’existe plus.
       case 'boostCross':
-        if (!this.state.boostGates.some(g => g.team === team)) this.complete(team); // skipped portal: nothing to cross
+        if (!this.state.boostGates.some(/* Évite d’ajouter une zone de démonstration lorsque l’équipe en possède déjà une. */ g => g.team === team)) this.complete(team); // skipped portal: nothing to cross
         break;
+      // Met la voiture en panne pour apprendre la réparation.
       case 'repair':
         this.ctx.breakDown(team);
         break;
+      // Crée l’obstacle de démonstration uniquement dans le tutoriel à la souris.
       case 'wall':
         if (this.state.mapMode === 'pc') { this.placeObstacle(team, id); this.data.teams[team].sub = 1; }
         break;
+      // Crée l’arc de démonstration uniquement dans le tutoriel à la souris.
       case 'arc':
         if (this.state.mapMode === 'pc') this.placeObstacle(team, id);
         break;
+      // Vérifie l’état des tangibles pour guider leur retour au dépôt.
       case 'depot':
         this.onTangibles();
         break;
@@ -229,17 +248,19 @@ export class Tutorial {
     }
   }
 
+  /** Retire les aides temporaires propres à la leçon quittée. */
   private leave(team: Team, id: TutorialStepId): void {
     const car = this.state.cars[team];
     const obstacle = `${TUTORIAL_OBSTACLE_PREFIX}${id}-${team}`;
-    if (id === 'wall') this.state.walls = this.state.walls.filter(w => w.id !== obstacle);
-    if (id === 'arc') this.state.arcs = this.state.arcs.filter(a => a.id !== obstacle);
+    if (id === 'wall') this.state.walls = this.state.walls.filter(/* Retire seulement le mur temporaire de la leçon quittée. */ w => w.id !== obstacle);
+    if (id === 'arc') this.state.arcs = this.state.arcs.filter(/* Retire seulement l’arc temporaire de la leçon quittée. */ a => a.id !== obstacle);
     if (id === 'repair') {
       if (car.disabled) this.ctx.restore(team);
       car.hp = config.hpMax;
     }
   }
 
+  /** Fait progresser la leçon de pédale selon le mode de conduite courant. */
   private syncPedal(team: Team): void {
     if (this.current(team) !== 'pedal') return;
     const lesson = this.data.teams[team];
@@ -251,10 +272,7 @@ export class Tutorial {
 
   // --- Obstacles de démonstration du tutoriel clavier ---
 
-  /**
-   * A wall or an electric arc across the road, owned by the opposing team so that it
-   * is hostile to this one. The learner meets it a few seconds later.
-   */
+  /** Installe l’obstacle de démonstration devant la voiture pour l’alternative clavier. */
   private placeObstacle(team: Team, kind: 'wall' | 'arc'): void {
     const ahead = this.roadAhead(team);
     if (!ahead) return;
@@ -276,7 +294,7 @@ export class Tutorial {
     }
   }
 
-  /** Centerline point about `OBSTACLE_AHEAD_PX` in front of the car, with the local direction. */
+  /** Repère un emplacement de démonstration plus loin sur la trajectoire de la voiture. */
   private roadAhead(team: Team): { at: Vec2; tangent: Vec2; halfWidth: number } | null {
     const track = this.state.track;
     if (!track) return null;

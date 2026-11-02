@@ -1,29 +1,43 @@
-/** Small looping demonstrations, confined to a lesson card rather than drawn as fake table contacts. */
+/**
+ * Dessine les démonstrations animées des gestes dans les cartes du tutoriel, sans créer de faux contacts de
+ * jeu.
+ * Liens : server/types.ts, client-table/icons.ts.
+ * Référencé par client-table/TutorialOverlay.ts.
+ */
 import type { TutorialStepId } from '../server/types.js';
 import { icon } from './icons.js';
 
+/** Nomme les démonstrations disponibles pour les cartes du tutoriel. */
 export type GestureDemoId = TutorialStepId | 'watch' | 'impact' | 'deflect';
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
+/** Borne la valeur dans l’intervalle autorisé. */
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 
+/** Dessine la démonstration de l’action demandée dans la carte du tutoriel. */
 export function drawGestureDemo(ctx: Ctx, id: GestureDemoId, now: number, color: string, sub = 0): void {
   // At zero (reduced motion) show a complete, legible pose instead of an empty first frame.
   const t = now === 0 ? .57 : (now % 4000) / 4000;
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = 2;
+  /** Dessine un trait de démonstration avec la couleur et l’épaisseur demandées. */
   const line = (points: number[][], ink = color, width = 2) => {
     ctx.strokeStyle = ink; ctx.lineWidth = width; ctx.beginPath();
+    /** Relie les points du trait utilisé par la démonstration animée. */
     points.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
   };
+  /** Dessine un doigt en contact ou en approche dans l’animation explicative. */
   const finger = (x: number, y: number, landed = true) => {
     ctx.strokeStyle = landed ? '#f1fafc' : '#8b9eaa'; ctx.fillStyle = landed ? color + '44' : '#0c1820'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(x, y, landed ? 9 : 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     if (landed) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill(); }
   };
+  /** Dessine la chaussée miniature commune aux démonstrations de gestes. */
   const road = () => {
     ctx.fillStyle = '#23343d'; ctx.fillRect(-62, -25, 124, 50);
     line([[-62,-25],[62,-25]], '#7d959c'); line([[-62,25],[62,25]], '#7d959c');
     ctx.setLineDash([6,8]); line([[-62,0],[62,0]], '#c2d2d14d'); ctx.setLineDash([]);
   };
+  /** Dessine une flèche orientée dans la carte de démonstration. */
   const arrow = (x: number, y: number, rot = 0) => {
     ctx.save(); ctx.translate(x,y); ctx.rotate(rot); line([[-8,-5],[0,0],[-8,5]], color, 3); ctx.restore();
   };

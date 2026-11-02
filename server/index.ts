@@ -1,3 +1,9 @@
+/**
+ * Lance le serveur HTTP et WebSocket, sert les deux interfaces et affiche leurs adresses sur le réseau
+ * local.
+ * Liens : client-table/index.html, client-oz/index.html, server/GameServer.ts, server/audioHttp.ts,
+ * server/config.ts.
+ */
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import { readFileSync, statSync } from 'fs';
@@ -11,6 +17,7 @@ import { config } from './config.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ── MIME types for static file serving ────────────────────────────────────────
+/** Associe les extensions compilées à leur type de contenu HTTP. */
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js':   'application/javascript',
@@ -26,6 +33,7 @@ const MIME: Record<string, string> = {
 
 const CLIENTS_ROOT = resolve(__dirname, '../../dist/clients');
 
+/** Envoie un fichier compilé et prend en charge les plages de lecture des fichiers audio. */
 function serveStatic(res: http.ServerResponse, filePath: string,range?:string): boolean {
   // Only regular files below dist/clients (no directories, no path traversal)
   if (!filePath.startsWith(CLIENTS_ROOT)) return false;
@@ -48,14 +56,14 @@ function serveStatic(res: http.ServerResponse, filePath: string,range?:string): 
 }
 
 // ── HTTP server ────────────────────────────────────────────────────────────────
-const httpServer = http.createServer((req, res) => {
+const httpServer = http.createServer(/* Distribue les requêtes entre les API et les fichiers des interfaces compilées. */ (req, res) => {
   const url = new URL(req.url ?? '/', `http://localhost`);
 
   if (url.pathname === '/api/session') {
     const port = (httpServer.address() as { port: number }).port;
     const addresses = Object.values(networkInterfaces()).flat()
-      .filter(iface => iface?.family === 'IPv4' && !iface.internal)
-      .map(iface => `http://${iface!.address}:${port}/oz`);
+      .filter(/* Retient les adresses IPv4 accessibles sur le réseau local. */ iface => iface?.family === 'IPv4' && !iface.internal)
+      .map(/* Construit l’adresse de la console pour chaque interface réseau disponible. */ iface => `http://${iface!.address}:${port}/oz`);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ozUrls: addresses }));
     return;
@@ -109,13 +117,14 @@ export { gameServer };
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
+/** Affiche les adresses de connexion une fois le serveur effectivement lancé. */
 httpServer.listen(PORT, async () => {
   const os = await import('os');
   const networkInterfaces = os.networkInterfaces();
   const localIps = Object.values(networkInterfaces)
     .flat()
-    .filter((iface) => iface && iface.family === 'IPv4' && !iface.internal)
-    .map((iface) => iface!.address);
+    .filter(/* Écarte les interfaces internes et les adresses qui ne sont pas IPv4. */ (iface) => iface && iface.family === 'IPv4' && !iface.internal)
+    .map(/* Extrait l’adresse réseau à afficher pour les autres appareils. */ (iface) => iface!.address);
 
   console.log(`\n🏎  Crashout Circuit server running`);
   console.log(`   Local:   http://localhost:${PORT}`);

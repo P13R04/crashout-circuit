@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Définit les commandes tactiles et le canvas de la console ; main.ts suit le réseau et OzMap.ts dessine le circuit et les objets. -->
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
@@ -6,6 +7,7 @@
 <meta name="theme-color" content="#10212b" />
 <title>Crashout Circuit — Console opérateur</title>
 <style>
+/* Organise les commandes HTML et leurs adaptations de taille sans intervenir dans le rendu Canvas. */
 *{box-sizing:border-box}body{margin:0;background:#09121b;color:#e8f0f2;font:15px system-ui,-apple-system,"Segoe UI",sans-serif;height:100vh;height:100dvh;overflow:hidden} [hidden]{display:none!important}
 button,input,select{font:inherit}button,select{min-height:44px;border:1px solid #58717e;border-radius:10px;background:#152c39;color:#edf6f6;padding:10px 14px;touch-action:manipulation}button{cursor:pointer}button:disabled,select:disabled{opacity:.4;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #f0d48b;outline-offset:2px}button.active,button[aria-pressed=true]{background:#16434c;border-color:#80e3e6}button.danger{color:#ffb0a3}kbd{font:12px system-ui;color:#a8bcc6;margin-left:8px}
 h1{font-size:21px;line-height:1.25;margin:0 0 10px}
@@ -13,21 +15,28 @@ h1{font-size:21px;line-height:1.25;margin:0 0 10px}
 #console-controls{flex:0 1 auto;min-height:0;max-height:60%;overflow:auto;overscroll-behavior:contain}#toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;background:#101e29;border-bottom:1px solid #304753;flex:none}#touch-tools{display:flex;gap:8px;flex:1}#touch-tools .tool-btn{flex:1;white-space:nowrap}#hint{flex-basis:100%;font-size:13px;color:#a6dce3;min-height:19px;line-height:1.4}#touch-cancel{margin-left:auto}.icon-button{padding:9px 12px}#view-rotate{font-size:21px;min-width:46px}#tutorial-guide{background:#183342;padding:8px 14px;font-size:13px;line-height:1.4;color:#d5e8ec;max-height:90px;overflow:auto;flex:none}
 #object-tools{flex:none;background:#101e29;border-bottom:1px solid #304753}#object-tools summary{padding:11px 15px;cursor:pointer;color:#b8cdd5;min-height:44px}#object-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 12px 10px;max-height:30vh;overflow:auto}.object-card{background:#162a36;border:1px solid #3f5a68;border-radius:10px;padding:10px}.object-card strong{display:block;font-size:14px}.object-state{display:block;margin:5px 0 9px;color:#b1c7cd;font-size:12px}.object-actions{display:flex;gap:6px}.object-actions button{flex:1;padding:8px;font-size:13px;min-height:44px}#wall-tools{display:flex;gap:8px;align-items:center;padding:0 12px 12px;font-size:13px;flex-wrap:wrap}#wall-tools button{min-width:65px}
 #journal-tools{display:flex;gap:10px;align-items:center;padding:0 12px 12px;font-size:12px;color:#b1c7cd}#map-container{position:relative;flex:1;min-height:120px;overflow:hidden;background:#060e18}canvas{position:absolute;inset:0;display:block;width:100%;height:100%;touch-action:none;-webkit-user-select:none;user-select:none}
+/* Cache les indications clavier sur les appareils principalement tactiles. */
 @media(pointer:coarse){kbd{display:none}}
+/* Répartit les outils et les cartes d’objets sur un écran de téléphone étroit. */
 @media(max-width:620px){header{min-height:48px;padding-left:12px;padding-right:12px}header h1{font-size:15px}header h1 span{display:none}#toolbar{padding:8px;gap:6px}#placement-mode{flex:1;min-width:0}#touch-tools{flex-basis:100%;order:2;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}#touch-tools .tool-btn{padding:10px 5px;font-size:14px}#hint{order:3}#touch-cancel{margin-left:0;padding-left:10px;padding-right:10px}#btn-clear{font-size:13px}#object-list{gap:6px;padding-left:8px;padding-right:8px}.object-card{padding:8px}.object-actions{flex-direction:column}.object-actions button{font-size:12px}#tutorial-guide{max-height:70px;font-size:12px;padding:7px 10px}}
+/* Réduit la hauteur des commandes lorsque l’écran laisse peu de place à la carte. */
 @media(max-height:480px){header{min-height:42px}#toolbar{padding:6px 10px}#hint{font-size:12px}#tutorial-guide{max-height:46px}#object-list{max-height:38vh}#console-controls{max-height:50%}button,select{padding:8px 10px}}
+/* Place les commandes en colonne latérale pour garder une grande carte en paysage. */
 @media(max-height:480px) and (min-width:621px){
 #operator-console{display:grid;grid-template-columns:minmax(270px,34%) minmax(0,1fr);grid-template-rows:44px minmax(0,1fr)}header{grid-column:1/-1}#console-controls{grid-column:1;grid-row:2;max-height:none;overflow:auto;border-right:1px solid #304753}#map-container{grid-column:2;grid-row:2;min-width:0}#toolbar{padding:8px;gap:6px}#placement-mode{flex:1 0 100%;min-width:0}#touch-cancel{margin-left:0}#touch-tools{flex-basis:100%;order:2;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}#touch-tools .tool-btn{padding:10px 4px;font-size:13px}#hint{order:3}#object-list{grid-template-columns:1fr;max-height:none}.object-actions{flex-direction:row}#wall-tools{align-items:center}#journal-tools{flex-wrap:wrap}
 }
 </style>
 </head>
 <body>
+<!-- Console reliée directement à /ws/oz par main.ts. -->
 <main id="operator-console">
 <header><h1>CRASHOUT <span>· Console opérateur</span></h1><span id="status" role="status">Connexion…</span></header>
+<!-- Commandes défilantes qui laissent la carte utilisable sur un petit écran. -->
 <div id="console-controls"><div id="toolbar">
 <select id="placement-mode" aria-label="Mode de placement"><option value="touch">Pose avec les doigts</option><option value="manual">Pose sur la carte</option></select>
 <button type="button" id="view-rotate" class="icon-button" aria-label="Tourner la carte de 90 degrés" title="Tourner la carte">↻</button>
 <button type="button" class="tool-btn" id="touch-cancel">Annuler <kbd>A</kbd></button>
+<!-- Annonces des trois objets avant leur vraie pose à deux doigts sur la table. -->
 <div id="touch-tools" hidden>
 <button type="button" class="tool-btn" data-tangible="1" aria-keyshortcuts="1">Mur <kbd>1</kbd></button>
 <button type="button" class="tool-btn" data-tangible="2" aria-keyshortcuts="2">Pilier 1 <kbd>2</kbd></button>
@@ -37,10 +46,15 @@ h1{font-size:21px;line-height:1.25;margin:0 0 10px}
 <button type="button" id="btn-clear" class="danger">Tout retirer</button>
 <span id="hint" role="status">Choisissez un objet avant sa pose.</span>
 </div>
+<!-- État et activation des objets, rotation manuelle et téléchargement du journal serveur. -->
 <details id="object-tools"><summary>Objets et orientation</summary><div id="object-list"></div>
 <div id="wall-tools"><span>Orientation du mur</span><button type="button" data-rotate-wall="-15" aria-label="Tourner le mur de 15 degrés vers la gauche">−15°</button><button type="button" data-rotate-wall="15" aria-label="Tourner le mur de 15 degrés vers la droite">+15°</button></div><div id="journal-tools"><button type="button" id="download-log">Télécharger le journal</button><span id="journal-status" role="status"></span></div>
 </details>
-<div id="tutorial-guide" hidden role="status"></div></div><div id="map-container"><canvas id="oz-map" width="1920" height="1080" aria-label="Carte de la course et des objets"></canvas></div>
+<!-- Consigne opérateur calculée pour les deux équipes pendant le tutoriel. -->
+<div id="tutorial-guide" hidden role="status"></div></div>
+<!-- Carte Canvas dessinée et manipulée par OzMap.ts dans l’orientation fournie par ozView.ts. -->
+<div id="map-container"><canvas id="oz-map" width="1920" height="1080" aria-label="Carte de la course et des objets"></canvas></div>
 </main>
+<!-- Point d’entrée qui relie ces éléments HTML aux commandes et au réseau. -->
 <script type="module" src="./main.ts"></script>
 </body></html>

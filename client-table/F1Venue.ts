@@ -1,18 +1,26 @@
+/**
+ * Prépare les gradins et les stands Grand Prix, puis anime les drapeaux et le public autour du circuit.
+ * Liens : client-table/SceneryLayout.ts, client-table/neon.ts.
+ * Référencé par client-table/ThemeWorld.ts.
+ */
 import type { SceneryLayout, VenueFrame, SceneryAnchor } from './SceneryLayout.js';
 import { venuePoint } from './SceneryLayout.js';
 import { plate, noise } from './neon.js';
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx=CanvasRenderingContext2D;
 const TAU=Math.PI*2;
+/** Dessine une bande du décor entre deux repères successifs du bord de piste. */
 function ribbon(c:Ctx,a:VenueFrame,b:VenueFrame,near:number,far:number,color:string):void {
   const p=venuePoint(a,near),q=venuePoint(b,near),r=venuePoint(b,far),s=venuePoint(a,far);
   c.fillStyle=color;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(q.x,q.y);c.lineTo(r.x,r.y);c.lineTo(s.x,s.y);c.closePath();c.fill();
 }
 
-/** A maintained heritage venue: terraces follow the drawing, paddock functions stay legible. */
+/** Prépare les gradins et les stands Grand Prix, puis anime les drapeaux et le public autour du circuit. */
 export class F1Venue {
   private flags:VenueFrame[]=[];
   private crowds:VenueFrame[]=[];
   private pit:SceneryAnchor|null=null;
+  /** Prépare les gradins, le public et les stands Grand Prix dans les espaces réservés autour du circuit. */
   paint(c:Ctx,layout:SceneryLayout):void {
     this.flags=[];this.crowds=[];this.pit=layout.anchors[0]??null;
     for(const run of layout.stands){
@@ -59,21 +67,21 @@ export class F1Venue {
       }
       c.strokeStyle='#c0c4a97a';c.lineWidth=.8;
       for(const offset of [36,39]){
-        c.beginPath();run.forEach((f,i)=>{const p=venuePoint(f,offset);if(i)c.lineTo(p.x,p.y);else c.moveTo(p.x,p.y);});c.stroke();
+        c.beginPath();/* Suit les repères de la tribune pour dessiner une bande continue de terrasse. */ run.forEach((f,i)=>{const p=venuePoint(f,offset);if(i)c.lineTo(p.x,p.y);else c.moveTo(p.x,p.y);});c.stroke();
       }
       this.endSection(c,run[0],run[1]);this.endSection(c,run[run.length-1],run[run.length-2]);
     }
     if(this.pit)this.paintPit(c,this.pit);
     if(!layout.track&&layout.anchors[3])this.paintPit(c,layout.anchors[3]);
     // One marshal pavilion near each end of the main grandstand, not random fans.
-    for(const f of this.flags.filter((_,i)=>i%3===0)){
+    for(const f of this.flags.filter(/* Réduit le nombre de drapeaux animés tout en les répartissant régulièrement. */ (_,i)=>i%3===0)){
       const p=venuePoint(f,29);c.save();c.translate(p.x,p.y);c.rotate(Math.atan2(f.ty,f.tx));
       plate(c,-11,-8,22,16,1,'#233b3c','#b6bca1');plate(c,-10,-7,20,6,1,'#b9bba0');
       c.fillStyle='#c38b4b';c.fillRect(-4,1,7,4);c.restore();
     }
   }
 
-  /** A real terminal bay: stair aisle, stepped side cheek, rail and front landing. */
+  /** Ferme une section de tribune avec un escalier et des garde-corps au lieu d’une coupe brute. */
   private endSection(c:Ctx,a:VenueFrame,b:VenueFrame):void {
     ribbon(c,a,b,43,112,'#8a998e');ribbon(c,a,b,37,44,'#a7b3a0');
     c.save();c.lineJoin='round';
@@ -90,6 +98,7 @@ export class F1Venue {
     c.restore();
   }
 
+  /** Dessine un stand de course dimensionné pour l’espace réellement disponible. */
   private paintPit(c:Ctx,p:SceneryAnchor):void {
     const scale=Math.min(1,p.room/170);
     c.save();c.translate(p.x,p.y);c.rotate(p.angle);c.scale(scale,scale);
@@ -120,6 +129,7 @@ export class F1Venue {
     c.restore();
   }
 
+  /** Anime les drapeaux et les accents du public sans reconstruire les gradins. */
   draw(c:Ctx,time:number,reduced:boolean):void {
     const t=reduced?0:time;
     for(const f of this.flags){

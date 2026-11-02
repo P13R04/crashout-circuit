@@ -1,26 +1,32 @@
+# Vérifie les contributions avec la même commande npm run check que dans package.json.
+# Liens : package.json, tsconfig.json, tsconfig.server.json et scripts/.
 name: check
 
-# Every pull request and every push to main runs the same command as a local
-# `npm run check`: types (clients and server), acceptance, gesture and network
-# and audio tests, then the full build.
+# Exécute les vérifications des propositions de fusion et des mises à jour de main.
 on:
   pull_request:
   push:
     branches: [main]
 
+# Annule une ancienne vérification si une version plus récente de la même contribution arrive.
 concurrency:
   group: check-${{ github.ref }}
   cancel-in-progress: true
 
+# Lance les contrôles et la compilation dans un environnement Node propre.
 jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # Récupère les sources correspondant au commit à vérifier.
       - uses: actions/checkout@v4
+      # Prépare Node et le cache des dépendances npm.
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+      # Installe exactement les versions enregistrées dans package-lock.json.
       - run: npm ci
+      # Vérifie les types, les scénarios de jeu et la compilation des deux interfaces.
       - run: npm run check

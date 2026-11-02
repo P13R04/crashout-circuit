@@ -1,9 +1,10 @@
 /**
- * Touch thresholds that can be adjusted without recompiling (issue #38): add them to
- * the table URL, e.g. `/?cluster=220&role=10&dominance=1.3&palm=200`. Unknown or
- * out-of-range values are ignored. The slingshot pull and range limits are server
- * rules: they come from `config.json` (`slingMinPullPx`, `slingMaxPullPx`, ...).
+ * Regroupe les seuils tactiles et leur réglage par URL lors des essais de développement.
+ * Exemple : ?cluster=220&role=10&dominance=1.3&palm=200 ; les valeurs inconnues ou hors limites
+ * sont ignorées, tandis que config.json conserve les limites physiques du lance-pierre.
+ * Référencé par client-table/GestureRecognizer.ts, client-table/main.ts.
  */
+/** Déclare les marges de doigts, les seuils de traction et les délais ajustables en essai. */
 export interface GestureTuning {
   /** Wait for all fingers to land before judging a gesture (ms). */
   settleMs: number;
@@ -19,6 +20,7 @@ export interface GestureTuning {
   palmMaxPx: number;
 }
 
+/** Fournit les marges de reconnaissance utilisées avant un réglage de test par URL. */
 export const DEFAULT_TUNING: Readonly<GestureTuning> = {
   settleMs: 180,
   slingClusterPx: 190,
@@ -28,7 +30,7 @@ export const DEFAULT_TUNING: Readonly<GestureTuning> = {
   palmMaxPx: 140,
 };
 
-/** URL parameter → field and accepted range. */
+/** Associe les paramètres d’URL aux seuils tactiles et à leurs limites de validation. */
 export const TUNING_PARAMS: Record<string, { key: keyof GestureTuning; min: number; max: number }> = {
   settle: { key: 'settleMs', min: 30, max: 1000 },
   cluster: { key: 'slingClusterPx', min: 40, max: 600 },
@@ -41,7 +43,7 @@ export const TUNING_PARAMS: Record<string, { key: keyof GestureTuning; min: numb
 /** Live values read by the recognizer on every gesture. */
 export const tuning: GestureTuning = { ...DEFAULT_TUNING };
 
-/** Applies the URL parameters to `target` and returns the names that were accepted. */
+/** Lit et borne les paramètres de diagnostic des gestes présents dans l’URL. */
 export function applyTuning(search: string, target: GestureTuning = tuning): string[] {
   const params = new URLSearchParams(search);
   const applied: string[] = [];

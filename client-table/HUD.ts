@@ -1,7 +1,9 @@
 /**
- * Dessin des postes pilote et copilote.
- * drawPilot affiche direction, santé et tours ; drawCopilot affiche POWER
- * et le stock ; drawPad affiche la réparation. Les positions sont dans server/layout.ts.
+ * Dessine les commandes des quatre postes, la santé des voitures, les stocks et la progression des
+ * réparations.
+ * Liens : server/layout.ts, server/types.ts, client-table/view.ts, client-table/icons.ts,
+ * client-table/themes.ts et les utilitaires importés ci-dessous.
+ * Référencé par client-table/NeonEffects.ts, client-table/NeonObjects.ts, client-table/Renderer.ts.
  */
 import type { GameState, Team, Car } from '../server/types.js';
 import {
@@ -14,8 +16,10 @@ import { themeLook, type ThemeId } from './themes.js';
 import { armedPickup } from '../server/armedPickup.js';
 import { glow, NEON } from './neon.js';
 
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
 
+/** Dessine la couronne de progression utilisée par une commande circulaire. */
 function ring(ctx: Ctx, x: number, y: number, r: number, frac: number, color: string, width = 8): void {
   ctx.lineWidth = width;
   ctx.strokeStyle = 'rgba(255,255,255,0.12)';
@@ -30,7 +34,7 @@ function ring(ctx: Ctx, x: number, y: number, r: number, frac: number, color: st
   }
 }
 
-/** Small vector icon for a stocked item. */
+/** Dessine le pictogramme du bonus pour le stock copilote et les retours de ramassage. */
 export function drawItemIcon(ctx: Ctx, kind: 'slingshot' | 'boost', x: number, y: number, r: number, color: string): void {
   ctx.save();
   ctx.translate(x, y);
@@ -60,7 +64,9 @@ export function drawItemIcon(ctx: Ctx, kind: 'slingshot' | 'boost', x: number, y
   ctx.restore();
 }
 
+/** Dessine les commandes des quatre postes, la santé des voitures, les stocks et la progression des réparations. */
 export class HUD {
+  /** Dessine les quatre postes dans leur orientation avec les commandes de chaque rôle. */
   draw(ctx: Ctx, state: GameState, view: View): void {
     const now = state.phase === 'PAUSED' ? state.pausedAt : view.now();
     for (const panel of PANELS) {
@@ -75,6 +81,7 @@ export class HUD {
     }
   }
 
+  /** Dessine le panneau du poste avec les matériaux et les repères de son thème. */
   private drawFrame(ctx: Ctx, panel: PanelLayout, theme: ThemeId, state: GameState): void {
     const PANEL_W = panelWidth(panel.role,state.driveMode[panel.team]);
     const color = TEAM_COLOR[panel.team],look=themeLook(theme);
@@ -116,6 +123,7 @@ export class HUD {
     ctx.fillText(`${panel.team === 'A' ? 'CYAN' : 'ROSE'} · ${panel.role === 'pilot' ? 'PILOTE' : 'COPILOTE'}`, left + 28, -60);
   }
 
+  /** Affiche la santé, les tours, la direction et la pédale éventuelle du pilote. */
   private drawPilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
     const team=panel.team,car=state.cars[team],color=TEAM_COLOR[team],mode=state.driveMode[team],look=themeLook(view.theme);
     const area=steerArea(mode),actual=Math.max(0,car.hp/state.params.hpMax),shown=Math.max(actual,view.hpShown[team]/state.params.hpMax);
@@ -152,6 +160,7 @@ export class HUD {
     void now;
   }
 
+  /** Affiche POWER, le stock et l’état d’armement du copilote. */
   private drawCopilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
     const look=themeLook(view.theme),car=state.cars[panel.team],color=TEAM_COLOR[panel.team],armed=car.itemArmed&&!!car.heldItem,b=POWER_BTN_LOCAL;
     const locked=!!armedPickup(state)&&!armed;
@@ -173,7 +182,7 @@ export class HUD {
     void view;void now;
   }
 
-  /** Repair pad (116 px disc) with a ring filling while both partners hold their pad. */
+  /** Dessine la clé de réparation avec l’appui local et la progression partagée. */
   private drawPad(ctx: Ctx, panel: PanelLayout, state: GameState, view: View): void {
     const key = `${panel.team}-${panel.role}`;
     const held = view.localPads[key] || state.repairPads[key]?.held;

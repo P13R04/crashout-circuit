@@ -1,3 +1,10 @@
+/**
+ * Dessine les retours ponctuels des actions dans les cinq thèmes, notamment les impacts et les transferts de
+ * bonus.
+ * Liens : server/layout.ts, client-table/view.ts, client-table/HUD.ts, client-table/themes.ts,
+ * client-table/neon.ts.
+ * Référencé par client-table/Renderer.ts.
+ */
 import { localToWorld, panelOf, POWER_BTN_LOCAL, ITEM_SLOT_LOCAL } from '../server/layout.js';
 import type { View } from './view.js';
 import { drawItemIcon } from './HUD.js';
@@ -5,13 +12,15 @@ import { TEAM_COLOR } from './view.js';
 import { themeLook } from './themes.js';
 import { glow, NEON, noise } from './neon.js';
 
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
 const TAU = Math.PI * 2;
-/** Feedback has a shape per action, bounded by the client pool; no full-screen flashes. */
+/** Dessine les retours ponctuels des actions dans les cinq thèmes, notamment les impacts et les transferts de bonus. */
 export class NeonEffects {
+  /** Dessine les retours d’action encore vivants dans leur couche, notamment le trajet du bonus vers le copilote. */
   draw(ctx: Ctx, view: View, foreground=false): void {
     const time = view.visualTime, reduced = view.reducedMotion,accent=themeLook(view.theme).accent;
-    view.effects = view.effects.filter(e => time - e.start < e.dur);
+    view.effects = view.effects.filter(/* Conserve les retours visuels dont la durée d’affichage n’est pas écoulée. */ e => time - e.start < e.dur);
     for (const e of view.effects) {
       if(['pickup','itemArmed','itemUsed','itemLost'].includes(e.kind)!==foreground)continue;
       const k = Math.max(0, Math.min(1, (time - e.start) / e.dur)), fade = 1 - k;

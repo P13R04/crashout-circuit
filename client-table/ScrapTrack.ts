@@ -1,12 +1,19 @@
+/**
+ * Dessine le revêtement métallique, les reliefs, les bordures et le départ de la piste Ferraille.
+ * Liens : server/types.ts, client-table/ScrapMaterials.ts, client-table/NeonTrack.ts, client-table/neon.ts.
+ * Référencé par client-table/Renderer.ts.
+ */
 import type { TrackGeometry, Vec2 } from '../server/types.js';
 import { steelGrain } from './ScrapMaterials.js';
 import { visibleTrackEdges } from './NeonTrack.js';
 import { glow, noise } from './neon.js';
 
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
+/** Conserve un repère de chaussée utilisé pour répartir les détails métalliques du revêtement. */
 interface DeckSample extends Vec2 { angle: number; width: number; seed: number; span: number; }
 
-/** Cached steel deck. Only the recessed energy strips are animated each frame. */
+/** Dessine le revêtement métallique, les reliefs, les bordures et le départ de la piste Ferraille. */
 export class ScrapTrack {
   private layer: HTMLCanvasElement | null = null;
   private surface: HTMLCanvasElement | null = null;
@@ -16,6 +23,7 @@ export class ScrapTrack {
   private lamps: Vec2[] = [];
   builds = 0;
 
+  /** Réutilise la chaussée métallique tant que la taille et la géométrie du circuit restent compatibles. */
   draw(ctx: Ctx, track: TrackGeometry, version: number, time: number, reduced: boolean, finishVisible = true): void {
     if (!this.layer || this.layer.width !== ctx.canvas.width || this.layer.height !== ctx.canvas.height || this.version !== version || this.finishVisible !== finishVisible) {
       this.layer ??= document.createElement('canvas'); this.surface ??= document.createElement('canvas');
@@ -39,6 +47,7 @@ export class ScrapTrack {
     for (const p of this.lamps) glow(ctx, p.x, p.y, 27, '#73e4eb', reduced ? .4 : .38 + Math.sin(time / 510) * .06);
   }
 
+  /** Dessine une bande de revêtement ou de bordure suivant les points de la piste. */
   private band(ctx: Ctx, track: TrackGeometry, color: string | CanvasGradient, extra = 0): void {
     ctx.strokeStyle = color; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     for (let i = 0; i < track.centerline.length; i++) {
@@ -48,6 +57,7 @@ export class ScrapTrack {
     }
   }
 
+  /** Échantillonne la piste à distance régulière pour placer ses plaques et détails métalliques. */
   private samples(track: TrackGeometry): DeckSample[] {
     const samples: DeckSample[] = []; let travelled = 0, next = 0;
     const c = track.centerline;
@@ -65,10 +75,12 @@ export class ScrapTrack {
     return samples;
   }
 
+  /** Prépare les ombres, les plaques et les bordures de la piste Ferraille. */
   private paint(ctx: Ctx, surface: Ctx, track: TrackGeometry, finishVisible: boolean): void {
     const visible = visibleTrackEdges(track);
-    this.paths = [track.outerEdge, track.innerEdge].map((edge, e) => {
+    this.paths = [track.outerEdge, track.innerEdge].map(/* Prépare les deux bordures métalliques en respectant la visibilité aux croisements. */ (edge, e) => {
       const path = new Path2D();
+      /** Ajoute un segment de bordure seulement lorsqu’il appartient à la portion visible. */
       edge.forEach((p, i) => {
         const j = (i + 1) % edge.length;
         if (!visible[e][i] || !visible[e][j]) return;
@@ -131,7 +143,7 @@ export class ScrapTrack {
     const grain = surface.createPattern(steelGrain(), 'repeat');
     if (grain) { surface.fillStyle = grain; surface.fillRect(0, 0, 1920, 1080); }
     // Broad oil blooms and discoloured heat marks break the uniform vector-panel appearance.
-    for (const p of this.samples(track).filter(p => p.seed % 4 === 0)) {
+    for (const p of this.samples(track).filter(/* Répartit régulièrement les détails métalliques sans les dessiner sur chaque échantillon. */ p => p.seed % 4 === 0)) {
       const stain = surface.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.width * .7);
       stain.addColorStop(0, '#06101738'); stain.addColorStop(.45, '#74604808'); stain.addColorStop(1, '#14252d00');
       surface.fillStyle = stain; surface.fillRect(p.x - p.width, p.y - p.width, p.width * 2, p.width * 2);
@@ -157,9 +169,11 @@ export class ScrapTrack {
     if(finishVisible)this.finish(ctx, track);
   }
 
+  /** Dessine le damier du départ dans le repère local de la chaussée. */
   private finish(ctx: Ctx, track: TrackGeometry): void {
     const sl = track.startLine;
     let index = 0, nearest = Infinity;
+    /** Retrouve le repère local de la piste sous la ligne de départ. */
     track.centerline.forEach((p, i) => { const d = Math.hypot(p.x - sl.pos.x, p.y - sl.pos.y); if (d < nearest) { nearest = d; index = i; } });
     const half = track.widths[index] / 2, cells = Math.max(2, Math.ceil(half * 2 / 9)), size = half * 2 / cells;
     ctx.save(); ctx.translate(sl.pos.x, sl.pos.y); ctx.rotate(Math.atan2(sl.normal.y, sl.normal.x));
@@ -174,6 +188,6 @@ export class ScrapTrack {
       ctx.fillStyle = '#9cecf0'; ctx.fillRect(x - 1.5, -11, 3, 22);
     }
     ctx.restore();
-    this.lamps = [-1, 1].map(side => ({ x: sl.pos.x + sl.normal.x * (half + 6) * side, y: sl.pos.y + sl.normal.y * (half + 6) * side }));
+    this.lamps = [-1, 1].map(/* Place les extrémités du damier de part et d’autre de la chaussée. */ side => ({ x: sl.pos.x + sl.normal.x * (half + 6) * side, y: sl.pos.y + sl.normal.y * (half + 6) * side }));
   }
 }

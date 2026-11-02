@@ -1,4 +1,10 @@
-/** Direction, full corridor collision and pause clocks shared by both render themes. */
+/**
+ * Vérifie l’orientation, la surface de traversée et l’effet des zones d’accélération sur différents
+ * circuits.
+ * Liens : server/GameRules.ts, server/MapGenerator.ts, server/geometry.ts, server/boostGeometry.ts,
+ * server/types.ts.
+ * Lancé depuis les scripts npm de package.json.
+ */
 import assert from 'node:assert/strict';
 import { orientBoostGate, boostFrame, hitsBoostGate, BOOST_MIN_WIDTH } from '../server/boostGeometry.js';
 import { generatePreset, generate, selfCrossings } from '../server/MapGenerator.js';
@@ -7,8 +13,10 @@ import { dist } from '../server/geometry.js';
 import type { Vec2 } from '../server/types.js';
 
 let passed=0;
+/** Enregistre ou exécute le scénario et l’ajoute au bilan de vérification. */
 function test(name:string,run:()=>void){run();passed++;console.log(`  ✓ ${name}`);}
 const track=generatePreset();
+/** Vérifie le sens de l’accélération sur toute la piste indépendamment de l’angle et de l’ordre des doigts. */
 test('every part of the circuit orients the runway forwards, regardless of contact angle or order',()=>{
   for(let i=0;i<track.centerline.length;i+=4)for(const angle of [0,.35,1.2,2.4]){
     const at=track.centerline[i],before=track.centerline[(i-1+track.centerline.length)%track.centerline.length],after=track.centerline[(i+1)%track.centerline.length];
@@ -21,9 +29,11 @@ test('every part of the circuit orients the runway forwards, regardless of conta
     assert.deepEqual(orientBoostGate(b,a,track),g,'contact order does not flip the boost');
   }
 });
+/** Vérifie le choix de branche par le geste transversal dans un croisement en huit. */
 test('at a figure-eight crossing, the transverse gesture selects the intended branch',()=>{
   const a={x:560,y:540},b={x:1360,y:540};
-  const wave=(p:Vec2,q:Vec2)=>Array.from({length:121},(_,i)=>{const t=i/120;return{x:p.x+(q.x-p.x)*t,y:540-170*Math.sin(2*Math.PI*t)};});
+  /** Construit une portion ondulée pour tester les courbes et les croisements du circuit. */
+  const wave=(p:Vec2,q:Vec2)=>Array.from({length:121},/* Construit un point échantillonné de la courbe utilisée par le scénario. */ (_,i)=>{const t=i/120;return{x:p.x+(q.x-p.x)*t,y:540-170*Math.sin(2*Math.PI*t)};});
   const eight=generate(wave(a,b),wave(b,a),a,b,b,a),crossings=selfCrossings(eight.centerline);
   assert.ok(crossings.length>0,'fixture has a real crossing');
   for(const crossing of crossings)for(const index of [crossing.i,crossing.j]){
@@ -33,8 +43,10 @@ test('at a figure-eight crossing, the transverse gesture selects the intended br
     assert.ok(g.dir.x*tangent.x+g.dir.y*tangent.y>.99,'no jump to the crossing’s other road');
   }
 });
+/** Vérifie les traversées rapides dans tous les sens sans faux contact à proximité du corridor. */
 test('the complete oriented corridor catches fast front, rear and lateral crossings without false hits nearby',()=>{
   const g=orientBoostGate({x:960,y:400},{x:960,y:600},track),f=boostFrame(g);
+  /** Projette les coordonnées de test dans le repère de la zone d’accélération. */
   const at=(x:number,y:number)=>({x:g.a.x+f.across.x*x+f.forward.x*y,y:g.a.y+f.across.y*x+f.forward.y*y});
   assert.ok(hitsBoostGate(at(100,-100),at(100,150),g),'front-to-back sweep');
   assert.ok(hitsBoostGate(at(100,150),at(100,-100),g),'reverse crossing remains functional');
@@ -42,6 +54,7 @@ test('the complete oriented corridor catches fast front, rear and lateral crossi
   assert.equal(hitsBoostGate(at(-100,f.depth+16),at(300,f.depth+16),g),false,'outside the body-contact margin');
   assert.equal(hitsBoostGate(at(-100,-16),at(300,-16),g),false,'outside the rear margin');
 });
+/** Vérifie qu’une prise très rapprochée conserve une surface finie et utilisable. */
 test('close and coincident contacts make a finite, usable runway aligned with the road',()=>{
   for(const gap of [0,2,30,100]){
     const at=track.centerline[32],g=orientBoostGate(at,{x:at.x+gap,y:at.y},track),f=boostFrame(g);
@@ -49,14 +62,15 @@ test('close and coincident contacts make a finite, usable runway aligned with th
     assert.ok([g.a.x,g.a.y,g.b.x,g.b.y,g.dir.x,g.dir.y].every(Number.isFinite),'no division by zero on a repeated tap');
     assert.ok(hitsBoostGate(at,{x:at.x+g.dir.x*30,y:at.y+g.dir.y*30},g),'the minimum runway catches a car');
   }
-  const s=createInitialState(),rules=new GameRules(s,{transition:p=>{s.phase=p;},broadcastFull(){},feedback(){}},()=>1_000_000);
+  const s=createInitialState(),rules=new GameRules(s,{/* Applique la phase demandée à l’état contrôlé du test. */ transition:p=>{s.phase=p;},/* Remplace la diffusion réseau inutile dans ce test de règles locales. */ broadcastFull(){},/* Enregistre le retour des règles pour pouvoir vérifier les événements produits. */ feedback(){}},/* Fournit l’heure contrôlée du scénario au composant qui consulte son horloge. */ ()=>1_000_000);
   s.phase='RACE';rules.startRace(track);s.cars.A.heldItem='boost';rules.onPower('A');
   rules.onBoostGate({type:'BoostGate',t:1_000_000,team:'A',a:track.centerline[32],b:track.centerline[32]});
   assert.equal(s.boostGates.length,1,'the server accepts the same tolerant gesture as the table');
 });
+/** Vérifie que la pause conserve l’âge de pose et la durée restante de la zone. */
 test('pause preserves the deployment age and lifetime of a boost; expiry still removes it',()=>{
   const s=createInitialState(),clock={now:1_000_000};
-  const rules=new GameRules(s,{transition:p=>{s.phase=p;},broadcastFull(){},feedback(){}},()=>clock.now);
+  const rules=new GameRules(s,{/* Applique la phase demandée à l’état contrôlé du test. */ transition:p=>{s.phase=p;},/* Remplace la diffusion réseau inutile dans ce test de règles locales. */ broadcastFull(){},/* Enregistre le retour des règles pour pouvoir vérifier les événements produits. */ feedback(){}},/* Fournit l’heure contrôlée du scénario au composant qui consulte son horloge. */ ()=>clock.now);
   s.phase='RACE';rules.startRace(track);s.cars.A.heldItem='boost';rules.onPower('A');
   rules.onBoostGate({type:'BoostGate',t:clock.now,team:'A',a:{x:1150,y:270},b:{x:1150,y:430}});
   const g=s.boostGates[0];assert.ok(g,'charged bonus creates the gate');

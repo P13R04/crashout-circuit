@@ -1,20 +1,32 @@
-// État et protocole partagés entre le serveur, la table et la console Oz.
-// Repères : Car, TrackGeometry, TutorialState, GameState, puis les messages WebSocket.
+/**
+ * Déclare les structures d’état et les messages échangés entre le serveur, la table et la console Oz.
+ * Liens : server/tangibles.ts.
+ * Référencé notamment par client-oz/OzController.ts, client-oz/OzMap.ts, client-oz/main.ts.
+ */
 import type { TangibleId } from './tangibles.js';
 
+/** Représente une position ou un vecteur à deux coordonnées. */
 export interface Vec2 {
   x: number;
   y: number;
 }
 
+/** Distingue l’équipe cyan de l’équipe rose dans l’état et les commandes. */
 export type Team = 'A' | 'B';
+/** Nomme les écrans et les états de session partagés par les clients. */
 export type Phase = 'LOBBY' | 'MAP' | 'READY' | 'RACE' | 'PAUSED' | 'RESULT';
+/** Distingue les deux bonus ramassables du jeu. */
 export type ItemKind = 'slingshot' | 'boost';
+/** Nomme le niveau de vitesse choisi pour les voitures. */
 export type Difficulty = 'easy' | 'medium' | 'hard';
+/** Distingue l’avance automatique de l’accélération avec pédale maintenue. */
 export type DriveMode = 'auto' | 'pedal';
+/** Distingue la pose calculée par les contacts de la pose manuelle sur la carte Oz. */
 export type TangiblePlacementMode = 'manual' | 'touch';
+/** Décrit l’annonce de pose avec son objet, son jeton unique et son expiration. */
 export interface TangiblePlacementRequest { id: TangibleId; token: number; expiresAt: number }
 
+/** Conserve la pose et l’activation d’un objet réel indépendamment des effets qu’il produit. */
 export interface Tangible {
   x: number; y: number; angle: number; // normalized position, angle in degrees
   kind: 'wall' | 'pylon';
@@ -25,6 +37,7 @@ export interface Tangible {
   placementOrigin?: { x: number; y: number; angle: number }; // last authoritative pose; no movement budget
 }
 
+/** Conserve la pose, le mouvement, la santé, la progression et le stock d’une voiture. */
 export interface Car {
   team: Team;
   pos: Vec2;
@@ -48,6 +61,7 @@ export interface Car {
   boostK: number;        // boost intensity factor of the active boost
 }
 
+/** Décrit le volume de collision d’un mur et sa désactivation éventuelle. */
 export interface Wall {
   id: string;
   team: Team | null;
@@ -60,6 +74,7 @@ export interface Wall {
   expiresAt?: number;    // temporary walls created by the Oz console
 }
 
+/** Décrit une liaison dommageable entre deux piliers et ses échéances d’activation. */
 export interface ArcElectric {
   id: string;
   team: Team | null;
@@ -68,6 +83,7 @@ export interface ArcElectric {
   disabledUntil: number; // 0 = active
 }
 
+/** Décrit la surface et la durée d’une zone d’accélération attribuée à une équipe. */
 export interface BoostGate {
   id: string;
   team: Team;
@@ -79,6 +95,7 @@ export interface BoostGate {
   depth?: number;
 }
 
+/** Conserve la trajectoire et les instants de départ et d’impact d’une pierre. */
 export interface Stone {
   id: string;
   from: Vec2;        // launch point (the pulled pouch)
@@ -88,6 +105,7 @@ export interface Stone {
   team: Team;
 }
 
+/** Décrit le bonus présent sur la piste et son instant de réapparition. */
 export interface Pickup {
   id: number;        // 0–3
   pos: Vec2;
@@ -95,6 +113,7 @@ export interface Pickup {
   respawnAt: number; // 0 = available
 }
 
+/** Conserve l’appui de réparation d’un poste et la date de son dernier renouvellement. */
 export interface RepairPad {
   team: Team;
   role: 'pilot' | 'copilot';
@@ -102,13 +121,14 @@ export interface RepairPad {
   startedAt: number;
 }
 
-/** Each value is the timestamp (ms) at which the ability becomes usable again. */
+/** Conserve les anciennes échéances de capacités maintenues pour compatibilité. */
 export interface Cooldown {
   ghost: number;
   destroy: number;
   borderPull: number;
 }
 
+/** Réunit la chaussée, sa forme de base et les points d’ancrage des éléments de course. */
 export interface TrackGeometry {
   centerline: Vec2[];   // N=256 points
   /** Immutable reference used to rebuild temporary local deformations. */
@@ -126,7 +146,7 @@ export interface TrackGeometry {
   preset?: boolean;
 }
 
-/** A local sideways displacement of the road, never a permanent width change. */
+/** Conserve le déplacement local d’un geste et les durées de maintien et de retour de la piste. */
 export interface TrackDeformation {
   id: string;
   index: number;
@@ -140,18 +160,20 @@ export interface TrackDeformation {
   gestureEnded?: boolean;
 }
 
+/** Associe chaque équipe à ses points de départ et d’arrivée pour le demi-tracé. */
 export interface MapTargets {
   A: [Vec2, Vec2];
   B: [Vec2, Vec2];
 }
 
-/** Each lesson is done by one real game event (see `server/Tutorial.ts`). */
+/** Nomme les étapes reconnues par les règles et les cartes du tutoriel. */
 export type TutorialStepId =
   | 'identify' | 'steer' | 'pedal'
   | 'pickup' | 'power' | 'sling'
   | 'boostPickup' | 'boostPower' | 'boost' | 'boostCross'
   | 'borderPull' | 'repair' | 'wall' | 'arc' | 'pylon' | 'depot';
 
+/** Conserve l’étape et les sous-actions déjà validées par une équipe. */
 export interface TutorialTeam {
   /** Index in `TutorialState.steps`; equal to its length once the team is done. */
   step: number;
@@ -159,7 +181,7 @@ export interface TutorialTeam {
   sub: number;
 }
 
-/** Guided session: the race phase without scoring, one independent progression per team. */
+/** Réunit les leçons et la progression des deux équipes jusqu’à la fin de l’entraînement. */
 export interface TutorialState {
   steps: TutorialStepId[];
   teams: Record<Team, TutorialTeam>;
@@ -167,7 +189,7 @@ export interface TutorialState {
   finished: boolean;
 }
 
-/** Subset of config.json the clients need to draw rings, timers and thresholds. */
+/** Décrit les réglages de jeu et les dimensions transmis aux clients avec l’état. */
 export interface GameParams {
   difficulty: Difficulty;
   hpMax: number;
@@ -205,12 +227,13 @@ export interface GameParams {
   arcMaxDistPx: number;
 }
 
-/** Shared clock for the road reveal and finish-line draw; never drives the physics. */
+/** Conserve l’origine et l’horloge partagée de la révélation du circuit. */
 export interface TrackPresentation {
   startedAt: number;
   originIndex: number;
 }
 
+/** Regroupe tout l’état de partie validé par le serveur et synchronisé avec les interfaces. */
 export interface GameState {
   phase: Phase;
   /** Test sessions use the same physics with automated pilot controls. */
@@ -262,38 +285,42 @@ export interface GameState {
 
 // ─── WebSocket message types ──────────────────────────────────────────────────
 
+/** Associe un type de commande à son horodatage réseau. */
 export interface BaseMsg {
   type: string;
   t: number; // timestamp ms
 }
 
 // Table → Server
+/** Décrit le réglage de course dans le protocole partagé. */
 export interface RaceSettingsMsg extends BaseMsg {
   type: 'RaceSettings'; difficulty?: Difficulty; lapsToWin?: number; sessionMaxSeconds?: number;
 }
+/** Décrit le tracé d’un demi-circuit dans le protocole partagé. */
 export interface StrokeDrawMsg extends BaseMsg {
   type: 'StrokeDraw';
   creator: Team;
   pts: Vec2[];
 }
 
-/** Both accepted map halves are deliberately confirmed before building the track. */
+/** Décrit la validation des deux tracés dans le protocole partagé. */
 export interface GenerateTrackMsg extends BaseMsg {
   type: 'GenerateTrack';
 }
 
-/** The generated track stays inspectable until players explicitly start. */
+/** Décrit la demande de départ dans le protocole partagé. */
 export interface BeginRaceMsg extends BaseMsg {
   type: 'BeginRace';
 }
 
-/** The two initial contacts which establish the shared divider in MAP. */
+/** Décrit la pose des points de raccord dans le protocole partagé. */
 export interface MapDividerMsg extends BaseMsg {
   type: 'MapDivider';
   a: Vec2;
   b: Vec2;
 }
 
+/** Décrit le maintien d’un pad de réparation dans le protocole partagé. */
 export interface PadHoldMsg extends BaseMsg {
   type: 'PadHold';
   team: Team;
@@ -301,11 +328,7 @@ export interface PadHoldMsg extends BaseMsg {
   on: boolean;
 }
 
-/**
- * Slingshot released: the elastic's fork (`anchor`, midpoint of the two anchoring
- * fingers) and the pulled pouch (`pouch`, where the third finger let go). The stone
- * flies from the pouch through the fork; the server derives direction and range.
- */
+/** Décrit la traction et le relâchement du lance-pierre dans le protocole partagé. */
 export interface SlingshotMsg extends BaseMsg {
   type: 'Slingshot';
   anchor: Vec2;
@@ -313,6 +336,7 @@ export interface SlingshotMsg extends BaseMsg {
   team?: Team; // resolved by the table's gesture recognizer (R-03); server falls back to proximity
 }
 
+/** Décrit les contacts d’une zone d’accélération dans le protocole partagé. */
 export interface BoostGateMsg extends BaseMsg {
   type: 'BoostGate';
   a: Vec2;
@@ -320,6 +344,7 @@ export interface BoostGateMsg extends BaseMsg {
   team?: Team;
 }
 
+/** Décrit une ancienne capacité conservée pour compatibilité dans le protocole partagé. */
 export interface AbilityMsg extends BaseMsg {
   type: 'Ability';
   team: Team;
@@ -327,6 +352,7 @@ export interface AbilityMsg extends BaseMsg {
   targetId?: string;
 }
 
+/** Décrit la traction d’un bord de piste dans le protocole partagé. */
 export interface BorderPullMsg extends BaseMsg {
   type: 'BorderPull';
   index?: number;
@@ -340,6 +366,7 @@ export interface BorderPullMsg extends BaseMsg {
 }
 
 // Conduite et bouton POWER du copilote → serveur
+/** Décrit la commande du pilote dans le protocole partagé. */
 export interface PilotInputMsg extends BaseMsg {
   type: 'PilotInput';
   team: Team;
@@ -348,45 +375,50 @@ export interface PilotInputMsg extends BaseMsg {
   steer: number;    // [-1, 1]
 }
 
+/** Décrit l’armement du stock copilote dans le protocole partagé. */
 export interface PowerMsg extends BaseMsg {
   type: 'Power';
   team: Team;
   role: 'copilot';
 }
 
+/** Décrit l’entrée en création dans le protocole partagé. */
 export interface StartGameMsg extends BaseMsg {
   type: 'StartGame';
   mode?: 'table' | 'pc';
 }
 
-/** Start an endless tangible test with automatic pilots and a preset circuit. */
+/** Décrit l’essai autonome des tangibles dans le protocole partagé. */
 export interface StartTangibleTestMsg extends BaseMsg { type: 'StartTangibleTest' }
 
-/** Start the guided tutorial on the predefined circuit (from the lobby). */
+/** Décrit le démarrage du tutoriel dans le protocole partagé. */
 export interface StartTutorialMsg extends BaseMsg {
   type: 'StartTutorial';
   mode?: 'table' | 'pc';
 }
 
-/** A team gives up its current tutorial step. */
+/** Décrit le passage d’une étape de tutoriel dans le protocole partagé. */
 export interface TutorialSkipMsg extends BaseMsg {
   type: 'TutorialSkip';
   team: Team;
 }
 
-/** Leave the completed tutorial and prepare a normal race on a player-drawn track. */
+/** Décrit le passage du tutoriel à une course normale dans le protocole partagé. */
 export interface TutorialRaceMsg extends BaseMsg { type: 'TutorialRace' }
 
+/** Décrit la pause ou la reprise dans le protocole partagé. */
 export interface PauseMsg extends BaseMsg {
   type: 'Pause';
 }
 
+/** Décrit le choix de conduite d’une équipe dans le protocole partagé. */
 export interface ToggleDriveModeMsg extends BaseMsg {
   type: 'ToggleDriveMode';
   team?: Team;
 }
 
 // Console Oz → Server
+/** Décrit la pose manuelle d’un tangible dans le protocole partagé. */
 export interface TangibleMovedMsg extends BaseMsg {
   type: 'TangibleMoved';
   id: TangibleId;
@@ -396,20 +428,24 @@ export interface TangibleMovedMsg extends BaseMsg {
   active?: boolean; // atomic placement + activation; omitted preserves activation
 }
 
+/** Décrit le retrait physique d’un tangible dans le protocole partagé. */
 export interface TangibleRemovedMsg extends BaseMsg {
   type: 'TangibleRemoved';
   id: TangibleId;
 }
 
-/** Oz grants exactly one placement; the table supplies contact geometry, never activation. */
+/** Décrit le choix de la méthode de pose dans le protocole partagé. */
 export interface TangiblePlacementModeMsg extends BaseMsg { type: 'TangiblePlacementMode'; mode: TangiblePlacementMode }
+/** Décrit l’annonce d’une prochaine pose dans le protocole partagé. */
 export interface TangiblePrepareMsg extends BaseMsg { type: 'TangiblePrepare'; id: TangibleId }
+/** Décrit l’annulation de l’annonce de pose dans le protocole partagé. */
 export interface TangiblePlacementCancelMsg extends BaseMsg { type: 'TangiblePlacementCancel' }
+/** Décrit la confirmation du tangible par deux contacts dans le protocole partagé. */
 export interface TangibleTouchPlacedMsg extends BaseMsg {
   type: 'TangibleTouchPlaced'; id: TangibleId; token: number; a: Vec2; b: Vec2;
 }
 
-/** Semantic lifecycle, shared by Oz and a future tangible sensor adapter. */
+/** Décrit le changement d’activation du tangible dans le protocole partagé. */
 export interface TangibleControlMsg extends BaseMsg {
   type: 'TangibleControl';
   id: TangibleId;
@@ -419,34 +455,35 @@ export interface TangibleControlMsg extends BaseMsg {
   kind?: Tangible['kind'];
 }
 
+/** Décrit le retour de compatibilité vers l’accueil dans le protocole partagé. */
 export interface NewGameMsg extends BaseMsg {
   type: 'NewGame';
 }
 
+/** Décrit la remise à zéro de la session dans le protocole partagé. */
 export interface ResetMsg extends BaseMsg {
   type: 'Reset';
 }
-/**
- * PC-mode test switches. `invincible`: both cars are untouchable (no damage, stun,
- * slow-down or fall). `allItems`: every item is always armed and usable, without
- * pickup, and ability cooldowns are ignored. Ignored outside the PC mode.
- */
+/** Décrit une aide réservée au développement dans le protocole partagé. */
 export interface TestToggleMsg extends BaseMsg {
   type: 'TestToggle';
   flag: 'invincible' | 'allItems';
   on: boolean;
 }
 
+/** Décrit la demande de mesure aller-retour dans le protocole partagé. */
 export interface PingMsg extends BaseMsg {
   type: 'Ping';
 }
 
 // Server → All (broadcast)
+/** Décrit l’état de partie transmis aux interfaces dans le protocole partagé. */
 export interface StateMsg extends BaseMsg {
   type: 'State';
   state: GameState;
 }
 
+/** Décrit un retour d’action destiné aux effets et au tutoriel dans le protocole partagé. */
 export interface FeedbackMsg extends BaseMsg {
   type: 'Feedback';
   kind: string;
@@ -456,17 +493,20 @@ export interface FeedbackMsg extends BaseMsg {
   itemKind?: ItemKind;
 }
 
+/** Décrit le retour de mesure du temps réseau dans le protocole partagé. */
 export interface PongMsg extends BaseMsg {
   type: 'Pong';
   clientT: number; // echoed Ping.t
 }
 
+/** Décrit le changement de phase annoncé aux clients dans le protocole partagé. */
 export interface PhaseChangeMsg extends BaseMsg {
   type: 'PhaseChange';
   phase: Phase;
   data?: unknown;
 }
 
+/** Réunit les commandes que le serveur peut recevoir des deux interfaces. */
 export type ClientMessage =
   | RaceSettingsMsg
   | StrokeDrawMsg
@@ -499,4 +539,5 @@ export type ClientMessage =
   | ResetMsg
   | TestToggleMsg;
 
+/** Réunit les états, phases et retours que les interfaces peuvent recevoir du serveur. */
 export type ServerMessage = StateMsg | FeedbackMsg | PhaseChangeMsg | PongMsg;

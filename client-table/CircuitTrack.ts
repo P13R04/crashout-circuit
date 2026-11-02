@@ -1,3 +1,10 @@
+/**
+ * Dessine la chaussée, les bordures et la ligne de départ des trois thèmes Miniature, Grand Prix et
+ * Castagne.
+ * Liens : server/types.ts, client-shared/trackVisibility.ts, client-table/neon.ts, client-table/RaceGrid.ts,
+ * client-table/CircuitMaterials.ts et les utilitaires importés ci-dessous.
+ * Référencé par client-table/Renderer.ts.
+ */
 import type { TrackGeometry } from '../server/types.js';
 import { visibleTrackEdges } from '../client-shared/trackVisibility.js';
 import { noise } from './neon.js';
@@ -5,8 +12,9 @@ import { racingGrid } from './RaceGrid.js';
 import { materialWash } from './CircuitMaterials.js';
 import type { CircuitTheme } from './themes.js';
 
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
-/** Three materials, exact shared road geometry. Deck/texture/curbs rebuild only on deformation. */
+/** Dessine la chaussée, les bordures et la ligne de départ des trois thèmes Miniature, Grand Prix et Castagne. */
 export class CircuitTrack {
   private layer: HTMLCanvasElement | null = null;
   private surface: HTMLCanvasElement | null = null;
@@ -14,8 +22,10 @@ export class CircuitTrack {
   private finishVisible = true;
   private edges: Path2D[] = [];
   builds = 0;
+  /** Conserve le thème de revêtement dont cette couche doit préparer le cache. */
   constructor(private theme: CircuitTheme) {}
 
+  /** Réutilise le revêtement du thème tant que la taille du canvas et la géométrie restent valides. */
   draw(ctx: Ctx, track: TrackGeometry, version: number, time: number, reduced: boolean, finishVisible = true): void {
     if (!this.layer || this.layer.width !== ctx.canvas.width || this.layer.height !== ctx.canvas.height || version !== this.version || this.finishVisible !== finishVisible) {
       this.layer ??= document.createElement('canvas');
@@ -23,8 +33,9 @@ export class CircuitTrack {
       this.surface ??= document.createElement('canvas');this.surface.width=ctx.canvas.width;this.surface.height=ctx.canvas.height;
       const c = this.layer.getContext('2d')!; c.scale(this.layer.width / 1920, this.layer.height / 1080);
       const visible = visibleTrackEdges(track);
-      this.edges = [track.outerEdge, track.innerEdge].map((edge, bank) => {
+      this.edges = [track.outerEdge, track.innerEdge].map(/* Prépare le tracé de chaque bordure en séparant les portions masquées aux croisements. */ (edge, bank) => {
         const path = new Path2D();
+        /** Ajoute le segment visible suivant à son tracé de bordure. */
         edge.forEach((p, i) => {
           const j = (i + 1) % edge.length;
           if (!visible[bank][i] || !visible[bank][j]) return;
@@ -40,12 +51,15 @@ export class CircuitTrack {
     if (this.theme === 'toy') {
       ctx.save(); ctx.strokeStyle = '#fff6bd'; ctx.lineWidth = 2; ctx.globalAlpha = .55;
       ctx.setLineDash([6, 280]); ctx.lineDashOffset = reduced ? 0 : -time * .028;
+      /** Dessine les tracés de bordure déjà préparés dans le cache. */
       this.edges.forEach(p => ctx.stroke(p)); ctx.restore();
     }
   }
 
+  /** Dessine une bande épaisse suivant les points du circuit. */
   private band(ctx: Ctx, track: TrackGeometry, color: string | CanvasGradient, extra = 0): void {
     ctx.strokeStyle = color; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    /** Dessine la bande centrale avec la largeur locale de chaque portion. */
     track.centerline.forEach((p, i, c) => {
       const j = (i + 1) % c.length;
       ctx.lineWidth = Math.max(1, (track.widths[i] + track.widths[j]) / 2 + extra);
@@ -53,6 +67,7 @@ export class CircuitTrack {
     });
   }
 
+  /** Compose le revêtement, les bordures et les détails adaptés au thème de circuit. */
   private paint(ctx: Ctx, track: TrackGeometry, visibility:boolean[][], finishVisible: boolean): void {
     const toy=this.theme==='toy',mud=this.theme==='mayhem';
     ctx.save();ctx.translate(2,toy?12:5);this.band(ctx,track,'#06101266',toy?22:26);ctx.restore();
@@ -63,14 +78,17 @@ export class CircuitTrack {
     const surface=this.surface!.getContext('2d')!;surface.scale(this.surface!.width/1920,this.surface!.height/1080);
     const road=surface.createLinearGradient(260,180,1600,990);
     const colors=toy?['#486a7d','#2b495d','#3c5c71']:mud?['#827149','#635a3c','#7c6a43']:['#4a5050','#3d4548','#464d4d'];
+    /** Répartit les couleurs du matériau le long du dégradé de revêtement. */
     colors.forEach((color,i)=>road.addColorStop(i/2,color));this.band(surface,track,road);
     // The exact road union masks every material detail, including open crossings.
     surface.globalCompositeOperation='source-atop';materialWash(surface,this.theme);
     const c=track.centerline;
+    /** Calcule la direction locale pour orienter les marques et les lumières de la piste. */
     const tangent=(i:number)=>{const a=c[(i-1+c.length)%c.length],b=c[(i+1)%c.length],d=Math.hypot(b.x-a.x,b.y-a.y)||1;return{x:(b.x-a.x)/d,y:(b.y-a.y)/d};};
     // Long, connected wear lines follow curvature instead of random disconnected scratches.
     for(const side of [-1,1]){
       surface.beginPath();
+      /** Construit un détail de surface décalé suivant la normale locale de la piste. */
       c.forEach((p,i)=>{
         const t=tangent(i),off=side*track.widths[i]*(toy?.23:mud?.18:.2),x=p.x-t.y*off,y=p.y+t.x*off;
         if(i)surface.lineTo(x,y);else surface.moveTo(x,y);
@@ -123,7 +141,7 @@ export class CircuitTrack {
     if(this.theme==='classic'&&finishVisible){
       surface.strokeStyle='#eeeece99';surface.lineWidth=1.5;surface.lineJoin='round';
       for(const points of racingGrid(track)){
-        surface.beginPath();points.forEach((p,i)=>i?surface.lineTo(p.x,p.y):surface.moveTo(p.x,p.y));surface.stroke();
+        surface.beginPath();/* Relie les points d’un détail de revêtement sur la surface de dessin. */ points.forEach((p,i)=>i?surface.lineTo(p.x,p.y):surface.moveTo(p.x,p.y));surface.stroke();
       }
     }
     surface.globalCompositeOperation='source-over';
@@ -156,9 +174,11 @@ export class CircuitTrack {
     if(finishVisible)this.finish(ctx,track);
   }
 
+  /** Dessine le damier de départ et les cases décoratives adaptées à la piste. */
   private finish(ctx: Ctx, track: TrackGeometry): void {
     const sl = track.startLine;
     let nearest = 0;
+    /** Retrouve le point de chaussée le plus proche de la ligne de départ. */
     track.centerline.forEach((p, i) => { if (Math.hypot(p.x - sl.pos.x, p.y - sl.pos.y) < Math.hypot(track.centerline[nearest].x - sl.pos.x, track.centerline[nearest].y - sl.pos.y)) nearest = i; });
     const half = track.widths[nearest] / 2, n = Math.max(2, Math.ceil(half * 2 / 10)), size = half * 2 / n;
     ctx.save(); ctx.translate(sl.pos.x, sl.pos.y); ctx.rotate(Math.atan2(sl.normal.y, sl.normal.x));

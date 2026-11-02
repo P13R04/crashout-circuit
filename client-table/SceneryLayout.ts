@@ -1,33 +1,46 @@
+/**
+ * Répartit le décor autour du circuit en réservant la place de la piste, des postes et des écrans de menu.
+ * Liens : server/layout.ts, server/types.ts, client-table/StandSections.ts.
+ * Référencé notamment par client-table/F1Venue.ts, client-table/MayhemFestival.ts,
+ * client-table/StandSections.ts.
+ */
 import type { TrackGeometry, Vec2 } from '../server/types.js';
 import { planStandSections } from './StandSections.js';
 import { insidePanel, inTangibleDepot } from '../server/layout.js';
 
+/** Décrit un repère de décor le long de la piste avec sa tangente, sa normale et sa largeur. */
 export interface VenueFrame extends Vec2 { tx:number; ty:number; nx:number; ny:number; half:number; distance:number; index:number; }
+/** Décrit un emplacement libre et la place disponible pour un grand élément de décor. */
 export interface SceneryAnchor extends Vec2 { room:number; angle:number; seed:number; }
+/** Regroupe les ancrages, les tribunes et le circuit nécessaires à la construction d’un décor. */
 export interface SceneryLayout { frames:VenueFrame[]; stands:VenueFrame[][]; anchors:SceneryAnchor[]; track:TrackGeometry|null; }
 
+/** Distingue les réservations de décor de la course, de l’accueil et de la création. */
 export type SceneryPresentation='race'|'lobby'|'map';
+/** Délimite une surface rectangulaire à préserver pour la lisibilité de l’interface. */
 export interface DecorRect {x:number;y:number;w:number;h:number;}
-/** Shared by placement and the final clip, including animation that extends beyond a prop. */
+/** Renvoie les surfaces à laisser libres de décor sur l’accueil et pendant la création. */
 export function sceneryReservations(mode:SceneryPresentation):readonly DecorRect[]{
   if(mode==='lobby')return[{x:590,y:155,w:740,h:770}];
   if(mode==='map')return[{x:155,y:195,w:1600,h:690},{x:600,y:0,w:720,h:265},{x:600,y:815,w:720,h:265}];
   return[];
 }
+/** Mesure l’espace disponible autour d’un rectangle réservé à l’interface. */
 function distanceToRect(p:Vec2,r:DecorRect):number {
   const dx=Math.max(r.x-p.x,0,p.x-r.x-r.w),dy=Math.max(r.y-p.y,0,p.y-r.y-r.h);
   return dx||dy?Math.hypot(dx,dy):-Math.min(p.x-r.x,r.x+r.w-p.x,p.y-r.y,r.y+r.h-p.y);
 }
+/** Place les éléments de décor autour des zones de texte et de dessin des menus. */
 function menuScenery(mode:SceneryPresentation):SceneryLayout {
   const slots=mode==='map'?[[1440,100,64],[110,340,36],[1810,270,30],[1440,980,64],[110,740,36],[1810,815,30]]:[[380,300,110],[1540,300,110],[380,540,120],[1540,540,120],[380,780,110],[1540,780,110]];
   const reserved=sceneryReservations(mode);
-  const anchors=slots.map(([x,y,wanted],seed)=>{
-    const p={x,y},room=Math.min(wanted,...reserved.map(r=>distanceToRect(p,r)-12));
+  const anchors=slots.map(/* Calcule la taille utilisable de chaque décor de menu face aux zones réservées. */ ([x,y,wanted],seed)=>{
+    const p={x,y},room=Math.min(wanted,...reserved.map(/* Mesure l’espace restant entre l’ancrage du décor et chaque rectangle d’interface. */ r=>distanceToRect(p,r)-12));
     return{...p,room,angle:seed%2?.12:-.12,seed};
-  }).filter(p=>p.room>=24&&!insidePanel(p,p.room)&&!inTangibleDepot(p));
+  }).filter(/* Écarte les petits emplacements ou ceux qui empiètent sur les postes et la réserve. */ p=>p.room>=24&&!insidePanel(p,p.room)&&!inTangibleDepot(p));
   return{frames:[],stands:[],anchors,track:null};
 }
-/** Conservative occupied strip: terraces, fence furniture, flags and overhangs. */
+/** Mesure la distance libre autour des gradins pour éviter d’y superposer un autre décor. */
 export function standClearance(p:Vec2,stands:VenueFrame[][]):number {
   let best=Infinity;
   for(const run of stands)for(let i=1;i<run.length;i++){
@@ -38,7 +51,7 @@ export function standClearance(p:Vec2,stands:VenueFrame[][]):number {
   return best;
 }
 
-/** Stable through network snapshots and temporary pulls: the venue belongs to the original drawing. */
+/** Calcule une clé stable du circuit de base pour réutiliser les décors pendant les déformations temporaires. */
 export function sceneryKey(track:TrackGeometry|null):number {
   if(!track)return 0;
   let hash=2166136261;
@@ -52,6 +65,7 @@ export function sceneryKey(track:TrackGeometry|null):number {
   return hash|0;
 }
 
+/** Mesure la distance à la chaussée pour garder le décor hors de la piste. */
 export function roadClearance(p:Vec2,track:TrackGeometry):number {
   const points=track.baseCenterline.length?track.baseCenterline:track.centerline;
   let best=Infinity;
@@ -63,18 +77,20 @@ export function roadClearance(p:Vec2,track:TrackGeometry):number {
   }
   return best;
 }
+/** Place un point de décor dans le repère tangent et normal d’une portion de piste. */
 export function venuePoint(f:VenueFrame,offset:number,along=0):Vec2 {
   return{x:f.x+f.nx*(f.half+offset)+f.tx*along,y:f.y+f.ny*(f.half+offset)+f.ty*along};
 }
+/** Vérifie que la place du décor respecte les limites de l’écran, des postes et de la réserve. */
 function clearUi(p:Vec2,margin:number):boolean {
   return p.x>135+margin&&p.x<1775-margin&&p.y>24+margin&&p.y<1056-margin&&!insidePanel(p,margin)&&!inTangibleDepot(p);
 }
 
-/** Arc-length sampling makes seat spacing and fences independent of point density. */
+/** Répartit les gradins et les grands éléments dans les espaces libres autour du circuit. */
 export function layoutScenery(track:TrackGeometry|null,mode:SceneryPresentation=track?'race':'lobby'):SceneryLayout {
   if(mode!=='race'||!track)return menuScenery(mode==='race'?'lobby':mode);
   const points=track.baseCenterline.length?track.baseCenterline:track.centerline;
-  const area=points.reduce((v,p,i)=>{const q=points[(i+1)%points.length];return v+p.x*q.y-q.x*p.y;},0),sign=area>=0?1:-1;
+  const area=points.reduce(/* Calcule l’aire orientée du circuit pour choisir le côté extérieur des tribunes. */ (v,p,i)=>{const q=points[(i+1)%points.length];return v+p.x*q.y-q.x*p.y;},0),sign=area>=0?1:-1;
   const frames:VenueFrame[]=[];let distance=0,next=0;
   for(let i=0;i<points.length;i++){
     const p=points[i],q=points[(i+1)%points.length],dx=q.x-p.x,dy=q.y-p.y,d=Math.hypot(dx,dy);if(d<.001)continue;
@@ -84,7 +100,7 @@ export function layoutScenery(track:TrackGeometry|null,mode:SceneryPresentation=
     }
     distance+=d;
   }
-  const stands=planStandSections(frames,f=>{
+  const stands=planStandSections(frames,/* Vérifie que les deux côtés de la tribune gardent leur marge de chaussée et d’interface. */ f=>{
     const front=venuePoint(f,42),back=venuePoint(f,110);
     return clearUi(front,8)&&clearUi(back,12)&&roadClearance(front,track)>28&&roadClearance(back,track)>65;
   });
@@ -94,10 +110,11 @@ export function layoutScenery(track:TrackGeometry|null,mode:SceneryPresentation=
     const p={x,y},room=Math.min(roadClearance(p,track),standClearance(p,stands),y-170,910-y,x-145,1770-x)-10;
     if(room>=52&&clearUi(p,room))candidates.push({...p,room,angle:0,seed:candidates.length});
   }
+  /** Traite d’abord les emplacements offrant le plus de place pour les grands décors. */
   candidates.sort((a,b)=>b.room-a.room);
   const anchors:SceneryAnchor[]=[];
   for(const p of candidates){
-    if(anchors.every(a=>Math.hypot(a.x-p.x,a.y-p.y)>a.room+p.room+20))anchors.push({...p,angle:((p.seed%5)-2)*.06});
+    if(anchors.every(/* Vérifie qu’un nouveau décor garde assez de distance avec les éléments déjà placés. */ a=>Math.hypot(a.x-p.x,a.y-p.y)>a.room+p.room+20))anchors.push({...p,angle:((p.seed%5)-2)*.06});
     if(anchors.length===7)break;
   }
   return{frames,stands,anchors,track};

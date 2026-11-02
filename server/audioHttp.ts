@@ -1,4 +1,9 @@
-/** Single-range responses let browsers seek and loop streamed music without downloading it again. */
+/**
+ * Interprète les demandes partielles de fichiers audio utilisées par les navigateurs pour la lecture et le
+ * déplacement dans un son.
+ * Référencé par server/index.ts, scripts/audio.ts.
+ */
+/** Valide une demande de plage d’octets et la ramène aux limites du fichier audio. */
 export function audioByteRange(header:string,size:number):{start:number;end:number}|null {
   const match=/^bytes=(\d*)-(\d*)$/.exec(header);if(!match||(!match[1]&&!match[2])||size<=0)return null;
   const first=match[1]?Number(match[1]):null,last=match[2]?Number(match[2]):null;

@@ -1,9 +1,17 @@
+/**
+ * Vérifie la répartition aléatoire des ramassables, leur espacement et leurs points d’ancrage sur les
+ * circuits.
+ * Liens : server/MapGenerator.ts, server/geometry.ts.
+ * Lancé depuis les scripts npm de package.json.
+ */
 import assert from 'node:assert/strict';
 import {generatePreset,generate,randomizePickups} from '../server/MapGenerator.js';
 import {nearestOnTrack} from '../server/geometry.js';
-const random=(seed:number)=>()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};
+/** Prépare une séquence aléatoire reproductible pour la disposition du circuit. */
+const random=(seed:number)=>/* Avance le générateur à graine pour reproduire les positions aléatoires de la série. */ ()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};
 const a={x:560,y:540},b={x:1360,y:540};
-const wave=(p:typeof a,q:typeof a)=>Array.from({length:121},(_,i)=>({x:p.x+(q.x-p.x)*i/120,y:540-170*Math.sin(2*Math.PI*i/120)}));
+/** Construit une portion ondulée pour tester les courbes et les croisements du circuit. */
+const wave=(p:typeof a,q:typeof a)=>Array.from({length:121},/* Construit un point échantillonné de la courbe utilisée par le scénario. */ (_,i)=>({x:p.x+(q.x-p.x)*i/120,y:540-170*Math.sin(2*Math.PI*i/120)}));
 const eight=generate(wave(a,b),wave(b,a),a,b,b,a);
 for(const source of [generatePreset(),eight]){
  const original=JSON.stringify(source),variants=new Set<string>();

@@ -1,14 +1,20 @@
+/**
+ * Vérifie les niveaux de vitesse, les tours et le chronomètre, y compris après pause ou retour à l’accueil.
+ * Liens : server/GameRules.ts, server/PhysicsLoop.ts, server/config.ts, server/types.ts.
+ * Lancé depuis les scripts npm de package.json.
+ */
 import assert from 'node:assert/strict';
 import {createInitialState,GameRules} from '../server/GameRules.js';
 import {PhysicsLoop} from '../server/PhysicsLoop.js';
 import {config} from '../server/config.js';
 import type {Difficulty} from '../server/types.js';
-const rig=()=>{const s=createInitialState(),clock={now:1_000_000};const rules=new GameRules(s,{transition:p=>{s.phase=p;},broadcastFull(){},feedback(){}},()=>clock.now);return{s,clock,rules};};
+/** Prépare l’état, l’horloge et les dépendances contrôlées nécessaires au scénario. */
+const rig=()=>{const s=createInitialState(),clock={now:1_000_000};const rules=new GameRules(s,{/* Applique la phase demandée à l’état contrôlé du test. */ transition:p=>{s.phase=p;},/* Remplace la diffusion réseau inutile dans ce test de règles locales. */ broadcastFull(){},/* Enregistre le retour des règles pour pouvoir vérifier les événements produits. */ feedback(){}},/* Fournit l’heure contrôlée du scénario au composant qui consulte son horloge. */ ()=>clock.now);return{s,clock,rules};};
 const r=rig();assert.equal(r.s.params.difficulty,'easy');assert.equal(r.s.params.sessionMaxSeconds,0);
 r.rules.startRace();r.clock.now+=3_600_000;r.rules.checkEnd(r.clock.now);assert.equal(r.s.phase,'RACE','no timer means no time-based finish');
 for(const [difficulty,scale] of [['easy',.5],['medium',.75],['hard',1]] as const){
   for(const pedal of [false,true]){const q=rig();q.rules.updateRaceSettings({type:'RaceSettings',t:0,difficulty});q.rules.startRace();q.s.driveMode.A=pedal?'pedal':'auto';q.rules.inputs.A.throttle=1;q.s.track!.widths.fill(10000);q.clock.now=q.s.sessionStartAt;
-    const physics=new PhysicsLoop(q.s,q.rules,()=>{},()=>q.clock.now);for(let i=0;i<90;i++){q.clock.now+=1000/60;physics.step(q.clock.now);}
+    const physics=new PhysicsLoop(q.s,q.rules,/* Laisse cette notification sans effet dans le scénario local. */ ()=>{},/* Fournit l’heure contrôlée du scénario au composant qui consulte son horloge. */ ()=>q.clock.now);for(let i=0;i<90;i++){q.clock.now+=1000/60;physics.step(q.clock.now);}
     assert.ok(Math.abs(q.s.cars.A.speed-(pedal?config.vMaxPedal:config.vMaxFwd)*scale)<1e-6,`${difficulty} respects its speed ratio`);
   }
 }

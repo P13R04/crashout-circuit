@@ -1,4 +1,9 @@
-/** Dessin des voitures et de leurs traînées dans les cinq thèmes ; aucune physique ici. */
+/**
+ * Dessine les voitures, leurs réacteurs et leurs traînées pour les cinq thèmes, sans calculer leur physique.
+ * Liens : server/types.ts, client-table/view.ts, client-table/neon.ts, client-table/themes.ts,
+ * client-table/VisualMotion.ts.
+ * Référencé par client-table/Renderer.ts, scripts/visuals.ts.
+ */
 import type { Car, GameState, Team } from '../server/types.js';
 import type { Effect } from './view.js';
 import { TEAM_COLOR } from './view.js';
@@ -6,17 +11,23 @@ import { glow, NEON, plate } from './neon.js';
 import type { ThemeId, CircuitTheme } from './themes.js';
 import { TrailBuffer, TRAIL_LIFE_MS } from './VisualMotion.js';
 
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
 
-/** Bodies are cached at 3×; dynamic light and trails stay in world coordinates. */
+/** Dessine les voitures, leurs réacteurs et leurs traînées pour les cinq thèmes, sans calculer leur physique. */
 export class NeonVehicles {
+  /** Conserve le thème et la mémoire commune des voitures tombées pour leurs changements de présentation. */
   constructor(private theme: ThemeId = 'neon', private fallen = new Set<Team>()) {}
   private bodies = new Map<Team, HTMLCanvasElement>();
   private trails = { A: new TrailBuffer(), B: new TrailBuffer() };
+  /** Compte les échantillons de trajectoire encore conservés pour les deux voitures. */
   get trailPoints(): number { return this.trails.A.points.length + this.trails.B.points.length; }
+  /** Efface les deux traînées pour éviter leur mélange entre des circuits ou des thèmes différents. */
   clearTrails(): void { this.trails.A.clear(); this.trails.B.clear(); }
+  /** Efface les traînées et les voitures mémorisées comme tombées lors d’une nouvelle scène. */
   clear(): void { this.clearTrails(); this.fallen.clear(); }
 
+  /** Actualise et dessine les trajectoires en distinguant la vitesse normale et l’accélération. */
   drawTrails(ctx: Ctx, state: GameState, time: number, serverNow: number, reduced: boolean): void {
     for (const team of ['A', 'B'] as const) {
       const car = state.cars[team], trail = this.trails[team];
@@ -50,6 +61,7 @@ export class NeonVehicles {
     }
   }
 
+  /** Fabrique puis conserve le modèle de voiture de l’équipe pour le thème courant. */
   private body(team: Team): HTMLCanvasElement {
     let canvas = this.bodies.get(team);
     if (canvas) return canvas;
@@ -101,6 +113,7 @@ export class NeonVehicles {
     this.bodies.set(team, canvas); return canvas;
   }
 
+  /** Dessine les variantes miniature, Grand Prix et Castagne dans leur texture de voiture. */
   private racerBody(c:Ctx,team:Team,theme:CircuitTheme):void {
     const color=TEAM_COLOR[team],toy=theme==='toy',classic=theme==='classic';
     // All silhouettes retain the same collision envelope and a readable forward nose.
@@ -145,9 +158,10 @@ export class NeonVehicles {
     else{c.fillRect(-10,-1.5,1,3);c.fillRect(-8,-1.5,1,3);}
   }
 
+  /** Affiche la voiture et son réacteur tout en respectant sa chute, ses dégâts et ses effets actifs. */
   draw(ctx: Ctx, car: Car, time: number, serverNow: number, reduced: boolean, effects: Effect[]): void {
     const color = TEAM_COLOR[car.team], boost = car.boostUntil > serverNow;
-    const fall = effects.find(e => e.kind === 'fall' && e.team === car.team && car.disabled);
+    const fall = effects.find(/* Retrouve l’animation de chute de cette voiture pour maintenir sa disparition. */ e => e.kind === 'fall' && e.team === car.team && car.disabled);
     if (!car.disabled) this.fallen.delete(car.team);
     if (fall) this.fallen.add(car.team);
     let scale = 1, alpha = car.disabled ? .35 : 1, drop = 0;

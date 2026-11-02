@@ -1,13 +1,20 @@
-/** Lecture des sons. AudioPlan.ts choisit les signaux ; AudioAssets.ts référence les fichiers. */
+/**
+ * Lit les sons du jeu, mélange effets, ambiance et musique, et coupe les boucles lors des interruptions.
+ * Liens : server/types.ts, client-table/view.ts, client-table/AudioAssets.ts, client-table/AudioPlan.ts.
+ * Référencé par client-table/Renderer.ts, client-table/main.ts, scripts/audio.ts.
+ */
 import type { GameState,Vec2 } from '../server/types.js';
 import type { View } from './view.js';
 import { AUDIO_ASSETS,type AudioAsset } from './AudioAssets.js';
 import { AudioTimeline,CueGate,DEFAULT_AUDIO,audioSettings,AUDIO_STORAGE_KEY,type AudioSettings } from './AudioPlan.js';
 
+/** Regroupe la source audio, son volume et sa position stéréo pour leur gestion commune. */
 type Voice={source:AudioScheduledSourceNode;gain:GainNode;pan:StereoPannerNode};
+/** Précise qu’une voix utilise un extrait décodé pouvant être lu en boucle. */
 type Loop=Voice&{source:AudioBufferSourceNode};
+/** Borne la valeur dans l’intervalle autorisé. */
 const clamp=(n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
-/** One table speaker mix. Small clean signals are synthesized; physical textures are files. */
+/** Lit les sons du jeu, mélange effets, ambiance et musique, et coupe les boucles lors des interruptions. */
 export class TableAudio {
   settings:AudioSettings={...DEFAULT_AUDIO};
   private audio:AudioContext|null=null;
@@ -39,16 +46,19 @@ export class TableAudio {
   private failures=0;
   private resync=false;
   private slingSentAt=-Infinity;
+  /** Expose l’état de lecture et les compteurs de voix pour vérifier les ressources audio. */
   get diagnostics(){return{state:this.audio?.state??'locked',decoded:this.buffers.size,failed:this.failures,voices:this.voices.size,loops:this.loops.size+this.retiring.size,music:this.musicPlaying};}
+  /** Recharge les préférences audio locales en conservant des valeurs valides. */
   restore(storage:Pick<Storage,'getItem'>):void{
     try{this.settings=audioSettings(JSON.parse(storage.getItem(AUDIO_STORAGE_KEY)??'null'));}catch{this.settings={...DEFAULT_AUDIO};}
   }
+  /** Met à jour les volumes et leur sauvegarde puis applique le nouveau mélange. */
   configure(next:Partial<AudioSettings>,storage?:Pick<Storage,'setItem'>):void {
     this.settings=audioSettings({...this.settings,...next});
     try{storage?.setItem(AUDIO_STORAGE_KEY,JSON.stringify(this.settings));}catch{/* Local audio still works. */}
     this.mix();if(!this.settings.enabled)this.stop();
   }
-  /** Retried on real pointer/keyboard interactions; a blocked first resume is recoverable. */
+  /** Prépare le contexte audio et la musique au premier geste autorisé par le navigateur. */
   unlock():void {
     this.musicBlocked=false;
     try{
@@ -60,17 +70,20 @@ export class TableAudio {
         for(const bus of Object.values(this.buses))bus.connect(this.master);
         this.mix();
       }
-      if(this.audio.state==='suspended')void this.audio.resume().catch(()=>{});
+      if(this.audio.state==='suspended')void this.audio.resume().catch(/* Laisse une autorisation audio refusée sans bloquer l’interface du jeu. */ ()=>{});
       if(this.settings.enabled&&!this.loading)this.loading=this.loadAssets();
     }catch{/* Web Audio is optional. */}
   }
+  /** Télécharge et décode les fichiers audio tout en tolérant une ressource indisponible. */
   private async loadAssets():Promise<void>{
-    await Promise.all((Object.entries(AUDIO_ASSETS) as [AudioAsset,string][]).filter(([id])=>id!=='music').map(async([id,url])=>{
+    await Promise.all((Object.entries(AUDIO_ASSETS) as [AudioAsset,string][]).filter(/* Réserve le décodage Web Audio aux effets, la musique étant lue séparément. */ ([id])=>id!=='music').map(/* Télécharge et décode l’extrait tout en comptant une erreur sans interrompre les autres sons. */ async([id,url])=>{
       try{const response=await fetch(url);if(!response.ok)throw Error('audio');const buffer=await this.audio!.decodeAudioData(await response.arrayBuffer());this.buffers.set(id,buffer);}
       catch{this.failures++;}
     }));
   }
+  /** Vérifie que la lecture est autorisée par le navigateur, le volume, la connexion et la visibilité. */
   private available():boolean{return !!this.audio&&this.audio.state==='running'&&this.settings.enabled&&this.focused&&this.online;}
+  /** Applique les volumes des trois groupes et l’atténuation temporaire de l’ambiance. */
   private mix():void {
     if(!this.audio||!this.master||!this.buses)return;
     const t=this.audio.currentTime,duck=t<this.duckUntil;
@@ -79,15 +92,20 @@ export class TableAudio {
     this.buses.ambience.gain.setTargetAtTime(this.settings.ambience*(duck?.42:1),t,.12);
     this.buses.music.gain.setTargetAtTime(this.settings.music*(duck?.3:1),t,.12);
   }
+  /** Réduit brièvement l’ambiance pour laisser ressortir un signal de jeu important. */
   private duck():void{if(this.audio){this.duckUntil=this.audio.currentTime+.65;this.mix();}}
+  /** Branche une source sur son volume, sa position stéréo et le groupe sonore choisi. */
   private output(source:AudioScheduledSourceNode,volume:number,x=960,bus:'effects'|'ambience'='effects'):Voice {
     const c=this.audio!,gain=c.createGain(),pan=c.createStereoPanner();gain.gain.value=volume;pan.pan.value=clamp((x/1920-.5)*.9,-.45,.45);
     source.connect(gain).connect(pan).connect(this.buses![bus]);return{source,gain,pan};
   }
+  /** Déconnecte les nœuds d’une voix terminée pour libérer les ressources audio. */
   private dispose(v:Voice):void{try{v.source.disconnect();v.gain.disconnect();v.pan.disconnect();}catch{/* Already stopped. */}}
+  /** Enregistre une voix active et organise son retrait lorsque la lecture se termine. */
   private keep(v:Voice):void {
-    this.voices.add(v);v.source.onended=()=>{this.voices.delete(v);this.dispose(v);};
+    this.voices.add(v);v.source.onended=/* Retire la voix terminée et libère ses nœuds audio. */ ()=>{this.voices.delete(v);this.dispose(v);};
   }
+  /** Produit un signal simple avec une enveloppe douce et une éventuelle variation de fréquence. */
   private tone(freq:number,duration=.1,volume=.09,x=960,delay=0,to?:number,type:OscillatorType='sine'):void {
     if(!this.available()||this.settings.effects===0||this.voices.size>=14)return;
     const c=this.audio!,start=c.currentTime+delay,end=start+duration,osc=c.createOscillator();osc.type=type;osc.frequency.setValueAtTime(freq,start);
@@ -95,13 +113,15 @@ export class TableAudio {
     const v=this.output(osc,0,x);v.gain.gain.setValueAtTime(.0001,start);v.gain.gain.exponentialRampToValueAtTime(Math.max(.0001,volume),start+.005);v.gain.gain.exponentialRampToValueAtTime(.0001,end);
     this.keep(v);osc.start(start);osc.stop(end+.015);
   }
-  private notes(notes:number[],x=960,volume=.085,step=.085):void{notes.forEach((n,i)=>this.tone(n,.15,volume,x,i*step));}
+  /** Programme une courte suite de notes pour un signal de départ ou de changement d’état. */
+  private notes(notes:number[],x=960,volume=.085,step=.085):void{/* Programme chaque note avec son décalage dans le signal musical. */ notes.forEach((n,i)=>this.tone(n,.15,volume,x,i*step));}
+  /** Lit un extrait décodé avec son volume, sa position et sa vitesse de lecture. */
   private sample(id:AudioAsset,volume:number,x=960,rate=1):boolean{
     const buffer=this.buffers.get(id);if(!buffer||!this.available()||this.settings.effects===0||this.voices.size>=14)return false;
     const source=this.audio!.createBufferSource();source.buffer=buffer;source.playbackRate.value=rate;
     const v=this.output(source,volume,x);this.keep(v);source.start();return true;
   }
-  /** Feedback happens once on confirmation. Similar simultaneous impacts share one voice. */
+  /** Associe le retour de jeu à un son ponctuel en limitant les répétitions inutiles. */
   // Sons ponctuels des actions : clics, bonus, impacts, pose et réparation.
   feedback(kind:string,position?:Partial<Vec2>):void {
     if(!this.available()||this.phase==='PAUSED'&&!['ui','pause','resume'].includes(kind))return;
@@ -149,17 +169,20 @@ export class TableAudio {
       case 'ghost':this.tone(300,.25,.05,x,0,650);break;
     }
   }
+  /** Signale immédiatement une action locale pour éviter de doubler son son à la confirmation réseau. */
   uiCommand(message:{type:string;[key:string]:unknown}):void {
     if(message.type==='Slingshot')this.slingSentAt=performance.now();
     if(['StartGame','StartTutorial','TutorialRace','StartTangibleTest','BeginRace','GenerateTrack','Reset','NewGame','Pause','ToggleDriveMode','TestToggle','Power'].includes(message.type)||message.type==='PadHold'&&message.on===true)this.feedback('ui');
   }
+  /** Crée, ajuste ou arrête une boucle sonore identifiée par son rôle dans la scène. */
   private loop(key:string,id:AudioAsset,volume:number,rate=1,x=960,bus:'effects'|'ambience'='effects'):void {
     const c=this.audio!;let loop=this.loops.get(key);
     if(volume<=0||!this.available()){if(loop){this.retiring.add(loop);loop.gain.gain.setTargetAtTime(0,c.currentTime,.045);try{loop.source.stop(c.currentTime+.2);}catch{}this.loops.delete(key);}return;}
     if(!loop){const buffer=this.buffers.get(id);if(!buffer)return;const source=c.createBufferSource();source.buffer=buffer;source.loop=true;loop=this.output(source,0,x,bus) as Loop;
-      this.loops.set(key,loop);const owned=loop;source.onended=()=>{this.retiring.delete(owned);this.dispose(owned);};source.start();}
+      this.loops.set(key,loop);const owned=loop;source.onended=/* Retire la boucle arrêtée après sa transition de volume. */ ()=>{this.retiring.delete(owned);this.dispose(owned);};source.start();}
     loop.gain.gain.setTargetAtTime(volume,c.currentTime,.08);loop.source.playbackRate.setTargetAtTime(rate,c.currentTime,.09);loop.pan.pan.setTargetAtTime(clamp((x/1920-.5)*.9,-.45,.45),c.currentTime,.08);
   }
+  /** Fait suivre à la musique l’état du jeu et le réglage de son volume. */
   private musicMix(wanted:boolean):void {
     this.musicWanted=wanted;
     if(!wanted){if(this.music&&!this.music.paused){this.music.pause();this.musicPlaying=false;}return;}
@@ -167,11 +190,13 @@ export class TableAudio {
     if(!this.music){
       const media=new Audio(AUDIO_ASSETS.music);media.loop=true;media.preload='none';this.music=media;
       this.musicNode=this.audio!.createMediaElementSource(media);this.musicNode.connect(this.buses!.music);
+      /** Marque la musique indisponible si son élément de lecture signale une erreur. */
       media.addEventListener('error',()=>{this.failures++;this.musicPlaying=false;this.musicFailed=true;});
     }
-    if(this.music.paused&&!this.musicPlaying){this.musicPlaying=true;void this.music.play().then(()=>{if(!this.musicWanted){this.music?.pause();this.musicPlaying=false;}}).catch(()=>{this.musicPlaying=false;this.musicBlocked=true;});}
+    if(this.music.paused&&!this.musicPlaying){this.musicPlaying=true;void this.music.play().then(/* Coupe une lecture démarrée trop tard lorsque la scène ne demande déjà plus de musique. */ ()=>{if(!this.musicWanted){this.music?.pause();this.musicPlaying=false;}}).catch(/* Retient le refus de lecture de musique pour attendre un nouveau geste du navigateur. */ ()=>{this.musicPlaying=false;this.musicBlocked=true;});}
   }
   // Ambiances continues : moteurs, électricité, tension du lance-pierre et musique.
+  /** Actualise les signaux temporels, moteurs, champs électriques et tensions à partir de l’état affiché. */
   update(view:Pick<View,'state'|'theme'|'sling'|'now'>,localNow=performance.now()):void {
     const s=view.state;if(!s)return;
     if(localNow-this.lastUpdate<40)return;this.lastUpdate=localNow;
@@ -185,7 +210,7 @@ export class TableAudio {
       const car=s.cars[team],speed=clamp(Math.abs(car.speed)/260,0,1.4),running=race&&cyber&&!car.disabled&&car.respawnUntil<=view.now()&&this.settings.effects>0;
       this.loop(`engine-${team}`,'reactor',running?.018+speed*.048:0,.75+speed*.65,car.pos.x);
     }
-    const field=race&&Object.values(s.tangibles).some(t=>t.active&&t.status==='placed'&&t.kind==='pylon');
+    const field=race&&Object.values(s.tangibles).some(/* Détecte un pilier actif qui nécessite une ambiance électrique continue. */ t=>t.active&&t.status==='placed'&&t.kind==='pylon');
     this.loop('electric','electric',field&&this.settings.effects>0?.025:0,.85);
     const atmosphere=view.theme==='scrap'&&['LOBBY','MAP','READY','RACE'].includes(s.phase);
     this.loop('ambience','ambience',atmosphere&&this.settings.ambience>0?.26:0,1,960,'ambience');
@@ -200,15 +225,22 @@ export class TableAudio {
       (this.tension.source as OscillatorNode).frequency.setTargetAtTime(190+pull*230,this.audio!.currentTime,.05);this.tension.gain.gain.setTargetAtTime(.008+pull*.012,this.audio!.currentTime,.035);
     }else this.stopTension();
   }
+  /** Arrête la voix continue du lance-pierre et libère ses nœuds. */
   private stopTension():void{if(this.tension){try{this.tension.source.stop();}catch{}this.dispose(this.tension);this.tension=null;}}
+  /** Arrête les voix et les boucles lorsque la scène ne doit plus produire de son. */
   stop():void {
     for(const v of this.voices){try{v.source.stop();}catch{}this.dispose(v);}this.voices.clear();
     for(const v of [...this.loops.values(),...this.retiring]){try{v.source.stop();}catch{}this.dispose(v);}this.loops.clear();this.retiring.clear();this.stopTension();this.musicMix(false);this.stopped=true;
   }
+  /** Suit la visibilité de la page pour couper les sons et resynchroniser la reprise. */
   focus(on:boolean):void{if(on&&!this.focused)this.resync=true;this.focused=on;if(!on)this.stop();this.mix();}
+  /** Suit la connexion du jeu pour arrêter les sons pendant une coupure. */
   connection(on:boolean):void{if(on&&!this.online)this.resync=true;this.online=on;if(!on)this.stop();this.mix();}
+  /** Joue un exemple court pour régler le volume depuis les paramètres. */
   preview():void{this.unlock();this.notes([660,880]);this.sample('light1',.3,960);}
 }
 export const tableAudio=new TableAudio();
+/** Prépare le contexte audio et la musique au premier geste autorisé par le navigateur. */
 export function unlock():void{tableAudio.unlock();}
+/** Transmet un événement à l’instance audio commune de la table. */
 export function playFeedback(kind:string,position?:Partial<Vec2>):void{tableAudio.feedback(kind,position);}

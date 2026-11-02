@@ -1,4 +1,8 @@
-/** Point d’entrée de la table : paramètres HTML, clavier, réseau et boucle de rendu. */
+/**
+ * Initialise la table et relie les paramètres HTML, le clavier, le réseau, l’audio et la boucle de dessin.
+ * Liens : client-table/index.html, server/layout.ts, client-shared/net.ts, client-table/Renderer.ts,
+ * server/types.ts et les utilitaires importés ci-dessous.
+ */
 import type { ServerMessage } from '../server/types.js';
 import { createControls } from '../client-shared/controls.js';
 import { StateSync, connectWs } from '../client-shared/net.js';
@@ -19,6 +23,7 @@ const statusEl = document.getElementById('status') as HTMLDivElement;
 const LOGICAL_W = 1920;
 const LOGICAL_H = 1080;
 
+/** Ajuste la résolution du canvas et la position des paramètres à la taille réelle de la fenêtre. */
 function resizeCanvas(): void {
   const fit = Math.min(window.innerWidth / LOGICAL_W, window.innerHeight / LOGICAL_H);
   const resolution = Math.min(2, fit * Math.min(window.devicePixelRatio ?? 1, 2));
@@ -43,13 +48,14 @@ const ctx = canvas.getContext('2d')!;
 
 // ── State, view and modules ───────────────────────────────────────────────────
 const sync = new StateSync();
-const view = createView(() => sync.now());
+const view = createView(/* Fournit à la vue l’heure recalée sur le serveur. */ () => sync.now());
 const renderer = new Renderer(ctx);
 try{tableAudio.restore(window.localStorage);}catch{/* Audio preferences are optional. */}
 const urlParams = new URLSearchParams(location.search);
 view.tutorialMode='table';
 // Themes are a local display setting: switching never sends a command or restarts a race.
 const themeOptions = document.getElementById('theme-options')!;
+// Construit les aperçus de thèmes conservés dans les paramètres de développement.
 for (const theme of THEMES) {
   const button = document.createElement('button'); button.type = 'button';
   button.className = 'theme-option'; button.dataset.theme = theme.id;
@@ -58,8 +64,9 @@ for (const theme of THEMES) {
   for (const color of theme.colors) { const chip = document.createElement('i'); chip.style.background = color; swatch.append(chip); }
   const name = document.createElement('strong'); name.textContent = theme.name;
   const detail = document.createElement('small'); detail.textContent = theme.detail;
-  button.append(swatch, name, detail); button.addEventListener('click', () => selectTheme(theme.id)); themeOptions.append(button);
+  button.append(swatch, name, detail); /* Applique le thème choisi dans les outils de développement. */ button.addEventListener('click', () => selectTheme(theme.id)); themeOptions.append(button);
 }
+/** Applique la palette aux couches Canvas et aux paramètres HTML sans redémarrer la partie. */
 function selectTheme(id: ThemeId, persist=true): void {
   view.theme = id; try { if(persist)saveTheme(window.localStorage, id); } catch { /* Display preference still applies. */ }
   document.body.dataset.theme = id; canvas.dataset.theme = id;
@@ -72,18 +79,23 @@ selectTheme('scrap',false);
 view.debug.on = false;
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
 view.reducedMotion = motionPreference.matches || urlParams.get('motion') === '0';
+/** Suit la préférence du navigateur pour réduire les animations sans modifier la course. */
 motionPreference.addEventListener('change', e => { view.reducedMotion = e.matches || urlParams.get('motion') === '0'; });
 
 const conn = connectWs('/ws', {
+  /** Masque le statut de coupure et autorise à nouveau l’audio après connexion. */
   onOpen: () => { statusEl.hidden = true; tableAudio.connection(true); },
+  /** Affiche la reconnexion, relâche les contacts et arrête les sons de la connexion perdue. */
   onClose: () => { tableAudio.connection(false); statusEl.textContent = 'Connexion perdue · Reconnexion…'; statusEl.hidden = false; gestures.releaseAll(); },
   onMessage: handleMessage,
 });
+/** Signale l’action locale à l’audio puis transmet la commande au serveur. */
 const sendTable=(m:{type:string}&Record<string,unknown>)=>{tableAudio.uiCommand(m);conn.send(m);};
 const controls = createControls(sendTable);
 const gestures = new GestureRecognizer(canvas, view, sendTable);
 
 // Paramètres de séance : accueil, difficulté, tours et chronomètre.
+/** Demande le retour à l’accueil puis referme le panneau des paramètres. */
 document.getElementById('settings-home')!.addEventListener('click',()=>{conn.send({type:'Reset'});pcTools.open=false;});
 const difficultyInput=document.getElementById('race-difficulty') as HTMLSelectElement;
 const lapsInput=document.getElementById('race-laps') as HTMLInputElement;
@@ -91,10 +103,15 @@ const timerInput=document.getElementById('race-timer') as HTMLInputElement;
 const minutesInput=document.getElementById('race-minutes') as HTMLInputElement;
 const timerDuration=document.getElementById('timer-duration')!;
 const raceOptions=document.getElementById('race-options')!;
+/** Envoie le niveau de difficulté sélectionné au serveur. */
 difficultyInput.addEventListener('change',()=>conn.send({type:'RaceSettings',difficulty:difficultyInput.value}));
+/** Envoie le nombre de tours uniquement lorsque le champ est valide. */
 lapsInput.addEventListener('change',()=>{if(lapsInput.checkValidity())conn.send({type:'RaceSettings',lapsToWin:Number(lapsInput.value)});});
+/** Envoie la durée choisie seulement lorsque le champ est valide ou que le chronomètre est désactivé. */
 const sendTimer=()=>{if(!timerInput.checked||minutesInput.checkValidity())conn.send({type:'RaceSettings',sessionMaxSeconds:timerInput.checked?Math.round(Number(minutesInput.value)*60):0});};
-timerInput.addEventListener('change',()=>{timerDuration.hidden=!timerInput.checked;sendTimer();});minutesInput.addEventListener('change',()=>{if(timerInput.checked)sendTimer();});
+/** Affiche la durée seulement lorsque le chronomètre est activé puis transmet le réglage. */
+timerInput.addEventListener('change',()=>{timerDuration.hidden=!timerInput.checked;sendTimer();});/* Transmet la durée modifiée si le chronomètre est déjà utilisé. */ minutesInput.addEventListener('change',()=>{if(timerInput.checked)sendTimer();});
+/** Répercute les réglages du serveur dans le menu sans écraser un champ en cours de saisie. */
 function syncRaceOptions(): void {
   const s=view.state;if(!s)return;
   raceOptions.hidden=!!s.tutorial||s.phase==='RESULT';
@@ -109,7 +126,8 @@ function syncRaceOptions(): void {
 // Choix de conduite et simulations conservés pour le lancement de développement.
 const driveOptions=document.getElementById('drive-options')!;
 const driveButtons={A:document.getElementById('drive-A')!,B:document.getElementById('drive-B')!};
-for(const team of ['A','B'] as const)driveButtons[team].addEventListener('click',()=>conn.send({type:'ToggleDriveMode',team}));
+for(const team of ['A','B'] as const)/* Demande le changement de conduite de l’équipe choisie dans le menu de développement. */ driveButtons[team].addEventListener('click',()=>conn.send({type:'ToggleDriveMode',team}));
+/** Affiche les réglages de conduite seulement dans le lancement de développement et les phases compatibles. */
 function syncDriveOptions(): void {
   const s=view.state;driveOptions.hidden=!s?.developerTools||!['LOBBY','READY','RACE','PAUSED'].includes(s.phase)||s.sessionMode==='tangibles-test';
   for(const team of ['A','B'] as const){const mode=s?.driveMode[team]??'auto';driveButtons[team].textContent=`${team==='A'?'Cyan':'Rose'} · ${mode==='auto'?'AUTO':'PÉDALE'}`;driveButtons[team].setAttribute('aria-pressed',String(mode==='pedal'));}
@@ -123,6 +141,7 @@ const sim2 = document.getElementById('sim2') as HTMLButtonElement;
 const simHint = document.getElementById('sim-hint') as HTMLSpanElement;
 const showSimulation = urlParams.get('sim') === '1' || window.matchMedia('(pointer: fine)').matches;
 let simKind: 'slingshot' | 'boost' | null = null;
+/** Choisit le geste simulé et synchronise ses boutons lorsque les outils de développement l’autorisent. */
 const setSim = (k: 'slingshot' | 'boost' | null): void => {
   if(k&&!view.state?.developerTools)return;
   simKind = simKind === k ? null : k;
@@ -132,11 +151,15 @@ const setSim = (k: 'slingshot' | 'boost' | null): void => {
   sim2.setAttribute('aria-pressed', String(simKind === 'boost'));
   gestures.simulate(simKind);
 };
+/** Sélectionne le lance-pierre simulé pour l’essai à la souris. */
 sim3.addEventListener('click', () => setSim('slingshot'));
+/** Sélectionne l’accélération simulée pour l’essai à la souris. */
 sim2.addEventListener('click', () => setSim('boost'));
+/** Referme les paramètres lors d’un contact effectué hors du panneau. */
 document.addEventListener('pointerdown',event=>{if(pcTools.open&&event.target instanceof Node&&!pcTools.contains(event.target))pcTools.open=false;});
+/** Annule une simulation de geste lorsque son tiroir de paramètres est refermé. */
 pcTools.addEventListener('toggle', () => { if (!pcTools.open && simKind) setSim(null); });
-gestures.onSimChange = (hint) => {
+gestures.onSimChange = /* Actualise la consigne de simulation et relâche son bouton après usage ou refus du geste. */ (hint) => {
   simHint.textContent = hint;
   // The gesture was consumed (or failed): leave simulation mode
   if (!hint || hint.startsWith('Aucune') || hint.startsWith('Écart')) {
@@ -149,10 +172,13 @@ gestures.onSimChange = (hint) => {
 const testBar = document.getElementById('testbar') as HTMLDivElement;
 const testInvincible = document.getElementById('test-invincible') as HTMLButtonElement;
 const testItems = document.getElementById('test-items') as HTMLButtonElement;
+/** Demande l’invincibilité uniquement dans le lancement de développement. */
 testInvincible.addEventListener('click', () =>
   view.state?.developerTools&&conn.send({ type: 'TestToggle', flag: 'invincible', on: !view.state?.testMode.invincible }));
+/** Demande les stocks libres uniquement dans le lancement de développement. */
 testItems.addEventListener('click', () =>
   view.state?.developerTools&&conn.send({ type: 'TestToggle', flag: 'allItems', on: !view.state?.testMode.allItems }));
+/** Affiche les aides de test uniquement dans les modes qui les acceptent. */
 function syncTestBar(): void {
   const st = view.state;
   const racing = st?.phase === 'RACE' || st?.phase === 'PAUSED';
@@ -168,26 +194,34 @@ function syncTestBar(): void {
 
 // Son : volumes du menu et déverrouillage audio au premier contact.
 window.addEventListener('pointerdown',unlock,{capture:true});
+/** Profite du premier appui clavier pour autoriser l’audio sans répéter l’ouverture du contexte. */
 window.addEventListener('keydown',e=>{if(!e.repeat)unlock();},{capture:true});
+/** Joue un clic discret pour les boutons et les tiroirs de l’interface HTML. */
 document.addEventListener('click',e=>{if(e.target instanceof Element&&e.target.closest('button,summary'))playFeedback('ui');},{capture:true});
 const audioToggle=document.getElementById('audio-enabled') as HTMLButtonElement;
 const audioRanges={effects:document.getElementById('audio-effects') as HTMLInputElement,ambience:document.getElementById('audio-ambience') as HTMLInputElement,music:document.getElementById('audio-music') as HTMLInputElement};
+/** Reporte les préférences de l’instance audio dans les boutons et les curseurs. */
 function syncAudioSettings():void{
   audioToggle.setAttribute('aria-pressed',String(tableAudio.settings.enabled));audioToggle.textContent=tableAudio.settings.enabled?'Son activé':'Son coupé';
   for(const key of ['effects','ambience','music'] as const)audioRanges[key].value=String(Math.round(tableAudio.settings[key]*100));
 }
+/** Applique le réglage audio demandé en tolérant un stockage local inaccessible. */
 function changeAudio(value:Parameters<typeof tableAudio.configure>[0]):void{
   try{tableAudio.configure(value,window.localStorage);}catch{tableAudio.configure(value);}syncAudioSettings();
 }
+/** Bascule le son de la table sans modifier séparément les volumes mémorisés. */
 audioToggle.addEventListener('click',()=>changeAudio({enabled:!tableAudio.settings.enabled}));
-for(const key of ['effects','ambience','music'] as const)audioRanges[key].addEventListener('input',()=>changeAudio({[key]:Number(audioRanges[key].value)/100}));
+for(const key of ['effects','ambience','music'] as const)/* Convertit le curseur de volume en proportion pour le groupe audio concerné. */ audioRanges[key].addEventListener('input',()=>changeAudio({[key]:Number(audioRanges[key].value)/100}));
+/** Joue l’exemple sonore demandé pour régler les volumes. */
 document.getElementById('audio-test')!.addEventListener('click',()=>tableAudio.preview());syncAudioSettings();
 // Desktop local multiplayer adapter. It mirrors the table controls without
 // leaking keyboard rules into the game engine: Q/D and ←/→ are the two
 // extremes of the same continuous steering input; cars keep moving.
 const down = new Set<string>();
 const repairHeld: Record<'A' | 'B', boolean> = { A: false, B: false };
+/** Normalise les lettres du clavier sans changer les noms des touches spéciales. */
 const keyName = (e: KeyboardEvent) => e.key.length === 1 ? e.key.toLowerCase() : e.key;
+/** Convertit les touches maintenues en commande de conduite pour l’équipe concernée. */
 function sendSteer(team: 'A' | 'B'): void {
   const steer = team === 'A'
     ? (down.has('q') ? -1 : down.has('d') ? 1 : 0)
@@ -201,10 +235,12 @@ function sendSteer(team: 'A' | 'B'): void {
 // Match the touch-control heartbeat while a steering key is held. Do not emit
 // neutral keyboard frames otherwise: table and desktop controls share the same
 // protocol and must not overwrite one another.
+/** Renouvelle les commandes clavier maintenues avec la même cadence que le pilotage tactile. */
 window.setInterval(() => {
   if (down.has('q') || down.has('d') || down.has('z')) sendSteer('A');
   if (down.has('ArrowLeft') || down.has('ArrowRight') || down.has('ArrowUp')) sendSteer('B');
 }, 100);
+/** Transforme l’appui simultané des deux touches de partenaires en maintien des pads de réparation. */
 function updateKeyboardRepair(team: 'A' | 'B'): void {
   const active = team === 'A' ? down.has('a') && down.has('p') : down.has('m') && down.has('c');
   if (active === repairHeld[team]) return;
@@ -212,6 +248,7 @@ function updateKeyboardRepair(team: 'A' | 'B'): void {
   conn.send({ type: 'PadHold', team, role: 'pilot', on: active });
   conn.send({ type: 'PadHold', team, role: 'copilot', on: active });
 }
+/** Traduit les touches de jeu en commandes sans détourner la saisie des champs de paramètres. */
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof Element && e.target.closest('button, summary, input, textarea, select, a')) return;
   const key = keyName(e);
@@ -230,12 +267,14 @@ window.addEventListener('keydown', (e) => {
   // A+P / M+C repair chord win when the two players press in rhythm.
   if ((key === 'a' || key === 'm') && !e.repeat) {
     const team: 'A' | 'B' = key === 'a' ? 'A' : 'B';
+    /** Attend brièvement le second partenaire pour distinguer POWER de la combinaison de réparation. */
     window.setTimeout(() => {
       const combo = team === 'A' ? down.has('a') && down.has('p') : down.has('m') && down.has('c');
       if (!combo && down.has(key)) controls.power(team);
     }, 120);
   }
 });
+/** Relâche la direction, la pédale ou le pad correspondant à la touche levée. */
 window.addEventListener('keyup', (e) => {
   const key = keyName(e);
   down.delete(key);
@@ -249,16 +288,19 @@ window.addEventListener('keyup', (e) => {
 // Fullscreen is local to this screen; native Escape exits it without pausing the session.
 const fullscreen = document.getElementById('fullscreen') as HTMLButtonElement;
 const fullscreenNotice = document.getElementById('fullscreen-notice')!;
+/** Relâche les gestes et les touches lors d’un changement de taille ou de plein écran. */
 function releaseInputs(): void {
   gestures.releaseAll(); down.clear();
   sendSteer('A'); sendSteer('B'); updateKeyboardRepair('A'); updateKeyboardRepair('B');
 }
+/** Actualise le bouton de plein écran et annule les entrées devenues imprécises après le redimensionnement. */
 function syncFullscreen(): void {
   const active = !!document.fullscreenElement;
   fullscreen.setAttribute('aria-pressed', String(active));
   fullscreen.querySelector('span')!.textContent = active ? 'Quitter le plein écran' : 'Plein écran';
   releaseInputs();
 }
+/** Bascule le plein écran et conserve un message lisible si le navigateur le refuse. */
 fullscreen.addEventListener('click', async () => {
   fullscreenNotice.hidden = true;
   releaseInputs();
@@ -272,21 +314,26 @@ fullscreen.addEventListener('click', async () => {
   }
 });
 document.addEventListener('fullscreenchange', syncFullscreen);
+/** Ferme les paramètres et sort du plein écran sur Échap sans mettre la course en pause. */
 window.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   pcTools.open = false;
-  if (document.fullscreenElement) void document.exitFullscreen().catch(() => { /* Native Escape may already have exited. */ });
+  if (document.fullscreenElement) void document.exitFullscreen().catch(/* Ignore un refus de sortie lorsque le navigateur a déjà quitté le plein écran lui-même. */ () => { /* Native Escape may already have exited. */ });
   // Keep the browser's default Escape behaviour and reserve Space for the game pause.
 }, true);
 
+/** Coupe les sons et relâche les gestes lorsque la page devient cachée. */
 document.addEventListener('visibilitychange', () => { tableAudio.focus(!document.hidden); if (document.hidden) gestures.releaseAll(); });
 
 // Round-trip time (server echo), used by the debug overlay (task 18)
+/** Mesure régulièrement le trajet aller-retour vers le serveur avec un Ping. */
 setInterval(() => conn.send({ type: 'Ping' }), 2000);
 
 // Retours du serveur : état synchronisé, changements de phase et effets visuels.
+/** Distribue les états, les phases et les retours du serveur entre la vue, les effets et les paramètres. */
 function handleMessage(msg: ServerMessage): void {
   switch (msg.type) {
+    // Réconcilie le snapshot avec la piste mémorisée, les gestes locaux et les réglages de l’interface.
     case 'State': {
       const prev = view.state;
       view.state = sync.apply(msg.state, msg.t);
@@ -325,6 +372,7 @@ function handleMessage(msg: ServerMessage): void {
       syncTestBar();
       break;
     }
+    // Nettoie les interactions et effets devenus inutiles lors du changement d’écran.
     case 'PhaseChange':
       view.effects.length = 0;
       recordGesture(view.debug.gestures, 'phase', { phase: msg.phase });
@@ -341,6 +389,7 @@ function handleMessage(msg: ServerMessage): void {
         }
       }
       break;
+    // Transforme les événements du serveur en retours visuels, sonores et messages de dessin.
     case 'Feedback':
       recordGesture(view.debug.gestures, 'server', { kind: msg.kind, team: msg.team, x: Math.round(msg.x), y: Math.round(msg.y) });
       if (msg.kind === 'dividerTooShort' || msg.kind === 'dividerOutOfZone') {
@@ -364,12 +413,14 @@ function handleMessage(msg: ServerMessage): void {
       if (msg.kind === 'mapAccepted') view.mapNotice = null;
       playFeedback(msg.kind,{x:msg.x,y:msg.y});
       break;
+    // Actualise la mesure du délai aller-retour affichée dans les outils de développement.
     case 'Pong':
       view.debug.rtt = Date.now() - msg.clientT;
       break;
   }
 }
 
+/** Choisit la durée d’affichage du retour visuel associé à l’événement. */
 function effectDuration(kind: string): number {
   switch (kind) {
     case 'stoneHit': return 700;
@@ -393,6 +444,7 @@ let fpsAcc = 0, fpsFrames = 0;
 const renderSamples: number[] = [];
 let metricsAt = 0;
 
+/** Actualise l’horloge visuelle, dessine la scène et collecte les mesures de rendu utiles au diagnostic. */
 function drawFrame(now: number): void {
   const frameMs = now - lastFrame;
   lastFrame = now;
@@ -424,7 +476,7 @@ function drawFrame(now: number): void {
   if (renderSamples.length > 120) renderSamples.shift();
   if (now - metricsAt > 1000) {
     metricsAt = now;
-    const sorted = [...renderSamples].sort((a, b) => a - b);
+    const sorted = [...renderSamples].sort(/* Trie les temps de rendu pour mesurer le percentile des frames lentes. */ (a, b) => a - b);
     canvas.dataset.renderMedianMs = sorted[Math.floor(sorted.length / 2)].toFixed(2);
     canvas.dataset.renderP95Ms = sorted[Math.floor((sorted.length - 1) * .95)].toFixed(2);
     canvas.dataset.fps = view.debug.fps.toFixed(1);
@@ -437,6 +489,7 @@ function drawFrame(now: number): void {
   requestAnimationFrame(drawFrame);
 }
 
+/** Affiche les mesures et les dernières décisions de reconnaissance lorsque le diagnostic est autorisé. */
 function drawDebug(): void {
   const d = view.debug;
   ctx.save();
@@ -455,11 +508,12 @@ function drawDebug(): void {
   ctx.fillRect(LOGICAL_W / 2 - 375, 36, 750, 4 + lines.length * 16);
   ctx.fillStyle = '#cfd8e3';
   ctx.textAlign = 'left';
+  /** Affiche les dernières entrées de journal dans la surcouche de diagnostic. */
   lines.forEach((entry, i) => ctx.fillText(formatGestureEntry(entry).slice(0, 110), LOGICAL_W / 2 - 368, 50 + i * 16));
   ctx.restore();
 }
 
-/** F4 (or the end of a game with `?log=1`): save the session journal as CSV. */
+/** Télécharge le journal des contacts et des décisions de la session de test. */
 function downloadGestureLog(): void {
   try {
     const link = document.createElement('a');

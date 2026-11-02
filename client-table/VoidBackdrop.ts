@@ -1,11 +1,17 @@
+/**
+ * Dessine le fond matriciel et ses plans de lumière du thème Néon.
+ * Liens : server/layout.ts, client-table/neon.ts.
+ * Référencé par client-table/Renderer.ts.
+ */
 import { LOGICAL_W as W, LOGICAL_H as H } from '../server/layout.js';
 import { glow, noise } from './neon.js';
 
-/** Deep digital void. Fog and code are rasterised once; only their planes drift. */
+/** Dessine le fond matriciel et ses plans de lumière du thème Néon. */
 export class VoidBackdrop {
   private fog: HTMLCanvasElement | null = null;
   private rain: HTMLCanvasElement[] = [];
 
+  /** Prépare les textures de brouillard et de lumière du fond matriciel. */
   private prepare(): void {
     this.fog = document.createElement('canvas'); this.fog.width = 960; this.fog.height = 540;
     const c = this.fog.getContext('2d')!;
@@ -35,6 +41,7 @@ export class VoidBackdrop {
     }
   }
 
+  /** Anime les plans du fond Néon tout en stabilisant la scène si les animations sont réduites. */
   draw(ctx: CanvasRenderingContext2D, time: number, reducedMotion: boolean, quiet: boolean): void {
     if (!this.fog) this.prepare();
     const t = reducedMotion ? 0 : time / 1000;

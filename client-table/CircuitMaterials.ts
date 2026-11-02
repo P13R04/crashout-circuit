@@ -1,7 +1,12 @@
+/**
+ * Fabrique et met en cache les textures des pistes Miniature, Grand Prix et Castagne.
+ * Liens : client-table/neon.ts, client-table/themes.ts.
+ * Référencé par client-table/CircuitTrack.ts, client-table/ThemeWorld.ts.
+ */
 import { noise } from './neon.js';
 import type { CircuitTheme } from './themes.js';
 const textures=new Map<string,HTMLCanvasElement>();
-/** Small authored material tiles, baked once. Surface noise never moves or shimmers. */
+/** Crée la texture du thème demandé une seule fois puis réutilise le canvas correspondant. */
 export function circuitMaterial(kind:CircuitTheme|'grass'|'desk'|'festival'):HTMLCanvasElement {
   const cached=textures.get(kind);if(cached)return cached;
   const canvas=document.createElement('canvas');canvas.width=canvas.height=256;
@@ -24,6 +29,7 @@ export function circuitMaterial(kind:CircuitTheme|'grass'|'desk'|'festival'):HTM
   if(kind==='desk')for(let x=0;x<256;x+=4){c.fillStyle='#a6cbb008';c.fillRect(x,0,.7,256);}
   textures.set(kind,canvas);return canvas;
 }
+/** Remplit la surface avec la texture répétée du matériau sélectionné. */
 export function materialWash(c:CanvasRenderingContext2D,kind:Parameters<typeof circuitMaterial>[0],alpha=1):void {
   const pattern=c.createPattern(circuitMaterial(kind),'repeat');if(!pattern)return;
   c.save();c.globalAlpha*=alpha;c.fillStyle=pattern;c.fillRect(0,0,1920,1080);c.restore();

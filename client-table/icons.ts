@@ -1,8 +1,14 @@
-/** Canvas glyphs share one stroke style and do not depend on emoji fonts. */
+/**
+ * Dessine les pictogrammes vectoriels des commandes et les petits repères de doigts partagés par les
+ * interfaces.
+ * Référencé notamment par client-table/HUD.ts, client-table/Renderer.ts, client-table/TutorialGestures.ts.
+ */
+/** Limite les pictogrammes dessinables aux formes définies dans le module. */
 export type Icon = 'power' | 'play' | 'pause' | 'home' | 'replay' | 'touch' | 'mouse'
   | 'track' | 'draw' | 'check' | 'target' | 'wrench' | 'wheel' | 'pedal' | 'flag'
   | 'clock' | 'trophy' | 'wait' | 'bolt' | 'heart';
 
+/** Dessine le pictogramme demandé dans le repère et la couleur fournis. */
 export function icon(ctx: CanvasRenderingContext2D, name: Icon, x: number, y: number, size: number, color = '#fff'): void {
   ctx.save(); ctx.translate(x, y); ctx.scale(size / 24, size / 24);
   ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.8;
@@ -65,7 +71,7 @@ export function icon(ctx: CanvasRenderingContext2D, name: Icon, x: number, y: nu
   ctx.stroke(); ctx.restore();
 }
 
-/** Contact dots: the gesture recipe, never a second activation button. */
+/** Dessine un petit groupe de doigts pour indiquer le geste attendu. */
 export function contacts(ctx: CanvasRenderingContext2D, count: number, x: number, y: number, color: string): void {
   ctx.save(); ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = 2;
   for (let i = 0; i < count; i++) {

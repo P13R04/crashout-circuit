@@ -1,8 +1,9 @@
 /**
- * Composition des écrans et des couches graphiques de la table.
- * render choisit les couches ; drawLobby, drawMap et drawResult dessinent
- * les écrans. HUD.ts porte les postes et TutorialOverlay.ts les consignes.
- * Les textures et décors sont délégués aux classes de chaque thème.
+ * Compose les écrans de la table et choisit les couches de piste, d’objets, de voitures et d’interface selon
+ * la phase.
+ * Liens : server/layout.ts, server/types.ts, client-table/HUD.ts, client-table/view.ts,
+ * client-table/icons.ts et les utilitaires importés ci-dessous.
+ * Référencé par client-table/GestureRecognizer.ts, client-table/main.ts, scripts/acceptance.ts.
  */
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, PLAY_AREA, TANGIBLE_DEPOT, NEUTRAL_CONTROLS, SETTINGS_BUTTON, inTangibleDepot } from '../server/layout.js';
@@ -29,8 +30,10 @@ import { drawTangibleTouchPreview } from './TangibleTouchPreview.js';
 import { glow, NEON, plate } from './neon.js';
 import { activeMapTeam, inMapAnchor, mapStrokeEndpoints, MAP_ANCHOR_RADIUS } from '../server/mapCreation.js';
 
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
 
+// Définit les surfaces touchables des écrans et commandes communes utilisées aussi par GestureRecognizer.ts.
 export const START_TABLE_BUTTON = { x: LOGICAL_W / 2 - 260, y: 548, w: 520, h: 88 };
 export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: 660, w: 250, h: 58 };
 export const START_TUTORIAL_BUTTON = { x: LOGICAL_W / 2 - 260, y: 408, w: 520, h: 88 };
@@ -41,7 +44,7 @@ export const DRIVE_MODE_BUTTONS = { A: SETTINGS_BUTTON, B: SETTINGS_BUTTON };
 export const DRIVE_MODE_BUTTON = DRIVE_MODE_BUTTONS.A;
 export const MAP_GENERATE_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
 export const RACE_START_BUTTON = { x: LOGICAL_W / 2 - 180, y: LOGICAL_H / 2 - 44, w: 360, h: 88 };
-/** Reset button located in the vertical middle on the far right edge of the screen. */
+/** Compose les écrans de la table et choisit les couches de piste, d’objets, de voitures et d’interface selon la phase. */
 
 export class Renderer {
   private hud = new HUD();
@@ -56,6 +59,7 @@ export class Renderer {
   private scrapVehicles = new NeonVehicles('scrap', this.fallen);
   private scrapObjects = new NeonObjects('scrap');
   private worlds = new Map<CircuitTheme, { track:CircuitTrack; backdrop:ThemeWorld; vehicles:NeonVehicles; objects:NeonObjects }>();
+  /** Prépare puis conserve les couches du thème Miniature, Grand Prix ou Castagne demandé. */
   private world(id:CircuitTheme) {
     let world=this.worlds.get(id);
     if(!world){world={track:new CircuitTrack(id),backdrop:new ThemeWorld(id),vehicles:new NeonVehicles(id,this.fallen),objects:new NeonObjects(id)};this.worlds.set(id,world);}
@@ -68,13 +72,15 @@ export class Renderer {
   private time = 0;
   private reducedMotion = false;
 
+  /** Conserve le contexte Canvas utilisé pour composer les écrans de la table. */
   constructor(private ctx: Ctx) {}
 
+  /** Expose les compteurs de caches et de trajectoires utilisés pour les diagnostics de rendu. */
   get stats(): { trackBuilds: number; trailPoints: number } {
-    return { trackBuilds: this.track.builds + this.scrapTrack.builds + [...this.worlds.values()].reduce((n,w)=>n+w.track.builds,0), trailPoints: this.theme === 'scrap' ? this.scrapVehicles.trailPoints : this.theme === 'neon' ? this.vehicles.trailPoints : this.world(this.theme).vehicles.trailPoints };
+    return { trackBuilds: this.track.builds + this.scrapTrack.builds + [...this.worlds.values()].reduce(/* Additionne les constructions de revêtement des trois thèmes de circuit supplémentaires. */ (n,w)=>n+w.track.builds,0), trailPoints: this.theme === 'scrap' ? this.scrapVehicles.trailPoints : this.theme === 'neon' ? this.vehicles.trailPoints : this.world(this.theme).vehicles.trailPoints };
   }
 
-  /** Complete table frame; the caller owns the logical-to-device transform. */
+  /** Compose les couches de l’écran correspondant à la phase sans modifier les règles de la partie. */
   render(view: View): void {
     const state = view.state;
     const ctx = this.ctx;
@@ -101,6 +107,7 @@ export class Renderer {
 
     if(building && state.track){
       vehicles.clear();
+      /** Fournit à la révélation le revêtement du thème sans y dessiner le départ final trop tôt. */
       this.creation.draw(ctx,state.track,state.trackVersion,building,now,this.reducedMotion,look.accent,view.strokes.values(),
         ()=>track.draw(ctx,state.track!,state.trackVersion,this.time,this.reducedMotion,false));
       if(buildFrame?.stage==='lock')for(const team of ['A','B'] as const)vehicles.draw(ctx,state.cars[team],this.time,now,this.reducedMotion,[]);
@@ -135,6 +142,7 @@ export class Renderer {
 
   }
 
+  /** Affiche les feux rouges puis verts au-dessus des voitures réparées avant leur reprise. */
   private drawRespawnLights(ctx: Ctx,state: GameState,now:number):void {
     for(const car of Object.values(state.cars)){
       const until=car.respawnUntil;if(!until||car.disabled||now>until+650)continue;
@@ -146,6 +154,7 @@ export class Renderer {
     }
   }
 
+  /** Affiche le pictogramme du seul bonus dont le geste est actuellement armé sur la table. */
   private drawExpectedBonus(ctx: Ctx,state: GameState):void {
     if(state.tutorial||!['RACE','PAUSED'].includes(state.phase))return;
     const expected=armedPickup(state);if(!expected)return;
@@ -154,6 +163,7 @@ export class Renderer {
     drawItemIcon(ctx,expected.kind,0,-8,14,'#ffce66');contacts(ctx,expected.kind==='boost'?2:3,0,18,'#ffce66');ctx.restore();
   }
 
+  /** Dessine la réserve des tangibles et la zone de commandes neutres. */
   private drawNeutralZones(ctx: Ctx,state: GameState): void {
     ctx.save();
     for(const r of [TANGIBLE_DEPOT,NEUTRAL_CONTROLS]){
@@ -173,6 +183,7 @@ export class Renderer {
   }
 
 
+  /** Dessine l’accueil et ses boutons sans révéler les modes de test lors d’une séance publique. */
   private drawLobby(ctx: Ctx, developerTools=false): void {
     ctx.save(); ctx.textAlign = 'center';
     for (const rot of [0, Math.PI]) {
@@ -200,7 +211,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  /** Red warning circle during the telegraph, with a label oriented to the targeted team. */
+  /** Dessine les pierres en vol et les avertissements d’impact destinés aux deux équipes. */
   private drawStones(ctx: Ctx, state: GameState, now: number): void {
     const total = state.params.stoneTelegraphS * 1000;
     for (const s of state.stones) {
@@ -230,11 +241,13 @@ export class Renderer {
     }
   }
 
-  /** The stone in flight: a lit disc that rises and falls above its ground shadow. */
+  /** Interpole la pierre entre sa poche et sa cible avec une petite hauteur visuelle. */
   private drawProjectile(ctx: Ctx, from: Vec2, to: Vec2, launchedAt: number, impactAt: number, now: number): void {
     const span = Math.max(1, impactAt - launchedAt);
     const f = Math.max(0, Math.min(1, (now - launchedAt) / span));
+    /** Calcule un point intermédiaire sur la trajectoire dessinée. */
     const at = (k: number) => ({ x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k });
+    /** Calcule le léger arc visuel qui donne du relief au projectile sans modifier son impact. */
     const lift = (k: number) => 22 * Math.sin(Math.PI * k);
     const p = at(f), h = lift(f);
     ctx.save();
@@ -260,8 +273,8 @@ export class Renderer {
   }
 
   /**
-   * Slingshot while it is being drawn: the elastic from the two fork fingers to the
-   * pulled pouch, the dotted flight line, the landing zone and the strength.
+   * Dessine la fourche, l’élastique et la cible du lance-pierre en préparation.
+   * L’élastique relie les deux appuis à la poche ; les pointillés, la cible et la jauge prévisualisent le tir.
    */
   private drawSling(ctx: Ctx, state: GameState, sling: SlingPreview | null): void {
     if (!sling) return;
@@ -334,7 +347,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  /** "Vehicle out of order" text next to the car, oriented to its team's nearest player. */
+  /** Indique la panne au poste de la voiture concernée avec une lecture orientée vers ses joueurs. */
   private drawDisabledAlerts(ctx: Ctx, state: GameState): void {
     for (const team of ['A', 'B'] as Team[]) {
       const car = state.cars[team];
@@ -347,6 +360,7 @@ export class Renderer {
 
   // ─── Overlays ─────────────────────────────────────────────────────────────
 
+  /** Affiche les feux de départ une fois les postes du tutoriel prêts. */
   private drawCountdown(ctx: Ctx, state: GameState, now: number): void {
     if(tutorialIdentifying(state))return;
     const left = state.sessionStartAt - now;
@@ -380,6 +394,7 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** Dessine le bouton commun de pause ou de reprise. */
   private drawPauseButton(ctx: Ctx, label: string): void {
     const b = PAUSE_BUTTON;
     const look=themeLook(this.theme);ctx.save();ctx.fillStyle=look.panel+'ee';ctx.strokeStyle=look.line;ctx.lineWidth=2;
@@ -389,6 +404,7 @@ export class Renderer {
   }
 
 
+  /** Dessine un bouton de validation à pictogramme avec les couleurs du thème. */
   private drawAction(ctx: Ctx, b: { x: number; y: number; w: number; h: number }, glyph: Icon, color = '#00e5ff'): void {
     ctx.save();ctx.fillStyle=themeLook(this.theme).button+'f5';ctx.strokeStyle=color;ctx.lineWidth=4;
     glow(ctx, b.x + b.w / 2, b.y + b.h / 2, b.w * .7, color, .16, .35);
@@ -397,6 +413,7 @@ export class Renderer {
     ctx.shadowBlur = 0; icon(ctx, glyph, b.x + b.w / 2, b.y + b.h / 2, 42, color); ctx.restore();
   }
 
+  /** Affiche le départ lorsque le circuit est prêt à être lancé. */
   private drawRaceReady(ctx: Ctx, state: GameState): void {
     // Keep the generated track and the four stations visible before launching.
     this.drawAction(ctx, RACE_START_BUTTON, 'play');
@@ -410,11 +427,13 @@ export class Renderer {
     }
   }
 
+  /** Assombrit la piste et affiche la commande de reprise. */
   private drawPaused(ctx: Ctx): void {
     ctx.save(); ctx.fillStyle = 'rgba(4,8,31,0.62)'; ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
     this.drawAction(ctx, RACE_START_BUTTON, 'play'); ctx.restore();
   }
 
+  /** Présente le résultat aux deux côtés de la table avec le retour à l’accueil. */
   private drawResult(ctx: Ctx, state: GameState): void {
     ctx.save(); ctx.fillStyle = 'rgba(4,8,31,0.88)'; ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
     const winner = state.winner;
@@ -443,6 +462,7 @@ export class Renderer {
   }
 
   // Création : tracés, points de raccord, repères des joueurs et validation.
+  /** Dessine les points, les tracés et les repères de joueurs pendant la création du circuit. */
   private drawMap(ctx: Ctx, state: GameState, view: View): void {
     const t = performance.now();
     const motion = this.reducedMotion ? 0 : this.time;
@@ -480,7 +500,7 @@ export class Renderer {
 
       // Only the active team's direction is shown. Curved chevrons leave the divider
       // towards its half-plane, without suggesting that the straight divider is a road.
-      if (team && ![...view.strokes.values()].some(s => s.team === team && !s.done)) {
+      if (team && ![...view.strokes.values()].some(/* Repère le tracé actif de l’équipe pour choisir ses indications de dessin. */ s => s.team === team && !s.done)) {
         const [from, to] = state.mapTargets[team];
         this.drawMapArrow(ctx, from, to, TEAM_COLOR[team], motion);
       }
@@ -503,9 +523,10 @@ export class Renderer {
       }
 
       if (team) {
-        const activeStroke = [...view.strokes.values()].find(s => s.team === team && !s.done);
+        const activeStroke = [...view.strokes.values()].find(/* Retrouve le trait en cours afin d’en déduire son raccord d’arrivée. */ s => s.team === team && !s.done);
         const [from, to] = mapStrokeEndpoints(activeStroke?.pts[0], ...state.mapTargets[team]);
         const nearTarget = activeStroke && inMapAnchor(activeStroke.pts[activeStroke.pts.length - 1], to);
+        /** Associe le point de raccord au libellé P1 ou P2 affiché sur la carte. */
         const label = (p: Vec2) => inMapAnchor(p, state.mapDivider![0]) ? 'P1' : 'P2';
         this.drawMapAnchor(ctx, from, label(from), 'DÉPART', TEAM_COLOR[team], team, !activeStroke, t);
         this.drawMapAnchor(ctx, to, label(to), activeStroke ? nearTarget ? 'RELÂCHEZ ICI' : 'ARRIVÉE' : 'DÉPART', TEAM_COLOR[team], team, true, t);
@@ -522,12 +543,13 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** Présente la consigne de dessin adaptée à l’équipe active et aux éventuels refus. */
   private drawMapInstructions(ctx: Ctx, state: GameState, view: View, t: number): void {
     const placed = !!state.mapTargets;
     const team = placed ? activeMapTeam(state) : view.pendingDivider.length ? 'B' : 'A';
     const step = placed ? team === 'A' ? 2 : team === 'B' ? 3 : 4 : view.pendingDivider.length ? 1 : 0;
     const color = team ? TEAM_COLOR[team] : '#3ddc84';
-    const waiting = view.dividerSubmitting || [...view.strokes.values()].some(s => s.submitting);
+    const waiting = view.dividerSubmitting || [...view.strokes.values()].some(/* Indique qu’une validation de tracé attend encore le retour du serveur. */ s => s.submitting);
     const action = waiting ? 'Validation…' : !placed ? `Placez P${step + 1}` : team ? 'Reliez les deux points' : 'Créer le circuit';
     const notice = view.mapNotice && view.mapNotice.until > t ? view.mapNotice : null;
     for (const [y, rotation] of [[120, Math.PI], [960, 0]]) {
@@ -554,6 +576,7 @@ export class Renderer {
     }
   }
 
+  /** Dessine un raccord avec son rôle de départ, d’arrivée ou de point déjà relié. */
   private drawMapAnchor(ctx: Ctx, point: Vec2, label: string, role: string, color: string, team: Team, pulse: boolean, t: number): void {
     const done = role.startsWith('✓');
     const arriving = role === 'ARRIVÉE' || role === 'RELÂCHEZ ICI';
@@ -573,6 +596,7 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** Montre le sens du tracé attendu avec une flèche qui suit la courbe de démonstration. */
   private drawMapArrow(ctx: Ctx, from: Vec2, to: Vec2, color: string, t: number): void {
     const dx = to.x - from.x, dy = to.y - from.y;
     const len = Math.hypot(dx, dy) || 1;
@@ -586,6 +610,7 @@ export class Renderer {
     if (normal.y > 0) bow = Math.min(bow, (820 - mid.y) / normal.y);
     if (normal.y < 0) bow = Math.min(bow, (260 - mid.y) / normal.y);
     const control = { x: mid.x + normal.x * bow, y: mid.y + normal.y * bow };
+    /** Calcule un point intermédiaire sur la trajectoire dessinée. */
     const at = (u: number): Vec2 => ({
       x: (1-u)*(1-u)*from.x + 2*(1-u)*u*control.x + u*u*to.x,
       y: (1-u)*(1-u)*from.y + 2*(1-u)*u*control.y + u*u*to.y,

@@ -1,4 +1,9 @@
-/** Downloaded assets; provenance and processing are recorded beside the files. */
+/**
+ * Associe les identifiants audio aux fichiers WAV et MP3 regroupés dans client-table/audio.
+ * Liens : client-table/audio/sources.json.
+ * Référencé par client-table/Sound.ts, scripts/audio.ts.
+ */
+/** Associe chaque effet et la musique au fichier distribué avec le jeu. */
 export const AUDIO_ASSETS={
   light1:new URL('./audio/metal-light-1.wav',import.meta.url).href,
   light2:new URL('./audio/metal-light-2.wav',import.meta.url).href,
@@ -15,4 +20,5 @@ export const AUDIO_ASSETS={
   ambience:new URL('./audio/factory-ambience.mp3',import.meta.url).href,
   music:new URL('./audio/glutton-music.mp3',import.meta.url).href,
 };
+/** Limite les extraits audio aux identifiants du catalogue de fichiers. */
 export type AudioAsset=keyof typeof AUDIO_ASSETS;
