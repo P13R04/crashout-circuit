@@ -544,10 +544,10 @@ export class GestureRecognizer {
     }
     if (c.zone === 'simsling') this.releaseSimSling(c);
     if (this.slingContacts?.includes(c)){
-      if(this.slingPuller===c.id)this.releaseSling(e.type!=='pointerup');
-      // Un lance-pierre n’est actif que tant que ses trois doigts sont réellement posés :
-      // lever un appui fixe annule immédiatement la fourche au lieu de laisser un geste bloqué.
-      else this.releaseSling(true);
+      // Les navigateurs ne garantissent pas l’ordre des pointerup : après une traction
+      // valide, relâcher l’un des trois doigts (la poche ou un appui) tire donc aussitôt.
+      // Sans poche identifiée, la prise est simplement abandonnée.
+      this.releaseSling(this.slingPuller===null || e.type!=='pointerup');
     }else if(e.type!=='pointerup')this.bonusRecent=this.bonusRecent.filter(/* Retire le contact qui ne doit plus rejoindre une autre prise de bonus. */ v=>v!==c);
     if (c.zone === 'free') this.scheduleEvaluation();
   }
@@ -819,7 +819,9 @@ export class GestureRecognizer {
     }
     if (cancelled || !state || !sling || sling.idle || !sling.shot.valid) return;
     const anchor = { x: (sling.anchors[0].x + sling.anchors[1].x) / 2, y: (sling.anchors[0].y + sling.anchors[1].y) / 2 };
-    const team = this.slingTeam;
+    // La couleur de prévisualisation suit les deux premiers doigts, mais seul le stock
+    // réellement armé peut être consommé au moment du tir.
+    const team = this.armedTeam('slingshot', anchor);
     if (team){this.bonusCommitted=!state.tutorial;this.controls.gesture('slingshot', team, anchor, { ...sling.pouch });}
   }
 
