@@ -1,30 +1,38 @@
+/**
+ * Dessine la piste Néon et ses bordures énergétiques en conservant le revêtement dans un cache.
+ * Liens : server/types.ts, client-table/neon.ts, client-shared/trackVisibility.ts.
+ * Référencé par client-table/Renderer.ts, client-table/ScrapTrack.ts, scripts/visuals.ts.
+ */
 import type { TrackGeometry, Vec2 } from '../server/types.js';
 import { glow, NEON } from './neon.js';
 
 import { visibleTrackEdges } from '../client-shared/trackVisibility.js';
 export { visibleTrackEdges } from '../client-shared/trackVisibility.js';
 
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
 
-/** Static deck and open edges are cached; live LEDs only stroke two reusable paths. */
+/** Dessine la piste Néon et ses bordures énergétiques en conservant le revêtement dans un cache. */
 export class NeonTrack {
   private layer: HTMLCanvasElement | null = null;
   private version = -1;
+  private finishVisible = true;
   private paths: Path2D[] = [];
   private endLights: Vec2[] = [];
   builds = 0;
 
-  draw(ctx: Ctx, track: TrackGeometry, version: number, time: number, reduced: boolean): void {
+  /** Réutilise le revêtement Néon puis anime ses bords énergétiques selon l’heure visuelle. */
+  draw(ctx: Ctx, track: TrackGeometry, version: number, time: number, reduced: boolean, finishVisible = true): void {
     const canvas = ctx.canvas;
     const resize = !this.layer || this.layer.width !== canvas.width || this.layer.height !== canvas.height;
     // The server increments trackVersion for every geometry change, including final relaxation.
-    if (resize || this.version !== version) {
+    if (resize || this.version !== version || this.finishVisible !== finishVisible) {
       this.layer ??= document.createElement('canvas');
       if (resize) { this.layer.width = canvas.width; this.layer.height = canvas.height; }
       const c = this.layer.getContext('2d')!;
       c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, this.layer.width, this.layer.height);
       c.scale(this.layer.width / 1920, this.layer.height / 1080);
-      this.prepareEdges(track); this.paint(c, track);
+      this.prepareEdges(track); this.paint(c, track, finishVisible); this.finishVisible=finishVisible;
       this.version = version; this.builds++;
     }
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(this.layer!, 0, 0); ctx.restore();
@@ -42,9 +50,10 @@ export class NeonTrack {
     for (const p of this.endLights) glow(ctx, p.x, p.y, 22, NEON.ice, reduced ? .25 : .23 + .07 * Math.sin(time / 650));
   }
 
+  /** Construit les tracés des portions de bordure visibles hors des croisements. */
   private prepareEdges(track: TrackGeometry): void {
     const visible = visibleTrackEdges(track);
-    this.paths = [track.outerEdge, track.innerEdge].map((edge, e) => {
+    this.paths = [track.outerEdge, track.innerEdge].map(/* Prépare chaque bordure lumineuse en interrompant son tracé aux croisements. */ (edge, e) => {
       const path = new Path2D();
       for (let i = 0; i < edge.length; i++) {
         const j = (i + 1) % edge.length;
@@ -56,6 +65,7 @@ export class NeonTrack {
     });
   }
 
+  /** Dessine une bande lumineuse épaisse le long des points fournis. */
   private band(ctx: Ctx, track: TrackGeometry, color: string | CanvasGradient, extra = 0): void {
     ctx.strokeStyle = color; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     const c = track.centerline;
@@ -66,7 +76,8 @@ export class NeonTrack {
     }
   }
 
-  private paint(ctx: Ctx, track: TrackGeometry): void {
+  /** Prépare le relief, le revêtement et les marques statiques de la piste Néon. */
+  private paint(ctx: Ctx, track: TrackGeometry, finishVisible: boolean): void {
     // The extrusion is dark and below the edge; the upper drivable band stays exact.
     ctx.save(); ctx.translate(0, 9); this.band(ctx, track, '#01030b', 9); ctx.restore();
     this.band(ctx, track, '#080e1b', 5);
@@ -79,15 +90,18 @@ export class NeonTrack {
       for (const path of this.paths) ctx.stroke(path);
     }
     // Quiet centre marks distinguish the road from the code drifting beneath it.
-    const center = new Path2D(); track.centerline.forEach((p, i) => i ? center.lineTo(p.x, p.y) : center.moveTo(p.x, p.y)); center.closePath();
+    const center = new Path2D(); /* Construit le chemin central utilisé par les couches du revêtement. */ track.centerline.forEach((p, i) => i ? center.lineTo(p.x, p.y) : center.moveTo(p.x, p.y)); center.closePath();
     ctx.setLineDash([5, 22]); ctx.strokeStyle = '#c4e4ff16'; ctx.lineWidth = 1; ctx.stroke(center); ctx.setLineDash([]);
-    for (const cp of track.checkpoints.slice(1)) {
+    if(finishVisible)for (const cp of track.checkpoints.slice(1)) {
       ctx.save(); ctx.translate(cp.pos.x, cp.pos.y); ctx.rotate(Math.atan2(cp.normal.y, cp.normal.x) - Math.PI / 2);
       ctx.strokeStyle = '#b5d5e628'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(-4, -6); ctx.lineTo(2, 0); ctx.lineTo(-4, 6); ctx.stroke(); ctx.restore();
     }
+    this.endLights=[];
+    if(!finishVisible)return;
     const sl = track.startLine;
     let index = 0, distance = Infinity;
+    /** Retrouve le repère de chaussée le plus proche du départ. */
     track.centerline.forEach((p, i) => { const d = Math.hypot(p.x - sl.pos.x, p.y - sl.pos.y); if (d < distance) { distance = d; index = i; } });
     const half = track.widths[index] / 2, cells = Math.max(2, Math.ceil(half * 2 / 9)), cell = half * 2 / cells;
     ctx.save(); ctx.translate(sl.pos.x, sl.pos.y); ctx.rotate(Math.atan2(sl.normal.y, sl.normal.x));
@@ -100,6 +114,6 @@ export class NeonTrack {
       ctx.beginPath(); ctx.moveTo(side * (half + 4), -14); ctx.lineTo(side * (half + 8), -14); ctx.lineTo(side * (half + 8), 14); ctx.lineTo(side * (half + 4), 14); ctx.stroke();
     }
     ctx.restore();
-    this.endLights = [-1, 1].map(s => ({ x: sl.pos.x + sl.normal.x * (half + 7) * s, y: sl.pos.y + sl.normal.y * (half + 7) * s }));
+    this.endLights = [-1, 1].map(/* Calcule les deux extrémités de la ligne transversale de départ. */ s => ({ x: sl.pos.x + sl.normal.x * (half + 7) * s, y: sl.pos.y + sl.normal.y * (half + 7) * s }));
   }
 }

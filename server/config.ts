@@ -1,3 +1,8 @@
+/**
+ * Charge config.json, complète les valeurs manquantes et calcule les dimensions des tangibles pour la table.
+ * Liens : config.json, server/tangibleGeometry.ts.
+ * Référencé notamment par server/AutomaticPilot.ts, server/GameRules.ts, server/GameServer.ts.
+ */
 import { physicalDimensions } from './tangibleGeometry.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -6,15 +11,16 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Default config values (REQ-8.1, REQ-8.2)
+/** Fournit les valeurs de secours avant la lecture de config.json. */
 const defaults = {
   lapsToWin: 3,
   sessionMaxSeconds: 0,
   hpMax: 100,
   dmgWall: 10,
   dmgArc: 10,
-  dmgStone: 100, // a stone puts a full-HP car out of order (hpMax)
+  dmgStone: 50, // two stones break a full-HP car; see scripts/sling-balance.ts (issue #39)
   invulnAfterHitS: 1,
-  stunStoneS: 1,
+  stunStoneS: 1.5,
   arcSlowFactor: 0.5,
   arcSlowS: 1.5,
   repairHoldS: 2,
@@ -60,12 +66,14 @@ const defaults = {
   logicalHeight: 1080,
 };
 
+/** Décrit les réglages chargés et les dimensions physiques calculées pour la session. */
 export type Config = typeof defaults;
 
+/** Charge le fichier de réglages disponible et complète ses valeurs avec les dimensions physiques calculées. */
 function loadConfig(): Config {
   // Compiled: dist/server/config.js → ../../config.json; source (tsx): server/config.ts → ../config.json
   const configPath = [resolve(__dirname, '../../config.json'), resolve(__dirname, '../config.json')]
-    .find((p) => existsSync(p)) ?? '';
+    .find(/* Retrouve config.json depuis les sources comme depuis le serveur compilé. */ (p) => existsSync(p)) ?? '';
   try {
     const raw = readFileSync(configPath, 'utf-8');
     const overrides = JSON.parse(raw) as Partial<Config>;

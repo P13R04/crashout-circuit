@@ -1,21 +1,30 @@
+/**
+ * Construit le décor Castagne avec ses tribunes, épaves et stands, puis anime les lumières et la soudure.
+ * Liens : client-table/SceneryLayout.ts, client-table/neon.ts.
+ * Référencé par client-table/ThemeWorld.ts.
+ */
 import type { SceneryLayout, SceneryAnchor, VenueFrame } from './SceneryLayout.js';
 import { venuePoint } from './SceneryLayout.js';
 import { glow, plate, noise } from './neon.js';
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx=CanvasRenderingContext2D;
 const TAU=Math.PI*2;
+/** Repère un point de soudure animé dans le décor Castagne. */
 interface SparkSite{x:number;y:number;seed:number;}
+/** Dessine un pneu du décor Castagne avec son volume et ses reflets. */
 function tyre(c:Ctx,x:number,y:number,r:number):void {
   c.fillStyle='#111a18';c.strokeStyle='#6a6d532f';c.lineWidth=1;c.beginPath();c.arc(x,y,r,0,TAU);c.fill();c.stroke();
   c.fillStyle='#3d4032';c.beginPath();c.arc(x,y,r*.43,0,TAU);c.fill();
   c.strokeStyle='#82816859';c.lineWidth=.7;c.beginPath();c.arc(x,y-1,r*.7,Math.PI,Math.PI*2);c.stroke();
 }
 
-/** A rough, occupied demolition festival. Every light belongs to a stage, rig or workshop. */
+/** Construit le décor Castagne avec ses tribunes, épaves et stands, puis anime les lumières et la soudure. */
 export class MayhemFestival {
   private stage:SceneryAnchor|null=null;
   private lamps:VenueFrame[]=[];
   private welds:SparkSite[]=[];
   private smoke:HTMLCanvasElement|null=null;
+  /** Prépare les tribunes, stands, épaves et points lumineux du festival autour de la piste. */
   paint(c:Ctx,layout:SceneryLayout):void {
     this.stage=layout.anchors[0]??null;this.lamps=[];this.welds=[];
     glow(c,0,0,1,'#b8d8ce',0);glow(c,0,0,1,'#d89b4d',0); // prepare the weld texture before animation starts
@@ -54,6 +63,7 @@ export class MayhemFestival {
       }
       this.endSection(c,run[0],run[1]);this.endSection(c,run[run.length-1],run[run.length-2]);
     }
+    /** Place et dimensionne chaque stand du festival selon son emplacement libre. */
     layout.anchors.forEach((p,i)=>{
       c.save();c.translate(p.x,p.y);c.rotate(p.angle);const s=Math.min(1,p.room/(i===0?175:i%3===2?130:150));c.scale(s,s);
       if(i===0)this.paintStage(c);
@@ -70,7 +80,7 @@ export class MayhemFestival {
     }
   }
 
-  /** Timber end deck and braced handrail close the terrace instead of cutting seats in half. */
+  /** Termine la tribune par une structure et des pneus qui évitent la coupure nette. */
   private endSection(c:Ctx,a:VenueFrame,b:VenueFrame):void {
     const front=venuePoint(a,43),next=venuePoint(b,43),rear=venuePoint(a,88),last=venuePoint(b,88);
     c.save();c.fillStyle='#6a6544';c.strokeStyle='#272f23';c.lineWidth=1;c.beginPath();c.moveTo(front.x,front.y);c.lineTo(next.x,next.y);c.lineTo(last.x,last.y);c.lineTo(rear.x,rear.y);c.closePath();c.fill();c.stroke();
@@ -82,6 +92,7 @@ export class MayhemFestival {
     const p=venuePoint(a,37);tyre(c,p.x,p.y,5);c.restore();
   }
 
+  /** Dessine la scène centrale du festival avec ses structures et ses enceintes. */
   private paintStage(c:Ctx):void {
     plate(c,-140,-90,280,174,6,'#20292480');
     plate(c,-135,-94,270,166,4,'#464131','#8a805a');
@@ -111,6 +122,7 @@ export class MayhemFestival {
     c.strokeStyle='#19231f';c.lineWidth=2;c.beginPath();c.moveTo(-75,8);c.bezierCurveTo(10,25,-40,60,70,49);c.stroke();
     for(const x of [-48,44])plate(c,x-20,-2,40,17,2,'#2e3528','#7c7d55');
   }
+  /** Dessine une silhouette de voiture accidentée dans le repère fourni. */
   private wreck(c:Ctx,x:number,y:number,angle:number,color:string):void {
     c.save();c.translate(x,y);c.rotate(angle);
     for(const yy of [-17,12])for(const xx of [-28,16])plate(c,xx,yy,13,7,2,'#101c1a','#6f7152');
@@ -120,6 +132,7 @@ export class MayhemFestival {
     c.fillStyle='#8e6944';c.fillRect(24,-8,10,11);c.fillStyle='#b1a577';c.fillRect(-34,-4,8,2);
     c.strokeStyle='#283d2f80';c.beginPath();c.moveTo(22,-11);c.lineTo(17,-3);c.lineTo(29,4);c.stroke();c.restore();
   }
+  /** Compose un tas de ferraille reconnaissable à partir de plusieurs épaves et pneus. */
   private paintWrecks(c:Ctx):void {
     // A compact salvage pile with actual vehicle silhouettes, not rectangles as confetti.
     this.container(c,-23,-52,0);
@@ -129,12 +142,14 @@ export class MayhemFestival {
       plate(c,x-8,y-8,16,16,2,'#6e6943','#a29a68');c.strokeStyle='#303f2d';c.lineWidth=2;c.beginPath();c.moveTo(x-7,y-4);c.lineTo(x+7,y-4);c.moveTo(x-7,y+4);c.lineTo(x+7,y+4);c.stroke();
     }
   }
+  /** Dessine un conteneur cabossé servant d’élément de stand. */
   private container(c:Ctx,x:number,y:number,kind:number):void {
     c.save();c.translate(x,y);c.rotate(kind?.06:-.05);
     plate(c,-57,-22,114,44,1,'#31382880');plate(c,-59,-25,114,44,1,kind?'#7b8557':'#a4633e','#aa956c');
     c.strokeStyle='#202e2255';c.lineWidth=2;for(let x=-52;x<52;x+=8){c.beginPath();c.moveTo(x,-21);c.lineTo(x,15);c.stroke();}
     c.fillStyle='#c5b57a22';c.fillRect(-52,-22,103,2);c.fillStyle='#342e2180';c.fillRect(14,-6,22,8);c.restore();
   }
+  /** Dessine l’établi de réparation avec ses pièces et ses outils. */
   private paintBench(c:Ctx,x:number,y:number):void {
     plate(c,x-22,y-12,44,27,1,'#1a2821','#a58c5c');
     plate(c,x-18,y-10,36,20,1,'#887651','#c0aa71');
@@ -143,6 +158,7 @@ export class MayhemFestival {
     plate(c,x+26,y+12,15,23,2,'#85724a','#b3a368');
     c.fillStyle='#bac3a0';c.fillRect(x+30,y+15,7,4);
   }
+  /** Dessine un stand de restauration couvert pour peupler le festival. */
   private paintVendor(c:Ctx):void {
     // Striped canvas shelter with guy ropes and a battered catering trailer.
     for(const x of [-89,89])for(const y of [-61,61]){c.strokeStyle='#8b8f6290';c.lineWidth=1;c.beginPath();c.moveTo(x*.82,y*.8);c.lineTo(x,y);c.stroke();tyre(c,x,y,3);}
@@ -154,6 +170,7 @@ export class MayhemFestival {
     for(let x=-35;x<=35;x+=17){c.fillStyle='#c1a76c';c.fillRect(x,59,9,6);}
   }
 
+  /** Anime les ampoules, la scène et les étincelles de soudure en respectant la réduction des animations. */
   draw(c:Ctx,time:number,reduced:boolean):void {
     const t=reduced?0:time,opacity=c.globalAlpha;
     // Warm bulbs and ground-directed floodlights belong to the spectator ring.

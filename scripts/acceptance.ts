@@ -1,7 +1,9 @@
 /**
- * Automated acceptance checks for the server-side rules (run: `npm run test:acceptance`).
- * Covers T-01, T-03 … T-11 without any network or browser; T-02 and the latency
- * figures need the real table and are measured manually (see measures.md).
+ * Vérifie les règles de course, la création, les objets, le tutoriel et les commandes de la console avec un
+ * état et une horloge contrôlés.
+ * Liens : server/GameRules.ts, server/PhysicsLoop.ts, server/MapGenerator.ts, server/layout.ts,
+ * server/geometry.ts et les utilitaires importés ci-dessous.
+ * Lancé depuis les scripts npm de package.json.
  */
 import assert from 'node:assert/strict';
 import { OzMap } from '../client-oz/OzMap.js';
@@ -19,17 +21,22 @@ import { mock } from 'node:test';
 import { GestureRecognizer } from '../client-table/GestureRecognizer.js';
 import { createView } from '../client-table/view.js';
 import { panelOf, localToWorld, chargeZoneTeam, nearestStationTeam, rotationTowardsTeam, CHARGE_ZONE_LOCAL, PLAY_AREA, depotPose } from '../server/layout.js';
+import { TRACK_PRESENTATION_MS } from '../server/trackPresentation.js';
 import { START_TUTORIAL_BUTTON } from '../client-table/Renderer.js';
 import { TUTORIAL_END_BUTTON, tutorialSkipCenter } from '../client-table/TutorialOverlay.js';
 
 const queue: Array<{ name: string; fn?: () => void | Promise<void> }> = [];
+/** Enregistre ou exécute le scénario et l’ajoute au bilan de vérification. */
 function test(name: string, fn: () => void | Promise<void>): void { queue.push({ name, fn }); }
+/** Regroupe les scénarios suivants sous un même titre de résultat. */
 function section(name: string): void { queue.push({ name }); }
 
 // ─── Harness ─────────────────────────────────────────────────────────────────
 
+/** Réunit les règles, la physique et l’horloge du scénario pour les assertions de jeu. */
 interface Rig { state: GameState; rules: GameRules; physics: PhysicsLoop; clock: { now: number }; feedback: string[]; phases: Phase[]; advance(ms: number): void }
 
+/** Prépare l’état, l’horloge et les dépendances contrôlées nécessaires au scénario. */
 function rig(seed = 1): Rig {
   const clock = { now: 1_000_000 };
   const state = createInitialState();
@@ -37,14 +44,19 @@ function rig(seed = 1): Rig {
   const feedback: string[] = [];
   const phases: Phase[] = [];
   const host: RulesHost = {
+    /** Enregistre le retour des règles pour pouvoir vérifier les événements produits. */
     feedback: (kind) => { feedback.push(kind); },
+    /** Applique la phase demandée à l’état contrôlé du test. */
     transition: (phase) => { state.phase = phase; phases.push(phase); },
+    /** Remplace la diffusion réseau inutile dans ce test de règles locales. */
     broadcastFull: () => {},
   };
   let s = seed;
+  /** Produit des tirages reproductibles afin de pouvoir rejouer le même circuit. */
   const rng = () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
-  const rules = new GameRules(state, host, () => clock.now, rng);
-  const physics = new PhysicsLoop(state, rules, () => {}, () => clock.now);
+  const rules = new GameRules(state, host, /* Fournit l’heure contrôlée du scénario au composant qui consulte son horloge. */ () => clock.now, rng);
+  const physics = new PhysicsLoop(state, rules, /* Laisse cette notification sans effet dans le scénario local. */ () => {}, /* Fournit l’heure contrôlée du scénario au composant qui consulte son horloge. */ () => clock.now);
+  /** Fait avancer l’horloge et la simulation pendant la durée demandée. */
   const advance = (ms: number) => {
     const dt = 1 / config.physicsHz;
     for (let t = 0; t < ms; t += dt * 1000) { clock.now += dt * 1000; physics.step(clock.now, dt); }
@@ -52,7 +64,7 @@ function rig(seed = 1): Rig {
   return { state, rules, physics, clock, feedback, phases, advance };
 }
 
-/** Rig already in RACE on the preset circuit, countdown elapsed. */
+/** Prépare une course sur le circuit prédéfini avec les feux de départ déjà écoulés. */
 function raceRig(): Rig {
   const r = rig();
   r.state.phase = 'RACE';
@@ -61,11 +73,12 @@ function raceRig(): Rig {
   return r;
 }
 
+/** Ajoute l’horodatage requis à une commande fabriquée par le test. */
 const msg = <T extends object>(o: T) => ({ t: 0, ...o });
 
 /**
- * A slingshot message that lands on `target`: the stone flies from the pouch through
- * the fork, so the fork sits `range` px before the target and the pouch `pull` px behind it.
+ * Place la fourche et la poche pour que la pierre atteigne la cible du scénario.
+ * La fourche se situe à range pixels avant la cible et la poche à pull pixels derrière la fourche, dans le sens opposé au tir.
  */
 function aim(target: Vec2, pull: number): { anchor: Vec2; pouch: Vec2 } {
   const { range } = slingshotShot({ x: 0, y: 0 }, { x: -pull, y: 0 }, config);
@@ -73,6 +86,7 @@ function aim(target: Vec2, pull: number): { anchor: Vec2; pouch: Vec2 } {
   return { anchor, pouch: { x: anchor.x - pull, y: anchor.y } };
 }
 
+/** Construit un tracé variable mais reproductible entre les deux raccords. */
 function randomStroke(p1: Vec2, p2: Vec2, rnd: () => number): Vec2[] {
   const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
   const dx = p2.x - p1.x, dy = p2.y - p1.y;
@@ -93,12 +107,15 @@ function randomStroke(p1: Vec2, p2: Vec2, rnd: () => number): Vec2[] {
 // ─── T-01 ────────────────────────────────────────────────────────────────────
 
 section('T-01 · MapGenerator');
+/** Vérifie la validité et le temps de génération de cent paires de tracés aléatoires. */
 test('100 random stroke pairs → valid circuit, no self-intersection, each < 3 s', () => {
   let s = 42;
+  /** Produit le prochain tirage de la séquence déterministe du scénario. */
   const rnd = () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
   let worst = 0;
   const methods: Record<string, number> = {};
   for (let i = 0; i < 100; i++) {
+    /** Ajoute une variation aléatoire bornée aux coordonnées du dessin de test. */
     const j = () => (rnd() * 2 - 1) * 150;
     const A1 = { x: 520 + j(), y: 400 + j() * 0.5 }, A2 = { x: 1400 + j(), y: 680 + j() * 0.5 };
     const B1 = { x: 1400 + j(), y: 400 + j() * 0.5 }, B2 = { x: 520 + j(), y: 680 + j() * 0.5 };
@@ -121,7 +138,7 @@ test('100 random stroke pairs → valid circuit, no self-intersection, each < 3 
   console.log(`      worst case ${worst.toFixed(0)} ms; strategies: ${JSON.stringify(methods)}`);
 });
 
-/** Smooth half-stroke from a to b bulging `amp` px sideways (positive = towards +y when a→b goes right). */
+/** Construit un demi-tracé bombé servant de circuit de référence. */
 function bulge(a: Vec2, b: Vec2, amp: number, n = 60): Vec2[] {
   const out: Vec2[] = [];
   for (let i = 0; i <= n; i++) {
@@ -130,8 +147,10 @@ function bulge(a: Vec2, b: Vec2, amp: number, n = 60): Vec2[] {
   }
   return out;
 }
-const distToLoop = (p: Vec2, loop: Vec2[]): number => Math.min(...loop.map(q => Math.hypot(p.x - q.x, p.y - q.y)));
+/** Mesure la distance du point testé à la boucle de référence. */
+const distToLoop = (p: Vec2, loop: Vec2[]): number => Math.min(...loop.map(/* Mesure la distance au point de la boucle de référence. */ q => Math.hypot(p.x - q.x, p.y - q.y)));
 
+/** Vérifie que deux petits tracés conservent leur forme sans être remplacés par le circuit prédéfini. */
 test('issue #3: two ~100 px half-strokes give a circuit through both halves, not the preset', () => {
   const P1 = { x: 560, y: 540 }, P2 = { x: 1360, y: 540 };
   for (const amp of [60, 100, 150, 220]) {
@@ -141,7 +160,7 @@ test('issue #3: two ~100 px half-strokes give a circuit through both halves, not
     assert.ok(!geo.preset && validateGeometry(geo), `amplitude ${amp}`);
     // the circuit stays the drawing: a half is only bulged when the loop would otherwise
     // be undrivable, and then no further than needed (never more than the 150 px minimum)
-    const ys = geo.centerline.map(p => p.y);
+    const ys = geo.centerline.map(/* Extrait la coordonnée à comparer dans la géométrie de référence. */ p => p.y);
     const need = Math.max(amp, 90);
     assert.ok(Math.min(...ys) >= 540 - need - 15 && Math.max(...ys) <= 540 + need + 15,
       `amplitude ${amp}: ${Math.min(...ys).toFixed(0)}..${Math.max(...ys).toFixed(0)}`);
@@ -154,17 +173,20 @@ test('issue #3: two ~100 px half-strokes give a circuit through both halves, not
     assert.ok(Math.hypot(geo.startLine.pos.x - P1.x, geo.startLine.pos.y - P1.y) < 160);
   }
 });
+/** Vérifie la fidélité de la génération sur cent dessins possédant les mêmes raccords. */
 test('issue #3: 100 random drawings with shared anchors never fall back to the preset', () => {
   let s = 7;
+  /** Produit le prochain tirage de la séquence déterministe du scénario. */
   const rnd = () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
   for (let i = 0; i < 100; i++) {
     const len = 360 + rnd() * 540, ang = (rnd() - 0.5) * 0.8;
     const c = { x: 760 + rnd() * 400, y: 440 + rnd() * 200 };
     const P1 = { x: c.x - Math.cos(ang) * len / 2, y: c.y - Math.sin(ang) * len / 2 };
     const P2 = { x: c.x + Math.cos(ang) * len / 2, y: c.y + Math.sin(ang) * len / 2 };
+    /** Construit un demi-circuit échantillonné dans le repère des deux raccords. */
     const half = (a: Vec2, b: Vec2, amp: number): Vec2[] => {
       const L = Math.hypot(b.x - a.x, b.y - a.y), nx = -(b.y - a.y) / L, ny = (b.x - a.x) / L;
-      return Array.from({ length: 61 }, (_, k) => {
+      return Array.from({ length: 61 }, /* Construit un point du demi-tracé avec une ondulation et un bruit reproductible. */ (_, k) => {
         const t = k / 60, d = amp * Math.sin(Math.PI * t) * (1 + 0.15 * Math.sin(6 * t)) + (rnd() - 0.5) * 4;
         return { x: a.x + (b.x - a.x) * t + nx * d, y: a.y + (b.y - a.y) * t + ny * d };
       });
@@ -175,29 +197,32 @@ test('issue #3: 100 random drawings with shared anchors never fall back to the p
     assert.ok(validateGeometry(geo) && !geo.preset, `drawing ${i}`);
   }
 });
+/** Vérifie qu’un dessin difficile est lissé avant d’envisager un circuit de secours. */
 test('issue #3: an undrivable drawing is smoothed, never replaced by the preset', () => {
   const P1 = { x: 560, y: 540 }, P2 = { x: 1360, y: 540 };
   // A: a loop that crosses itself ; B: pinched against the divider in the middle, with a dip across it
   const A = bulge(P1, P2, 170);
   const c = A[30];
-  const loop = Array.from({ length: 25 }, (_, k) => {
+  const loop = Array.from({ length: 25 }, /* Construit la petite boucle qui rend volontairement le dessin difficile à conduire. */ (_, k) => {
     const th = (k / 24) * 2 * Math.PI;
     return { x: c.x + 45 * Math.sin(th), y: c.y - 45 * (1 - Math.cos(th)) };
   });
   const strokeA = [...A.slice(0, 30), ...loop, ...A.slice(31)];
-  const strokeB = bulge(P2, P1, -170).map((p, i) => (i > 24 && i < 36 ? { x: p.x, y: 540 + (i % 2 ? 6 : -8) } : p));
+  const strokeB = bulge(P2, P1, -170).map(/* Ajoute quelques angles serrés au demi-tracé pour éprouver le lissage. */ (p, i) => (i > 24 && i < 36 ? { x: p.x, y: 540 + (i % 2 ? 6 : -8) } : p));
   const geo = generate(strokeA, strokeB, P1, P2, P2, P1);
   assert.notEqual(generationInfo.method, 'preset');
   assert.ok(!geo.preset && validateGeometry(geo));
   // still the players' circuit: both halves are close to it
-  const ds = [...strokeA, ...strokeB].map(p => distToLoop(p, geo.centerline));
-  const mean = ds.reduce((a, d) => a + d, 0) / ds.length;
+  const ds = [...strokeA, ...strokeB].map(/* Mesure l’écart entre chaque point dessiné et la piste conservée. */ p => distToLoop(p, geo.centerline));
+  const mean = ds.reduce(/* Additionne les écarts pour calculer la distance moyenne au dessin. */ (a, d) => a + d, 0) / ds.length;
   assert.ok(mean < 60, `mean distance to the drawing ${mean.toFixed(0)} px`);
 });
+/** Vérifie que les croisements volontaires du dessin restent présents dans la piste générée. */
 test('self-crossing drawings: a figure of eight and a loop-de-loop are kept as drawn', () => {
   const P1 = { x: 560, y: 540 }, P2 = { x: 1360, y: 540 };
+  /** Construit une portion ondulée pour tester les courbes et les croisements du circuit. */
   const wave = (a: Vec2, b: Vec2, amp: number): Vec2[] =>
-    Array.from({ length: 121 }, (_, i) => { const t = i / 120; return { x: a.x + (b.x - a.x) * t, y: 540 + amp * Math.sin(2 * Math.PI * t) }; });
+    Array.from({ length: 121 }, /* Construit un point échantillonné de la courbe utilisée par le scénario. */ (_, i) => { const t = i / 120; return { x: a.x + (b.x - a.x) * t, y: 540 + amp * Math.sin(2 * Math.PI * t) }; });
   // each half crosses the divider once: the two halves, hooked on P1 and P2, make an 8
   const A = wave(P1, P2, -170), B = wave(P2, P1, -170);
   const r = rig();
@@ -214,8 +239,8 @@ test('self-crossing drawings: a figure of eight and a loop-de-loop are kept as d
   assert.equal(crossings.length, 1, 'the circuit crosses itself once');
   assert.ok(crossings[0].sin >= 0.64, 'a clean crossing');
   // fidelity: the circuit is the 8 that was drawn
-  const ds = [...A, ...B].map(p => distToLoop(p, geo.centerline));
-  assert.ok(ds.reduce((a, d) => a + d, 0) / ds.length < 25);
+  const ds = [...A, ...B].map(/* Mesure la fidélité de la piste aux deux tracés avec leurs croisements. */ p => distToLoop(p, geo.centerline));
+  assert.ok(ds.reduce(/* Additionne les écarts pour calculer la distance moyenne au dessin. */ (a, d) => a + d, 0) / ds.length < 25);
   // start line and checkpoints stay clear of the junction (the other branch would trigger them)
   for (const cp of [geo.startLine, ...geo.checkpoints]) {
     assert.ok(Math.hypot(cp.pos.x - crossings[0].at.x, cp.pos.y - crossings[0].at.y) > 130, 'checkpoint away from the junction');
@@ -258,12 +283,13 @@ test('self-crossing drawings: a figure of eight and a loop-de-loop are kept as d
   assert.equal(d.lap >= 1, true, 'completed a lap');
   assert.ok(crossedJunction >= 2, `went through the junction ${crossedJunction} times`);
 });
+/** Vérifie qu’une petite boucle dessinée dans une moitié est conservée et rendue praticable. */
 test('self-crossing drawings: a loop drawn in a half is kept (blown up to a drivable size)', () => {
   const P1 = { x: 560, y: 540 }, P2 = { x: 1360, y: 540 };
   const base = bulge(P1, P2, 150, 160);
   // loop-de-loop going away from the divider: prolate trochoid inserted at x ≈ 960
   const at = 80, c0 = base[at];
-  const loop = Array.from({ length: 61 }, (_, k) => {
+  const loop = Array.from({ length: 61 }, /* Construit une boucle volontaire dans la moitié du joueur pour vérifier sa conservation. */ (_, k) => {
     const th = -Math.PI + (k / 60) * 2 * Math.PI;
     return { x: c0.x + 20 * th - 60 * Math.sin(th), y: c0.y + 60 * (1 + Math.cos(th)) };
   });
@@ -276,8 +302,10 @@ test('self-crossing drawings: a loop drawn in a half is kept (blown up to a driv
   const apex = loop[30];
   assert.ok(distToLoop(apex, geo.centerline) < 90, `the loop is still there (${distToLoop(apex, geo.centerline).toFixed(0)} px from its apex)`);
 });
+/** Compare la piste au dessin en dehors des deux raccords arrondis. */
 test('the circuit is the drawing: ~1 px away from the anchors, only the two tips are rounded', () => {
   let s = 11;
+  /** Produit le prochain tirage de la séquence déterministe du scénario. */
   const rnd = () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
   let farMeans: number[] = [];
   for (let i = 0; i < 60; i++) {
@@ -288,14 +316,15 @@ test('the circuit is the drawing: ~1 px away from the anchors, only the two tips
     const A = bulge(P1, P2, 100 + rnd() * (room - 100)), B = bulge(P2, P1, -(100 + rnd() * (room - 100)));
     const geo = generate(A, B, P1, P2, P2, P1);
     assert.equal(generationInfo.method, 'closed loop union');
-    const far = [...A, ...B].filter(p => Math.hypot(p.x - P1.x, p.y - P1.y) > 140 && Math.hypot(p.x - P2.x, p.y - P2.y) > 140);
-    const ds = far.map(p => distToLoop(p, geo.centerline));
+    const far = [...A, ...B].filter(/* Écarte les pointes de raccord avant de mesurer la fidélité du reste du dessin. */ p => Math.hypot(p.x - P1.x, p.y - P1.y) > 140 && Math.hypot(p.x - P2.x, p.y - P2.y) > 140);
+    const ds = far.map(/* Mesure les écarts du dessin suffisamment loin des raccords arrondis. */ p => distToLoop(p, geo.centerline));
     // (distToLoop uses the 256 vertices: the polyline lies within a few px of them)
     assert.ok(Math.max(...ds) < 14, `drawing ${i}: ${Math.max(...ds).toFixed(0)} px from the circuit`);
-    farMeans = farMeans.concat(ds.reduce((a, d) => a + d, 0) / ds.length);
+    farMeans = farMeans.concat(ds.reduce(/* Additionne les écarts pour calculer la distance moyenne au dessin. */ (a, d) => a + d, 0) / ds.length);
   }
-  assert.ok(farMeans.reduce((a, d) => a + d, 0) / farMeans.length < 5);
+  assert.ok(farMeans.reduce(/* Additionne les erreurs moyennes des dessins de la série. */ (a, d) => a + d, 0) / farMeans.length < 5);
 });
+/** Vérifie que seul le circuit prédéfini porte l’indicateur de secours. */
 test('issue #3: the predefined circuit is flagged, a circuit built on the drawing is not', () => {
   assert.equal(generatePreset().preset, true);
   const fallback = generate([{ x: 0, y: 0 }, { x: 5, y: 5 }], [{ x: 0, y: 0 }, { x: 5, y: 5 }]);
@@ -303,6 +332,7 @@ test('issue #3: the predefined circuit is flagged, a circuit built on the drawin
   const P1 = { x: 600, y: 540 }, P2 = { x: 1320, y: 540 };
   assert.equal(generate(bulge(P1, P2, 160), bulge(P2, P1, -160), P1, P2, P2, P1).preset, undefined);
 });
+/** Vérifie le circuit de secours lorsque les deux tracés sont invalides. */
 test('invalid strokes fall back to the preset circuit', () => {
   const geo = generate([{ x: 0, y: 0 }, { x: 5, y: 5 }], [{ x: 0, y: 0 }, { x: 5, y: 5 }]);
   assert.ok(validateGeometry(geo));
@@ -311,6 +341,7 @@ test('invalid strokes fall back to the preset circuit', () => {
 // ─── MAP phase protocol ──────────────────────────────────────────────────────
 
 section('MAP phase');
+/** Vérifie que les raccords et les deux tracés attendent une validation avant de préparer la course. */
 test('two shared divider contacts then two half-strokes wait for confirmation before RACE', () => {
   const r = rig();
   r.state.phase = 'LOBBY';
@@ -329,10 +360,13 @@ test('two shared divider contacts then two half-strokes wait for confirmation be
   assert.equal(r.state.phase, 'MAP', 'players explicitly validate the completed drawing');
   r.rules.onGenerateTrack();
   // generation is asynchronous (Promise)
-  return new Promise<void>((resolve, reject) => setTimeout(() => {
+  return new Promise<void>(/* Attend la génération différée avant d’appliquer les assertions de départ. */ (resolve, reject) => setTimeout(/* Vérifie la piste prête et ses raccords une fois le travail de génération terminé. */ () => {
     try {
       assert.equal(r.state.phase, 'READY');
       assert.ok(r.state.track);
+      assert.ok(r.state.trackPresentation);
+      r.rules.beginRace();assert.equal(r.state.phase,'READY','finish draw must settle before a race can start');
+      r.advance(TRACK_PRESENTATION_MS+150);
       r.rules.beginRace();
       assert.equal(r.state.phase, 'RACE');
       resolve();
@@ -340,7 +374,9 @@ test('two shared divider contacts then two half-strokes wait for confirmation be
   }, 100));
 });
 
+/** Vérifie que les raccords trop proches ou hors zone produisent un refus explicite. */
 test('issue #3: a refused divider is announced (too short, outside the table area)', () => {
+  /** Prépare une création et soumet la paire de raccords que le scénario doit accepter ou refuser. */
   const asks = (a: Vec2, b: Vec2) => {
     const r = rig();
     r.rules.enterMap();
@@ -360,31 +396,41 @@ test('issue #3: a refused divider is announced (too short, outside the table are
   assert.deepEqual(r.feedback, []);
 });
 
-/** Table client driven with synthetic pointer events and fake timers (no browser). */
+/** Relie un canvas simulé à la reconnaissance pour collecter les commandes de la table. */
 function tableClient(mode: 'table' | 'pc') {
   const handlers: Record<string, (e: unknown) => void> = {};
   const canvas = {
+    /** Conserve le gestionnaire du navigateur simulé pour pouvoir lui rejouer un événement. */
     addEventListener: (type: string, fn: (e: unknown) => void) => { handlers[type] = fn; },
+    /** Fournit les dimensions fixes du canvas de test pour convertir les contacts. */
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 1920, height: 1080 }),
+    /** Remplace la capture du navigateur, inutile lorsque les événements sont rejoués directement. */
     setPointerCapture: () => {},
   } as unknown as HTMLCanvasElement;
-  const view = createView(() => 0);
+  const view = createView(/* Fournit l’heure contrôlée du scénario au composant qui consulte son horloge. */ () => 0);
   const state = createInitialState();
   state.phase = 'MAP';
   state.mapMode = mode;
   view.state = state;
   const sent: Array<{ type: string } & Record<string, unknown>> = [];
-  const gestures = new GestureRecognizer(canvas, view, m => sent.push(m));
-  const ev = (id: number, p: Vec2, type: string, pointerType = 'touch') => ({ type, pointerId: id, clientX: p.x, clientY: p.y, pointerType, timeStamp: 0, preventDefault() {} });
+  const gestures = new GestureRecognizer(canvas, view, /* Collecte la commande produite pour la comparer aux résultats attendus. */ m => sent.push(m));
+  /** Construit l’événement de pointeur synthétique envoyé à la reconnaissance. */
+  const ev = (id: number, p: Vec2, type: string, pointerType = 'touch') => ({ type, pointerId: id, clientX: p.x, clientY: p.y, pointerType, timeStamp: 0, /* Remplace l’annulation de l’événement natif dans le navigateur simulé. */ preventDefault() {} });
   return {
     view, sent, gestures,
+    /** Rejoue la pose d’un doigt dans le gestionnaire de contacts du test. */
     down: (id: number, p: Vec2, pointerType?: string) => handlers.pointerdown(ev(id, p, 'pointerdown', pointerType)),
+    /** Rejoue le déplacement d’un doigt maintenu dans le scénario. */
     move: (id: number, p: Vec2) => handlers.pointermove(ev(id, p, 'pointermove')),
+    /** Rejoue le retrait d’un doigt pour terminer sa commande ou son geste. */
     up: (id: number, p: Vec2) => handlers.pointerup(ev(id, p, 'pointerup')),
+    /** Rejoue une interruption système du contact sans la confondre avec un geste confirmé. */
     cancel: (id: number, p: Vec2) => handlers.pointercancel(ev(id, p, 'pointercancel')),
-    dividers: () => sent.filter(m => m.type === 'MapDivider'),
+    /** Extrait les commandes de raccord envoyées par la table simulée. */
+    dividers: () => sent.filter(/* Isole les poses de raccord pour vérifier le résultat de ce scénario. */ m => m.type === 'MapDivider'),
   };
 }
+/** Vérifie que le premier raccord survit au retrait du doigt et à une longue attente. */
 test('guided MAP: P1 survives a lifted finger and a long wait, on table and PC', () => {
   mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
   try {
@@ -411,6 +457,7 @@ test('guided MAP: P1 survives a lifted finger and a long wait, on table and PC',
   } finally { mock.timers.reset(); }
 });
 
+/** Vérifie qu’un doigt ayant placé un raccord ne devient pas implicitement un tracé. */
 test('guided MAP: held placement contacts never turn into drawing contacts', () => {
   mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
   try {
@@ -423,10 +470,11 @@ test('guided MAP: held placement contacts never turn into drawing contacts', () 
     state.mapTargets = { A: [p1, p2], B: [p2, p1] };
     c.move(1, { x: 800, y: 740 }); c.up(1, p2); c.up(2, p2);
     assert.equal(c.view.strokes.size, 0);
-    assert.equal(c.sent.filter(m => m.type === 'StrokeDraw').length, 0);
+    assert.equal(c.sent.filter(/* Isole les tracés envoyés pour vérifier le résultat de ce scénario. */ m => m.type === 'StrokeDraw').length, 0);
   } finally { mock.timers.reset(); }
 });
 
+/** Vérifie l’ordre des équipes et le rejet des contacts concurrents ou des doublons réseau. */
 test('guided MAP: active team keeps both anchors, concurrent fingers and in-flight duplicates are blocked', () => {
   mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
   try {
@@ -445,21 +493,22 @@ test('guided MAP: active team keeps both anchors, concurrent fingers and in-flig
       c.down(2, p1); c.move(2, { x: 900, y: 680 }); c.up(2, p2);
       assert.equal(c.view.strokes.size, 1, 'second finger cannot replace first');
       c.up(1, p2);
-      const sent = c.sent.filter(m => m.type === 'StrokeDraw');
+      const sent = c.sent.filter(/* Isole les tracés envoyés pour vérifier le résultat de ce scénario. */ m => m.type === 'StrokeDraw');
       assert.equal(sent.length, 1);
       assert.deepEqual((sent[0].pts as Vec2[]).at(-1), p2, 'release position is included');
       c.down(1, p1); c.up(1, p2);
-      assert.equal(c.sent.filter(m => m.type === 'StrokeDraw').length, 1, 'wait for server validation');
+      assert.equal(c.sent.filter(/* Isole les tracés envoyés pour vérifier le résultat de ce scénario. */ m => m.type === 'StrokeDraw').length, 1, 'wait for server validation');
       state.mapStrokes.A = true;
       c.down(1, p1); c.move(1, { x: 950, y: 340 }); c.up(1, p2);
-      const last = c.sent.filter(m => m.type === 'StrokeDraw').at(-1)!;
+      const last = c.sent.filter(/* Isole les tracés envoyés pour vérifier le résultat de ce scénario. */ m => m.type === 'StrokeDraw').at(-1)!;
       assert.deepEqual((last.pts as Vec2[])[0], p2, 'backwards rose stroke is normalized before sending');
-      assert.deepEqual(c.sent.filter(m => m.type === 'StrokeDraw').map(m => m.creator), ['A', 'B']);
-      assert.deepEqual([...c.view.strokes.values()].map(s => s.team), ['A', 'B'], 'same mouse id keeps both halves');
+      assert.deepEqual(c.sent.filter(/* Isole les tracés envoyés pour vérifier le résultat de ce scénario. */ m => m.type === 'StrokeDraw').map(/* Extrait l’équipe créatrice des tracés envoyés pour vérifier l’ordre de dessin. */ m => m.creator), ['A', 'B']);
+      assert.deepEqual([...c.view.strokes.values()].map(/* Extrait l’équipe des tracés locaux pour vérifier leur séparation. */ s => s.team), ['A', 'B'], 'same mouse id keeps both halves');
     }
   } finally { mock.timers.reset(); }
 });
 
+/** Vérifie qu’un tracé interrompu peut être recommencé sans faire avancer l’équipe. */
 test('guided MAP: early release and cancellation can be retried without advancing', () => {
   mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
   try {
@@ -472,28 +521,30 @@ test('guided MAP: early release and cancellation can be retried without advancin
     assert.ok([...c.view.strokes.values()][0].rejectedAt !== undefined);
     c.down(1, p1); c.move(1, p2); c.cancel(1, p2);
     assert.match(c.view.mapNotice!.text, /interrompu/);
-    assert.equal(c.sent.filter(m => m.type === 'StrokeDraw').length, 0);
+    assert.equal(c.sent.filter(/* Isole les tracés envoyés pour vérifier le résultat de ce scénario. */ m => m.type === 'StrokeDraw').length, 0);
     c.down(1, p1); c.move(1, { x: 900, y: 720 });
     c.gestures.releaseAll();
     c.down(1, p1); c.move(1, { x: 900, y: 720 }); c.up(1, p2);
-    assert.equal(c.sent.filter(m => m.type === 'StrokeDraw').length, 1, 'retry after lost connection/hidden tab');
+    assert.equal(c.sent.filter(/* Isole les tracés envoyés pour vérifier le résultat de ce scénario. */ m => m.type === 'StrokeDraw').length, 1, 'retry after lost connection/hidden tab');
   } finally { mock.timers.reset(); }
 });
 
+/** Vérifie que commencer par P2 conserve le parcours guidé et l’attribution des équipes. */
 test('Baptiste: cyan may start at P2 without changing teams or bypassing the guided sequence', () => {
   mock.timers.enable({ apis: ['setTimeout','setInterval'] });
   try {
     const c=tableClient('table'),p1={x:600,y:540},p2={x:1400,y:540};
     c.view.state!.mapDivider=[p1,p2];c.view.state!.mapTargets={A:[p1,p2],B:[p2,p1]};
     c.down(1,p2);c.move(1,{x:950,y:730});c.up(1,p1);
-    const sent=c.sent.filter(m=>m.type==='StrokeDraw');assert.equal(sent.length,1);assert.equal(sent[0].creator,'A');
+    const sent=c.sent.filter(/* Isole les tracés envoyés pour vérifier le résultat de ce scénario. */ m=>m.type==='StrokeDraw');assert.equal(sent.length,1);assert.equal(sent[0].creator,'A');
     assert.deepEqual((sent[0].pts as Vec2[])[0],p1);assert.deepEqual((sent[0].pts as Vec2[]).at(-1),p2);
-    c.down(2,p2);c.up(2,p1);assert.equal(c.sent.filter(m=>m.type==='StrokeDraw').length,1,'no second submission before acknowledgement');
+    c.down(2,p2);c.up(2,p1);assert.equal(c.sent.filter(/* Isole les tracés envoyés pour vérifier le résultat de ce scénario. */ m=>m.type==='StrokeDraw').length,1,'no second submission before acknowledgement');
     const r=rig();r.rules.enterMap();r.rules.onMapDivider(msg({type:'MapDivider',a:p1,b:p2}));
     r.rules.onStrokeDraw(msg({type:'StrokeDraw',creator:'A',pts:[p2,{x:950,y:730},p1]}));
     assert.equal(r.state.mapStrokes.A,true);assert.equal(r.state.mapStrokes.B,false);
   } finally {mock.timers.reset();}
 });
+/** Vérifie que les ramassables suivent la déformation puis reviennent avec la piste, même pendant leur réapparition. */
 test('Baptiste: pickups follow a deformation even during their respawn, then return with the road', () => {
   const r=raceRig(),track=r.state.track!,p=r.state.pickups[0],original={...p.pos};
   const index=track.featureIndices.pickups[0],edge=track.outerEdge[index],center=track.centerline[index];
@@ -508,6 +559,7 @@ test('Baptiste: pickups follow a deformation even during their respawn, then ret
   r.clock.now+=10_000;r.rules.updateTrackDeformations(r.clock.now);r.clock.now+=2000;r.rules.updateTrackDeformations(r.clock.now);
   assert.ok(Math.hypot(p.pos.x-original.x,p.pos.y-original.y)<1e-7);
 });
+/** Vérifie la marge des bonus par rapport au bord sans modifier la géométrie source. */
 test('Baptiste: pickup placement keeps its margin from road edges without mutating the track', () => {
   const track=generatePreset(),index=25,at=track.centerline[index],edge=track.outerEdge[index];
   const outside={x:at.x+(edge.x-at.x)*3,y:at.y+(edge.y-at.y)*3};const before=JSON.stringify(track);
@@ -517,6 +569,7 @@ test('Baptiste: pickup placement keeps its margin from road edges without mutati
   assert.deepEqual(clampToTrackRibbon(at,track,25),at);
 });
 
+/** Vérifie côté serveur les raccords, l’ordre des demi-tracés et leur verrouillage après validation. */
 test('guided MAP: server enforces order, endpoints, locked halves and final confirmation', async () => {
   const r = rig();
   r.rules.enterMap();
@@ -524,6 +577,7 @@ test('guided MAP: server enforces order, endpoints, locked halves and final conf
   r.rules.onMapDivider(msg({ type: 'MapDivider', a: p1, b: p2 }));
   const a = [p1, { x: 700, y: 700 }, { x: 1100, y: 740 }, p2];
   const b = [p2, { x: 1200, y: 380 }, { x: 800, y: 340 }, p1];
+  /** Soumet le demi-tracé de l’équipe aux règles de génération. */
   const submit = (creator: Team, pts: Vec2[]) => r.rules.onStrokeDraw(msg({ type: 'StrokeDraw', creator, pts }));
   submit('B', b);
   assert.equal(r.feedback.at(-1), 'mapWaitCyan');
@@ -561,6 +615,7 @@ test('guided MAP: server enforces order, endpoints, locked halves and final conf
 // ─── Physics ─────────────────────────────────────────────────────────────────
 
 section('Vehicle & HP');
+/** Vérifie la conduite par commande puis la chute réelle hors de la chaussée. */
 test('car follows PilotInput then falls when it leaves the ribbon', () => {
   const r = raceRig();
   r.rules.onPilotInput('A', msg({ type: 'PilotInput' as const, team: 'A' as Team, throttle: 1, steer: 0 }));
@@ -572,6 +627,7 @@ test('car follows PilotInput then falls when it leaves the ribbon', () => {
   const hit = nearestOnTrack(r.state.cars.A.pos, r.state.track!);
   assert.ok(hit.distance > hit.halfWidth - 10, 'the car is no longer pushed back inside');
 });
+/** Vérifie que la commande de direction fait réellement tourner la voiture. */
 test('steering turns the car', () => {
   const r = raceRig();
   const a0 = r.state.cars.A.angle;
@@ -579,6 +635,7 @@ test('steering turns the car', () => {
   r.advance(500);
   assert.notEqual(r.state.cars.A.angle, a0);
 });
+/** Vérifie l’indépendance des pilotes et le relâchement d’une commande trop ancienne. */
 test('continuous pilot input is isolated per team and stale steering is neutralised', () => {
   const r = raceRig();
   r.rules.onPilotInput('A', msg({ type: 'PilotInput' as const, team: 'A' as Team, throttle: 1, steer: 0.45 }));
@@ -589,6 +646,7 @@ test('continuous pilot input is isolated per team and stale steering is neutrali
   assert.equal(r.rules.inputs.A.steer, 0);
   assert.equal(r.rules.inputs.B.steer, 0);
 });
+/** Compare le gain de direction des commandes clavier et tactiles. */
 test('tactile and keyboard steering receive the same configured small turn gain', () => {
   const r = raceRig();
   r.rules.onPilotInput('A', msg({ type: 'PilotInput' as const, team: 'A' as Team, throttle: 1, steer: 1 }));
@@ -596,6 +654,7 @@ test('tactile and keyboard steering receive the same configured small turn gain'
   assert.equal(r.rules.inputs.A.steer, config.steerGain);
   assert.equal(r.rules.inputs.B.steer, config.steerGain);
 });
+/** Vérifie le choix de conduite par équipe avant et pendant une course. */
 test('drive mode can be chosen before the race and toggled during the race per team', () => {
   const r = rig();
   assert.equal(r.state.phase, 'LOBBY');
@@ -626,6 +685,7 @@ test('drive mode can be chosen before the race and toggled during the race per t
   assert.equal(r.state.driveMode.B, 'pedal');
 });
 
+/** Vérifie l’ancienne commande qui bascule les deux équipes vers la conduite à pédale. */
 test('compatibility drive-mode command switches both cars to held-pedal acceleration', () => {
   const r = raceRig();
   const car = r.state.cars.A;
@@ -644,6 +704,7 @@ test('compatibility drive-mode command switches both cars to held-pedal accelera
   r.physics.step(r.clock.now += 100, 0.1);
   assert.equal(car.speed, config.vMaxPedal, 'pedal mode uses its lower maximum speed');
 });
+/** Vérifie que la pause fige le mouvement sans consommer la durée de course. */
 test('pause freezes race motion and resumes without consuming race time', () => {
   const r = raceRig();
   const car = r.state.cars.A;
@@ -657,6 +718,7 @@ test('pause freezes race motion and resumes without consuming race time', () => 
   assert.equal(r.state.phase, 'RACE');
   assert.ok(r.state.sessionStartAt >= startAt + 1000);
 });
+/** Vérifie que la pause conserve le bonus armé et la durée des obstacles temporaires. */
 test('pause preserves the armed gesture window and temporary obstacle lifetimes', () => {
   const r = raceRig(); r.state.cars.A.heldItem = 'boost'; r.rules.onPower('A');
   r.state.walls.push({ id: 'temporary', team: 'A', pos: { x: 900, y: 500 }, angle: 0, lengthPx: 120, disabledUntil: 0, expiresAt: r.clock.now + 8000 });
@@ -667,16 +729,19 @@ test('pause preserves the armed gesture window and temporary obstacle lifetimes'
   assert.equal(r.state.walls[0].expiresAt, wallAt + duration);
   r.rules.expire(r.clock.now); assert.equal(r.state.cars.A.itemArmed, true);
 });
+/** Vérifie qu’une pierre reprend au même point de sa trajectoire après une pause. */
 test('pause keeps the elastic projectile at the same point of its flight when resumed', () => {
   const r = raceRig(); r.state.cars.A.heldItem = 'slingshot'; r.rules.onPower('A');
   r.rules.onSlingshot(msg({ type: 'Slingshot', team: 'A', ...aim(r.state.cars.B.pos, 120) }));
   r.clock.now += 200;
   const stone = r.state.stones[0];
+  /** Calcule l’avancement de la pierre à l’instant contrôlé du test. */
   const fraction = () => (r.clock.now - stone.launchedAt) / (stone.impactAt - stone.launchedAt);
   const before = fraction();
   r.rules.togglePause(); r.advance(3000); r.rules.togglePause();
   assert.ok(Math.abs(fraction() - before) < 1e-9, 'the projectile resumes without jumping forward');
 });
+/** Vérifie qu’un tour est compté après le passage des checkpoints dans l’ordre. */
 test('car can complete a lap by following the centerline (checkpoints in order)', () => {
   const r = raceRig();
   const track = r.state.track!;
@@ -693,6 +758,7 @@ test('car can complete a lap by following the centerline (checkpoints in order)'
   assert.equal(car.lap, 1);
   assert.equal(car.checkpointIndex, 1);
 });
+/** Vérifie la fin de course lorsque le nombre de tours demandé est atteint. */
 test('victory at lapsToWin → RESULT', () => {
   const r = raceRig();
   r.state.cars.B.lap = config.lapsToWin;
@@ -700,6 +766,7 @@ test('victory at lapsToWin → RESULT', () => {
   assert.equal(r.state.phase, 'RESULT');
   assert.equal(r.state.winner, 'B');
 });
+/** Vérifie que l’expiration du chronomètre donne la victoire à la voiture en tête. */
 test('timeout → RESULT, leader wins', () => {
   const r = raceRig();
   r.rules.updateRaceSettings({type:'RaceSettings',t:0,sessionMaxSeconds:60});
@@ -714,35 +781,43 @@ test('timeout → RESULT, leader wins', () => {
 // ─── Tutorial (issue #32) ────────────────────────────────────────────────────
 
 section('Tutorial · independent lessons validated by real events');
+/** Prépare un tutoriel et identifie les postes avant les exercices de jeu. */
 function tutorialRig(mode: 'table' | 'pc' = 'table'): Rig {
   const r = rig();
   r.rules.startTutorial(mode);
+  if(mode==='table')for(const team of ['A','B'] as const)for(const role of ['pilot','copilot'] as const){
+    r.rules.onPadHold(msg({type:'PadHold' as const,team,role,on:true}));
+    r.rules.onPadHold(msg({type:'PadHold' as const,team,role,on:false}));
+  }
   r.advance(3100);
   return r;
 }
+/** Lit la leçon courante de l’équipe pour vérifier son avancement. */
 const lesson = (r: Rig, team: Team) => r.state.tutorial!.steps[r.state.tutorial!.teams[team].step];
-/** Skip the lessons of `team` until `id` is the current one. */
+/** Fait avancer les étapes avec une garde pour atteindre la leçon étudiée sans boucler indéfiniment. */
 function skipTo(r: Rig, team: Team, id: string): void {
   for (let guard = 0; lesson(r, team) !== id; guard++) {
     assert.ok(guard < 20, `lesson ${id} not reached`);
     r.rules.tutorialSkip(team);
   }
 }
-/** Move a car in one step, as if it had just driven there, and run the per-move rules. */
+/** Déplace la voiture au point étudié puis applique les contacts des règles de jeu. */
 function driveTo(r: Rig, team: Team, to: Vec2): void {
   const car = r.state.cars[team];
   const prev = { ...car.pos };
   car.pos = { x: to.x, y: to.y };
   r.rules.afterMove(team, prev, r.clock.now);
 }
+/** Envoie une commande pilote à l’équipe pendant l’exercice. */
 const pilot = (r: Rig, team: Team, steer: number, throttle = 1) =>
   r.rules.onPilotInput(team, msg({ type: 'PilotInput' as const, team, throttle, steer }));
 
+/** Vérifie les règles sans enjeu du tutoriel sur le circuit prédéfini. */
 test('the tutorial is a race on the preset circuit with nothing at stake', () => {
   const r = tutorialRig();
   assert.equal(r.phases.at(-1), 'RACE');
   assert.equal(r.state.track?.preset, true);
-  assert.deepEqual(r.state.tutorial!.teams, { A: { step: 0, sub: 0 }, B: { step: 0, sub: 0 } });
+  assert.deepEqual(r.state.tutorial!.teams, { A: { step: 1, sub: 0 }, B: { step: 1, sub: 0 } });
   assert.equal(r.state.tutorial!.finished, false);
   assert.equal(r.state.params.armWindowS, 0, 'armed inventory has no deadline, including in the tutorial');
   // the end of a race never interrupts a lesson
@@ -760,6 +835,38 @@ test('the tutorial is a race on the preset circuit with nothing at stake', () =>
   assert.ok(r.feedback.includes('fall'));
 });
 
+/** Vérifie que les quatre postes doivent se présenter avant les feux communs du tutoriel. */
+test('four stations identify their team before the shared countdown, including diagonal copilots', () => {
+  const r=rig();r.rules.startTutorial('table');
+  const positions=structuredClone({A:r.state.cars.A.pos,B:r.state.cars.B.pos});
+  r.advance(5000);assert.deepEqual({A:r.state.cars.A.pos,B:r.state.cars.B.pos},positions);
+  pilot(r,'A',-1);pilot(r,'A',1);assert.equal(lesson(r,'A'),'identify');
+  pad(r,'A','pilot',true);assert.equal(r.state.tutorial!.teams.A.sub,1);
+  pad(r,'A','pilot',false);pad(r,'A','copilot',true);assert.equal(lesson(r,'A'),'steer');
+  pilot(r,'A',-1);pilot(r,'A',1);assert.equal(lesson(r,'A'),'steer','steering waits for all four seats');
+  pad(r,'B','pilot',true);pad(r,'B','copilot',true);
+  assert.equal(r.state.sessionStartAt,r.clock.now+3000);
+  r.advance(1000);assert.deepEqual({A:r.state.cars.A.pos,B:r.state.cars.B.pos},positions);
+  assert.ok(!r.state.tutorial!.steps.includes('pedal'),'the table does not teach a settings change');
+});
+
+/** Vérifie le passage à la course après les deux équipes et le nettoyage complet des aides du tutoriel. */
+test('tutorial to race requires both teams, preserves race settings and clears training objects and inputs', () => {
+  const r=tutorialRig();r.state.params.lapsToWin=5;r.state.params.sessionMaxSeconds=240;
+  r.rules.tutorialRace();assert.equal(r.state.phase,'RACE','cannot bypass an unfinished tutorial');
+  for(const team of ['A','B'] as const)for(let i=0;i<20;i++)r.rules.tutorialSkip(team);
+  assert.equal(r.state.tutorial!.finished,true);
+  r.rules.tutorialRace();assert.equal(r.state.phase,'MAP');assert.equal(r.state.mapMode,'table');
+  assert.equal(r.state.tutorial,null);assert.equal(r.state.sessionMode,'race');
+  assert.equal(r.state.params.lapsToWin,5);assert.equal(r.state.params.sessionMaxSeconds,240);
+  assert.equal(r.state.walls.length+r.state.arcs.length+r.state.boostGates.length+r.state.stones.length,0);
+  assert.equal(r.state.tangiblePlacement,null);assert.ok(Object.values(r.state.repairPads).every(/* Vérifie qu’aucun pad maintenu du tutoriel ne survit au passage en course. */ p=>!p.held));
+  r.rules.startRace(generatePreset(),true);assert.equal(r.state.phase,'READY');
+  r.rules.beginRace();assert.equal(r.state.phase,'RACE');assert.ok(Math.abs(r.state.raceDeadline-r.state.sessionStartAt-240000)<.001);
+  r.state.cars.A.lap=5;r.advance(3100);assert.equal(r.state.phase,'RESULT','normal scoring is restored');
+});
+
+/** Vérifie que le tutoriel refuse les aides clavier et adapte ses gestes à la souris. */
 test('the PC test switches stay off in the tutorial; a mouse gets no two-finger border pull lesson', () => {
   const pc = tutorialRig('pc');
   assert.equal(pc.state.mapMode, 'pc');
@@ -770,6 +877,7 @@ test('the PC test switches stay off in the tutorial; a mouse gets no two-finger 
   assert.ok(tutorialRig('table').state.tutorial!.steps.includes('borderPull'));
 });
 
+/** Vérifie que seules les deux directions réellement essayées font avancer la bonne équipe. */
 test('steer lesson needs both directions, and only the team that steered advances', () => {
   const r = tutorialRig();
   pilot(r, 'A', -0.2);
@@ -778,20 +886,23 @@ test('steer lesson needs both directions, and only the team that steered advance
   assert.equal(r.state.tutorial!.teams.A.sub, 1, 'left done');
   assert.equal(lesson(r, 'A'), 'steer');
   pilot(r, 'A', 1);
-  assert.equal(lesson(r, 'A'), 'pedal');
-  assert.deepEqual(r.state.tutorial!.teams.B, { step: 0, sub: 0 }, 'the other team is independent');
+  assert.equal(lesson(r, 'A'), 'pickup');
+  assert.deepEqual(r.state.tutorial!.teams.B, { step: 1, sub: 0 }, 'the other team is independent');
   assert.ok(r.feedback.includes('tutorialStep'));
 });
 
+/** Vérifie que diriger pendant les feux de départ ne valide pas la leçon. */
 test('steering during the countdown does not count', () => {
   const r = rig();
   r.rules.startTutorial('table');
+  for(const team of ['A','B'] as const)for(const role of ['pilot','copilot'] as const)r.rules.onPadHold(msg({type:'PadHold' as const,team,role,on:true}));
   pilot(r, 'A', -1); pilot(r, 'A', 1);
   assert.equal(lesson(r, 'A'), 'steer');
 });
 
-test('drive-mode lesson: pedal on, hold the pedal, back to auto; it follows the requested drive mode', () => {
-  const r = tutorialRig();
+/** Vérifie la leçon clavier de pédale, depuis son activation jusqu’au retour en avance automatique. */
+test('PC drive-mode lesson: pedal on, hold the pedal, back to auto; it follows the requested drive mode', () => {
+  const r = tutorialRig('pc');
   skipTo(r, 'A', 'pedal');
   pilot(r, 'A', 0, 1);
   assert.equal(r.state.tutorial!.teams.A.sub, 0, 'the pedal does not exist in auto mode');
@@ -812,18 +923,20 @@ test('drive-mode lesson: pedal on, hold the pedal, back to auto; it follows the 
   assert.equal(lesson(r, 'B'), 'steer');
 });
 
+/** Vérifie que les leçons avancent sur leurs vrais événements avec une progression indépendante par équipe. */
 test('every lesson is completed by its real event, team B keeps its own pace', () => {
   const r = tutorialRig();
   const A = r.state.cars.A;
   pilot(r, 'A', -1); pilot(r, 'A', 1);
-  r.rules.toggleDriveMode(); pilot(r, 'A', 0, 1); r.rules.toggleDriveMode();
 
-  // pickup: the draw says boost, the lesson hands out the slingshot
+  // Shared pickups keep the same visible kind even when teams learn different bonuses.
   assert.equal(lesson(r, 'A'), 'pickup');
   assert.equal(A.heldItem, null);
-  assert.ok(r.state.pickups.every(p => p.respawnAt === 0 && p.kind === 'slingshot'));
-  r.state.pickups[0].kind = 'boost';
-  driveTo(r, 'A', r.state.pickups[0].pos);
+  assert.ok(r.state.pickups.every(/* Vérifie que tous les bonus de la leçon sont immédiatement disponibles. */ p => p.respawnAt === 0));
+  const slingPickup=r.state.pickups.find(/* Retrouve le ramassable de lance-pierre demandé par la leçon. */ p=>p.kind==='slingshot')!;
+  driveTo(r,'A',r.state.pickups.find(/* Retrouve l’accélération à ramasser pour la suite du tutoriel. */ p=>p.kind==='boost')!.pos);
+  assert.equal(A.heldItem,null,'the tutorial highlights the bonus for this lesson');
+  driveTo(r, 'A', slingPickup.pos);
   assert.equal(A.heldItem, 'slingshot');
   assert.equal(lesson(r, 'A'), 'power');
   r.rules.onPower('B'); // the other team's POWER means nothing here
@@ -841,8 +954,7 @@ test('every lesson is completed by its real event, team B keeps its own pace', (
   assert.equal(r.state.cars.B.hp, config.hpMax, 'the stone costs nothing in the tutorial');
 
   // boost: pick up, arm, place a portal, drive through it
-  r.state.pickups[1].kind = 'slingshot';
-  driveTo(r, 'A', r.state.pickups[1].pos);
+  driveTo(r, 'A', r.state.pickups.find(/* Retrouve une accélération disponible pour valider la progression de l’équipe. */ p=>p.kind==='boost')!.pos);
   assert.equal(A.heldItem, 'boost');
   r.rules.onPower('A');
   assert.equal(lesson(r, 'A'), 'boost');
@@ -870,34 +982,48 @@ test('every lesson is completed by its real event, team B keeps its own pace', (
   assert.equal(A.disabled, false);
   assert.equal(A.hp, config.hpMax);
 
-  // a hostile wall is placed on the road ahead; touching it completes the lesson, then it disappears
+  // Table users place the physical wall; activation alone does not validate the grip.
+  assert.equal(r.state.walls.length,0);
+  place(r,1,A.pos.x/config.logicalWidth,A.pos.y/config.logicalHeight,0,true);
   r.advance(Math.max(config.invulnAfterHitS*1000,A.invulnUntil-r.clock.now)+100);
-  const wall = r.state.walls.find(w => w.id === 'tut-wall-A')!;
-  assert.equal(wall.team, 'B', 'hostile to team A');
+  const wall = r.state.walls.find(/* Retrouve le mur réel installé dans le scénario du tutoriel. */ w => w.id === 'wall-1')!;
+  assert.equal(wall.team, null, 'physical wall is neutral');
   driveTo(r, 'A', wall.pos);
-  assert.equal(lesson(r, 'A'), 'arc');
-  assert.equal(A.hp, config.hpMax);
-  assert.ok(!r.state.walls.some(w => w.id === 'tut-wall-A'));
-
-  // the same for an electric arc across the whole width
-  r.advance(config.invulnAfterHitS * 1000 + 100);
-  const arc = r.state.arcs.find(a => a.id === 'tut-arc-A')!;
-  assert.equal(arc.team, 'B');
-  driveTo(r, 'A', { x: (arc.pylon1.x + arc.pylon2.x) / 2, y: (arc.pylon1.y + arc.pylon2.y) / 2 });
   assert.equal(lesson(r, 'A'), 'pylon');
-  assert.ok(!r.state.arcs.some(a => a.id === 'tut-arc-A'));
+  assert.equal(A.hp, config.hpMax);
+  r.rules.onTangibleRemoved(msg({type:'TangibleRemoved' as const,id:1}));
 
-  // The last lesson observes the neutral pair, charged at either team's station.
-  charge(r, 2, 'A'); charge(r, 3, 'B');
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved' as const, id: 2 as const, x: 0.4, y: 0.5, angle: 0 }));
-  assert.equal(lesson(r, 'A'), 'pylon', 'one pillar has a field, no arc');
-  r.rules.onTangibleMoved(msg({ type: 'TangibleMoved' as const, id: 3 as const, x: 0.5, y: 0.5, angle: 0 }));
-  assert.equal(r.state.tutorial!.teams.A.step, r.state.tutorial!.steps.length, 'team A is done');
-  assert.equal(r.state.tutorial!.finished, false, 'the end waits for team B');
-  assert.deepEqual(r.state.tutorial!.teams.B, { step: 0, sub: 0 });
-  assert.equal(r.state.phase, 'RACE');
+  // Handle the two physical pillars before trying their real, neutral electric effect.
+  place(r,2,.4,.5);assert.equal(lesson(r,'A'),'pylon','one pillar has a field but no arc');
+  place(r,3,.5,.5);assert.equal(lesson(r,'A'),'arc');
+  assert.ok(!r.state.arcs.some(/* Repère un arc de démonstration appartenant à l’alternative clavier. */ a=>a.id.startsWith('tut-')),'no virtual obstacle replaces the physical objects');
+  r.advance(config.invulnAfterHitS*1000+100);
+  const arc=r.state.arcs.find(/* Retrouve l’arc issu des vrais piliers plutôt qu’un obstacle de démonstration. */ a=>!a.id.startsWith('tut-'))!;
+  driveTo(r,'A',{x:(arc.pylon1.x+arc.pylon2.x)/2,y:(arc.pylon1.y+arc.pylon2.y)/2});
+  assert.equal(lesson(r,'A'),'depot');
+  assert.equal(r.state.tutorial!.finished,false,'the end waits for the other team and for the physical objects');
+  assert.deepEqual(r.state.tutorial!.teams.B,{step:1,sub:0});
+  assert.equal(r.state.phase,'RACE');
 });
 
+/** Vérifie les nouvelles poses réelles puis le rangement commun avant la fin du tutoriel. */
+test('table handling uses fresh placements, then both teams clear the physical track before continuing', () => {
+  const r=tutorialRig();
+  place(r,2,.4,.5);place(r,3,.5,.5);
+  skipTo(r,'A','pylon');assert.equal(lesson(r,'A'),'pylon','an old arc does not validate handling');
+  r.rules.onTangibleControl(msg({type:'TangibleControl' as const,id:2,action:'activate' as const}));
+  assert.equal(r.state.tutorial!.teams.A.sub,0,'operator activation does not replace the touch lesson');
+  place(r,2,.41,.5);assert.equal(r.state.tutorial!.teams.A.sub,1);
+  place(r,3,.51,.5);assert.equal(lesson(r,'A'),'arc');
+  r.rules.tutorialSkip('A');assert.equal(lesson(r,'A'),'depot');
+  skipTo(r,'B','depot');assert.equal(lesson(r,'B'),'depot');
+  for(const id of [1,2] as const)r.rules.onTangibleRemoved(msg({type:'TangibleRemoved' as const,id}));
+  assert.equal(r.state.tutorial!.finished,false,'the last real obstacle must also be removed');
+  r.rules.onTangibleRemoved(msg({type:'TangibleRemoved' as const,id:3}));
+  assert.equal(r.state.tutorial!.finished,true);
+});
+
+/** Vérifie qu’un stock armé n’expire pas et qu’une zone inutilisée peut être réessayée. */
 test('tutorial stock stays armed indefinitely; a portal nobody crosses can still be retried', () => {
   const r = tutorialRig();
   skipTo(r, 'A', 'sling');
@@ -919,6 +1045,7 @@ test('tutorial stock stays armed indefinitely; a portal nobody crosses can still
   assert.equal(r.state.cars.A.heldItem, 'boost');
 });
 
+/** Vérifie qu’un vol de bonus ne prive pas l’équipe de la suite de son tutoriel. */
 test('an armed item stolen by the other team does not leave the lesson without an item', () => {
   const r = tutorialRig();
   skipTo(r, 'A', 'sling');
@@ -930,23 +1057,19 @@ test('an armed item stolen by the other team does not leave the lesson without a
   assert.equal(r.state.cars.A.heldItem, 'slingshot');
 });
 
+/** Vérifie le nettoyage des étapes passées et l’attente des deux équipes pour terminer. */
 test('skipping: lessons are left clean, a skipped repair puts the car back, the end needs both teams', () => {
   const r = tutorialRig();
   const steps = r.state.tutorial!.steps;
   skipTo(r, 'A', 'repair');
   assert.equal(r.state.cars.A.disabled, true);
   r.rules.tutorialSkip('A'); // repair → wall
-  assert.equal(r.state.cars.A.disabled, false);
-  assert.equal(r.state.cars.A.hp, config.hpMax);
-  assert.ok(r.state.walls.some(w => w.id === 'tut-wall-A'));
-  r.rules.tutorialSkip('A');
-  assert.ok(!r.state.walls.some(w => w.id === 'tut-wall-A'));
-  assert.ok(r.state.arcs.some(a => a.id === 'tut-arc-A'));
-  charge(r, 1, 'B'); // Oz activity must not wipe the lesson's own arc
-  assert.ok(r.state.arcs.some(a => a.id === 'tut-arc-A'));
-  r.rules.tutorialSkip('A'); // arc → pylon
-  assert.ok(!r.state.arcs.some(a => a.id === 'tut-arc-A'));
-  r.rules.tutorialSkip('A'); // pylon → done
+  assert.equal(r.state.cars.A.disabled,false);assert.equal(r.state.cars.A.hp,config.hpMax);
+  assert.ok(!r.state.walls.some(/* Vérifie qu’aucun mur temporaire de leçon ne subsiste après le nettoyage. */ w=>w.id.startsWith('tut-')),'the table uses physical objects');
+  r.rules.tutorialSkip('A'); // wall → pylon
+  r.rules.tutorialSkip('A'); // pylon → arc
+  r.rules.tutorialSkip('A'); // arc → depot
+  r.rules.tutorialSkip('A'); // depot → done
   assert.equal(r.state.tutorial!.teams.A.step, steps.length);
   assert.equal(r.state.tutorial!.finished, false);
   r.rules.tutorialSkip('A'); // nothing left to skip
@@ -956,6 +1079,7 @@ test('skipping: lessons are left clean, a skipped repair puts the car back, the 
   assert.equal(r.state.phase, 'RACE', 'the end screen is the table’s choice, the race is not over');
 });
 
+/** Vérifie qu’une étape de bonus passée laisse un stock compatible avec l’exercice suivant. */
 test('a skipped item lesson still leaves the team able to continue', () => {
   const r = tutorialRig();
   skipTo(r, 'A', 'pickup');
@@ -970,6 +1094,7 @@ test('a skipped item lesson still leaves the team able to continue', () => {
   assert.equal(lesson(r, 'A'), 'borderPull');
 });
 
+/** Vérifie le démarrage du tutoriel depuis l’accueil et le retour à une partie normale après réinitialisation. */
 test('the tutorial is only started from the lobby and a reset leaves a normal game behind', () => {
   const r = tutorialRig();
   r.rules.startTutorial('pc'); // already running: ignored
@@ -977,7 +1102,7 @@ test('the tutorial is only started from the lobby and a reset leaves a normal ga
   r.rules.tutorialSkip('A');
   r.rules.togglePause();
   r.rules.tutorialSkip('A'); // paused: ignored
-  assert.equal(r.state.tutorial!.teams.A.step, 1);
+  assert.equal(r.state.tutorial!.teams.A.step, 2);
   r.rules.togglePause();
   r.rules.resetToLobby();
   assert.equal(r.state.tutorial, null);
@@ -992,53 +1117,59 @@ test('the tutorial is only started from the lobby and a reset leaves a normal ga
   assert.equal(r.state.phase, 'RESULT', 'a normal race ends again');
 });
 
-test('tutorial buttons on the table: lobby entry picks the mode from the pointer, SKIP is per team, the end screen goes home', () => {
+/** Vérifie les boutons tactiles du tutoriel, le passage d’étape par équipe et la création finale de course. */
+test('tutorial buttons on the table: lobby entry keeps the table mode even with a mouse, SKIP is per team, the end screen prepares the race', () => {
   mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
   try {
+    /** Renvoie le centre du bouton utilisé pour les contacts du scénario. */
     const centre = (b: { x: number; y: number; w: number; h: number }) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
     const c = tableClient('table');
     const state = c.view.state!;
     state.phase = 'LOBBY';
     c.down(1, centre(START_TUTORIAL_BUTTON), 'touch'); c.up(1, centre(START_TUTORIAL_BUTTON));
     c.down(2, centre(START_TUTORIAL_BUTTON), 'mouse'); c.up(2, centre(START_TUTORIAL_BUTTON));
-    assert.deepEqual(c.sent.map(m => [m.type, m.mode]), [['StartTutorial', 'table'], ['StartTutorial', 'pc']]);
+    assert.deepEqual(c.sent.map(/* Extrait le type et le mode des commandes de lancement pour les assertions. */ m => [m.type, m.mode]), [['StartTutorial', 'table'], ['StartTutorial', 'table']]);
 
     state.phase = 'RACE';
     const at = tutorialSkipCenter('A');
     c.down(3, at); c.up(3, at);
-    assert.equal(c.sent.filter(m => m.type === 'TutorialSkip').length, 0, 'no tutorial, no button: the touch is an ordinary one');
+    assert.equal(c.sent.filter(/* Isole les passages de leçon pour vérifier le résultat de ce scénario. */ m => m.type === 'TutorialSkip').length, 0, 'no tutorial, no button: the touch is an ordinary one');
     state.tutorial = { steps: ['steer', 'pedal'], teams: { A: { step: 0, sub: 0 }, B: { step: 1, sub: 0 } }, finished: false };
     for (const team of ['A', 'B'] as Team[]) {
       const p = tutorialSkipCenter(team);
       c.down(4, p); c.up(4, p);
     }
-    assert.deepEqual(c.sent.filter(m => m.type === 'TutorialSkip').map(m => m.team), ['A', 'B']);
+    assert.deepEqual(c.sent.filter(/* Isole les passages de leçon pour vérifier le résultat de ce scénario. */ m => m.type === 'TutorialSkip').map(/* Extrait l’équipe des passages d’étape pour vérifier leur attribution. */ m => m.team), ['A', 'B']);
     assert.ok(tutorialSkipCenter('A').y > 540 && tutorialSkipCenter('B').y < 540, 'each banner is on its own side of the table');
     state.tutorial.teams.B.step = 2; // team B has nothing left to skip
     const before = c.sent.length;
     c.down(5, tutorialSkipCenter('B')); c.up(5, tutorialSkipCenter('B'));
-    assert.equal(c.sent.slice(before).filter(m => m.type === 'TutorialSkip').length, 0);
+    assert.equal(c.sent.slice(before).filter(/* Isole les passages de leçon pour vérifier le résultat de ce scénario. */ m => m.type === 'TutorialSkip').length, 0);
     state.tutorial.finished = true;
     c.down(6, centre(TUTORIAL_END_BUTTON)); c.up(6, centre(TUTORIAL_END_BUTTON));
-    assert.equal(c.sent.at(-1)!.type, 'NewGame');
+    assert.equal(c.sent.at(-1)!.type, 'TutorialRace');
   } finally { mock.timers.reset(); }
 });
 
 // ─── Pylons: T-03, T-04, T-10 ────────────────────────────────────────────────
 
 section('Tangibles · neutral fixed objects');
+/** Initialise l’ancien point d’entrée de rangement utilisé par les tests de compatibilité. */
 function charge(r: Rig, id: 1|2|3, team: Team = 'A') {
   r.rules.onTangibleControl(msg({type:'TangibleControl',id,action:'dock',team}));
   r.rules.onTangibleControl(msg({type:'TangibleControl',id,action:'activate'}));
 }
+/** Pose le tangible avec les coordonnées du scénario en passant par les règles serveur. */
 function place(r: Rig, id: 1 | 2 | 3, x = .5, y = .5, angle = 0, active = true) {
   if (!r.state.tangibles[id]) charge(r,id);
   r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id, x, y, angle, active }));
 }
+/** Pose un mur sur la trajectoire de la voiture pour étudier son choc. */
 function placeBlocking(r: Rig) {
   const p = r.state.cars.A.pos;
   place(r, 1, p.x / config.logicalWidth, p.y / config.logicalHeight);
 }
+/** Vérifie la pose atomique d’un tangible neutre et l’absence d’effet de POWER sur son activation. */
 test('atomic first placement fixes the kind and neutral ownership; POWER has no effect', () => {
   const r = raceRig(); place(r, 1, .4, .5, 20, false);
   assert.equal(r.state.tangibles[1].kind, 'wall');
@@ -1056,6 +1187,7 @@ test('atomic first placement fixes the kind and neutral ownership; POWER has no 
   r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 1, action: 'configure', team: 'B', kind: 'pylon' }));
   assert.deepEqual(r.state.tangibles[1], placed, 'legacy configuration cannot change fixed type or neutrality');
 });
+/** Vérifie les dégâts et le rebond du même mur sur les deux équipes. */
 test('T-03 neutral wall damages and bounces both teams', () => {
   for (const team of ['A', 'B'] as const) {
     const r = raceRig(), p = { ...r.state.cars[team].pos };
@@ -1066,6 +1198,7 @@ test('T-03 neutral wall damages and bounces both teams', () => {
     assert.equal(r.state.cars[team].hp, config.hpMax - config.dmgWall, 'invulnerability still applies');
   }
 });
+/** Vérifie que les deux piliers forment un arc neutre qui ralentit les deux voitures. */
 test('T-04 two fixed pylons form a neutral arc that slows both teams', () => {
   for (const team of ['A', 'B'] as const) {
     const r = raceRig(), car = r.state.cars[team], p = { ...car.pos };
@@ -1080,6 +1213,7 @@ test('T-04 two fixed pylons form a neutral arc that slows both teams', () => {
     assert.equal(car.slowUntil, r.clock.now + config.arcSlowS * 1000);
   }
 });
+/** Vérifie la limite exacte de distance entre les piliers pour former un arc. */
 test(`arc includes exactly ${config.arcMaxDistPx} px, breaks beyond range, and unpaired pylons stay pylons`, () => {
   const r = raceRig(); place(r, 2, 600 / 1920, .5); place(r, 3, (600 + config.arcMaxDistPx) / 1920, .5);
   assert.equal(r.state.arcs.length, 1);
@@ -1087,6 +1221,7 @@ test(`arc includes exactly ${config.arcMaxDistPx} px, breaks beyond range, and u
   assert.equal(r.state.walls.length, 0);
   assert.equal(r.state.tangibles[2].kind, 'pylon');
 });
+/** Vérifie le rangement initial et la réutilisation immédiate des objets sans recharge. */
 test('objects start inactive in the neutral depot and can be reused immediately without a copilot charging zone',()=>{
   const r=raceRig();
   for(const id of [1,2,3]){assert.equal(r.state.tangibles[id].status,'parked');assert.equal(r.state.tangibles[id].active,false);}
@@ -1097,6 +1232,7 @@ test('objects start inactive in the neutral depot and can be reused immediately 
   r.rules.resetToLobby();assert.deepEqual(r.state.tangibles,{});r.rules.startRace();assert.equal(r.state.walls.length,0);
 });
 
+/** Vérifie le rejet des poses invalides et la conservation d’une activation non précisée. */
 test('invalid ids, phases, coordinates and activation are ignored; omitted activation is preserved', () => {
   const r = raceRig(); place(r, 2); place(r, 3, .6);
   r.rules.onTangibleRemoved(msg({ type: 'TangibleRemoved', id: 2 })); assert.equal(r.state.arcs.length, 0);
@@ -1112,6 +1248,7 @@ test('invalid ids, phases, coordinates and activation are ignored; omitted activ
 });
 
 section('LEGO scale and recharge');
+/** Vérifie la conversion des bases LEGO sur une table de 55 pouces indépendamment de sa résolution. */
 test('55-inch active image maps LEGO 10×4 and 4×4 footprints, independent of display resolution', () => {
   const d = physicalDimensions(55);
   assert.ok(Math.abs(d.pxPerMm - 1.577) < .002);
@@ -1122,9 +1259,11 @@ test('55-inch active image maps LEGO 10×4 and 4×4 footprints, independent of d
   assert.equal(physicalDimensions(55,3840,2160).wallLengthPx, d.wallLengthPx*2);
   assert.ok(Math.abs(physicalDimensions(65).wallWidthPx / d.wallWidthPx - 55/65) < 1e-9);
 });
+/** Vérifie les extrémités rectangulaires, la frange de tolérance et la sortie d’un contact déjà engagé dans le mur. */
 test('rounded wall collision keeps rectangular ends, covers its fringe, and clears embedded cars', () => {
   const center = {x:960,y:540}, p=config;
   const radius=CAR_RADIUS+p.tangibleTolerancePx, hx=p.wallLengthPx/2, hy=p.wallWidthPx/2;
+  /** Teste le contact d’une voiture immobile avec le mur aux dimensions physiques choisies. */
   const contact=(x:number,y:number)=>wallContact({x,y},{x,y},center,0,p.wallLengthPx,p.wallWidthPx,radius);
   assert.ok(contact(960,540+hy+radius-.1));
   assert.equal(contact(960,540+hy+radius+.1),null);
@@ -1140,6 +1279,7 @@ test('rounded wall collision keeps rectangular ends, covers its fringe, and clea
     assert.equal(wallContact(hit.point,hit.point,center,angle,p.wallLengthPx,p.wallWidthPx,radius),null);
   }
 });
+/** Vérifie qu’un pilier isolé produit déjà un champ électrique neutre au sol. */
 test('a single neutral pillar has an electrical ground field that slows either car', () => {
   for(const team of ['A','B'] as const){
     const r=raceRig(),car=r.state.cars[team],at={...car.pos};
@@ -1150,6 +1290,7 @@ test('a single neutral pillar has an electrical ground field that slows either c
     assert.equal(car.speed,200*config.arcSlowFactor);
   }
 });
+/** Vérifie les déplacements manuels successifs et la désactivation immédiate dans la réserve. */
 test('manual repositioning is unlimited and parking disables all effects without charging or cooldown',()=>{
   const r=raceRig();place(r,1);
   for(const x of [.55,.6,.7,.4]){place(r,1,x,.5,30);assert.equal(r.state.tangibles[1].x,x);assert.equal(r.state.tangibles[1].active,true);}
@@ -1161,6 +1302,7 @@ test('manual repositioning is unlimited and parking disables all effects without
 // ─── Items: T-05, T-06, T-07 ─────────────────────────────────────────────────
 
 section('Items');
+/** Vérifie le ramassage avec un stock vide puis la réapparition du bonus après son délai. */
 test('pickup: grabbed when stock empty, respawns after 15 s', () => {
   const r = raceRig();
   const pk = r.state.pickups[0];
@@ -1176,6 +1318,7 @@ test('pickup: grabbed when stock empty, respawns after 15 s', () => {
   r.advance(config.pickupRespawnS * 1000 + 100);
   assert.equal(pk.respawnAt, 0);
 });
+/** Vérifie que le stock armé reste disponible sans limite jusqu’à un geste valide. */
 test('armed inventory survives indefinite delay until a valid gesture consumes it', () => {
   const r = raceRig();
   const car = r.state.cars.A;
@@ -1189,7 +1332,8 @@ test('armed inventory survives indefinite delay until a valid gesture consumes i
   assert.equal(r.feedback.includes('itemLost'),false);
   r.rules.onSlingshot(msg({type:'Slingshot',team:'A',...aim({x:900,y:500},120)}));assert.equal(car.heldItem,null);
 });
-test('T-06 slingshot: 0.8 s telegraph, then a full-HP car is put out of order (+ stun, "stoneHit" feedback), any car inside the impact', () => {
+/** Vérifie l’avertissement, les dégâts et l’étourdissement d’une vraie pierre sur les deux couleurs. */
+test('T-06 slingshot: 0.8 s telegraph, then a full-HP car loses half its HP and is stunned ("stoneHit" feedback), any car inside the impact; a second stone breaks it', () => {
   const r = raceRig();
   const A = r.state.cars.A, B = r.state.cars.B;
   A.heldItem = 'slingshot';
@@ -1210,18 +1354,27 @@ test('T-06 slingshot: 0.8 s telegraph, then a full-HP car is put out of order (+
   r.clock.now += 200;
   r.rules.updateStones(r.clock.now);
   assert.equal(B.hp, Math.max(0, config.hpMax - config.dmgStone));
-  assert.ok(config.dmgStone >= config.hpMax, 'one stone breaks a full-HP car');
-  assert.equal(B.disabled, true);
+  assert.ok(config.dmgStone < config.hpMax && 2 * config.dmgStone >= config.hpMax, 'one stone wounds a full-HP car, two break it');
+  assert.equal(B.disabled, false);
   assert.ok(r.feedback.includes('stoneHit'), 'hit feedback for the comic effect');
-  assert.ok(B.stunUntil > r.clock.now);
+  assert.ok(Math.abs(B.stunUntil - r.clock.now - config.stunStoneS * 1000) < 1, 'stunned for the configured time');
   assert.equal(A.hp, config.hpMax);
   assert.equal(r.state.stones.length, 0);
+  // Once the first impact's stun and invulnerability are over, a second stone breaks the car
+  r.clock.now += 3000; B.stunUntil = 0; B.invulnUntil = 0;
+  A.heldItem = 'slingshot'; r.rules.onPower('A');
+  r.rules.onSlingshot(msg({ type: 'Slingshot' as const, team: 'A' as Team, ...aim({ ...B.pos }, 120) }));
+  r.clock.now += config.stoneTelegraphS * 1000; r.rules.updateStones(r.clock.now);
+  assert.equal(B.hp, Math.max(0, config.hpMax - 2 * config.dmgStone));
+  assert.equal(B.disabled, true, 'the second stone breaks the car');
 });
+/** Vérifie qu’un tir sans lance-pierre armé est ignoré. */
 test('slingshot without armed slingshot is ignored', () => {
   const r = raceRig();
   r.rules.onSlingshot(msg({ type: 'Slingshot' as const, ...aim({ x: 900, y: 500 }, 120) }));
   assert.equal(r.state.stones.length, 0);
 });
+/** Vérifie qu’une traction trop courte ne tire pas et ne consomme pas le stock. */
 test('slingshot: a pull shorter than the minimum does nothing and the item stays armed', () => {
   const r = raceRig();
   const A = r.state.cars.A;
@@ -1232,7 +1385,9 @@ test('slingshot: a pull shorter than the minimum does nothing and the item stays
   assert.equal(A.itemArmed, true);
   assert.equal(A.heldItem, 'slingshot');
 });
+/** Vérifie le sens du tir et l’allongement de sa portée avec la traction. */
 test('slingshot: the stone flies opposite to the pull and a longer pull goes farther', () => {
+  /** Prépare une pierre armée puis vérifie son arrivée sur la cible du scénario. */
   const land = (pull: number) => {
     const r = raceRig();
     r.state.cars.A.heldItem = 'slingshot';
@@ -1247,6 +1402,7 @@ test('slingshot: the stone flies opposite to the pull and a longer pull goes far
   assert.ok(long.y < short.y, 'longer pull = farther landing');
   assert.ok(long.y >= 0 && long.y <= config.logicalHeight, 'kept inside the table');
 });
+/** Vérifie que la cible de la pierre reste dans les limites de la table. */
 test('slingshot: the landing point is clamped to the table', () => {
   const r = raceRig();
   r.state.cars.A.heldItem = 'slingshot';
@@ -1255,7 +1411,9 @@ test('slingshot: the landing point is clamped to the table', () => {
   const t = r.state.stones[0].target;
   assert.ok(t.y >= 0 && t.x >= 0 && t.x <= config.logicalWidth);
 });
+/** Vérifie les dimensions et l’intensité croissante des zones d’accélération. */
 test('T-07 longer boost gate → stronger boost and acceleration zone properties', () => {
+  /** Prépare une zone d’accélération et déplace la voiture à travers sa surface de test. */
   const crossWith = (len: number) => {
     const r = raceRig();
     const car = r.state.cars.A;
@@ -1277,6 +1435,7 @@ test('T-07 longer boost gate → stronger boost and acceleration zone properties
   };
   assert.ok(crossWith(400) > crossWith(120), 'k grows with the length');
 });
+/** Vérifie le déclenchement lors de l’entrée dans toute la surface du corridor d’accélération. */
 test('T-07 boost zone triggers when entering the 2D acceleration corridor', () => {
   const r = raceRig();
   const car = r.state.cars.A;
@@ -1294,6 +1453,7 @@ test('T-07 boost zone triggers when entering the 2D acceleration corridor', () =
   assert.ok(car.speed > 200, 'speed increased');
   assert.ok(r.feedback.includes('boostHit'));
 });
+/** Vérifie qu’une zone d’accélération agit seulement sur la voiture de son équipe. */
 test('T-07 boost zone affects allied car only, opponent ignores it', () => {
   const r = raceRig();
   r.state.cars.A.heldItem = 'boost';
@@ -1308,6 +1468,7 @@ test('T-07 boost zone affects allied car only, opponent ignores it', () => {
   assert.equal(carB.boostUntil, 0, 'opponent car does not receive allied boost');
   assert.equal(carB.speed, 200);
 });
+/** Vérifie la portée maximale des contacts et l’expiration de la zone d’accélération. */
 test('boost gate rejects contacts over 400 px apart and expires after 8 s', () => {
   const r = raceRig();
   r.state.cars.A.heldItem = 'boost';
@@ -1320,6 +1481,7 @@ test('boost gate rejects contacts over 400 px apart and expires after 8 s', () =
   r.advance(config.boostGateLifeS * 1000 + 100);
   assert.equal(r.state.boostGates.length, 0);
 });
+/** Vérifie la réservation d’un seul stock armé et son utilisation possible par l’autre copilote. */
 test('only the first stock arms globally; either nearby copilot may use it', () => {
   for (const [team, y] of [['A', 350], ['B', 750]] as const) {
     const r = raceRig();
@@ -1330,6 +1492,7 @@ test('only the first stock arms globally; either nearby copilot may use it', () 
   }
 });
 
+/** Vérifie la cohérence des postes en diagonale, de l’attribution des gestes et des messages orientés. */
 test('diagonal teammates: corners, docking, gesture ownership and feedback orientation agree', () => {
   assert.deepEqual(panelOf('A', 'copilot'), { team: 'A', role: 'copilot', cx: 1760, cy: 90, rot: Math.PI });
   assert.deepEqual(panelOf('B', 'copilot'), { team: 'B', role: 'copilot', cx: 1760, cy: 990, rot: 0 });
@@ -1351,6 +1514,7 @@ test('diagonal teammates: corners, docking, gesture ownership and feedback orien
 // ─── Abilities: T-08 ─────────────────────────────────────────────────────────
 
 section('Abilities');
+/** Vérifie l’ancienne capacité fantôme et sa durée de recharge. */
 test('T-08 ghost: ignores hostile elements for 3 s, then 20 s recharge', () => {
   const r = raceRig();
   const car = r.state.cars.A;
@@ -1365,13 +1529,14 @@ test('T-08 ghost: ignores hostile elements for 3 s, then 20 s recharge', () => {
   r.rules.onAbility(msg({ type: 'Ability' as const, team: 'A' as Team, kind: 'ghost' as const }));
   assert.ok(car.ghostUntil < r.clock.now, 'cooldown prevents re-activation');
 });
+/** Vérifie l’ancienne destruction sur les murs neutres et les murs attribués hérités. */
 test('destroy: disables a neutral wall but still spares legacy owned walls', () => {
   const r = raceRig(); place(r, 1, .2, .5);
   r.state.walls.push({ id: 'legacy-own', team: 'A', pos: { x: 1500, y: 500 }, angle: 0, lengthPx: 120, disabledUntil: 0 });
   r.rules.onAbility(msg({ type: 'Ability', team: 'A', kind: 'destroy', targetId: 'legacy-own' }));
-  assert.equal(r.state.walls.find(w => w.id === 'legacy-own')!.disabledUntil, 0);
+  assert.equal(r.state.walls.find(/* Retrouve le mur hérité attribué à une équipe pour tester la compatibilité. */ w => w.id === 'legacy-own')!.disabledUntil, 0);
   r.rules.onAbility(msg({ type: 'Ability', team: 'A', kind: 'destroy', targetId: 'wall-1' }));
-  const w = r.state.walls.find(x => x.id === 'wall-1')!;
+  const w = r.state.walls.find(/* Retrouve le mur neutre ciblé par l’ancienne capacité. */ x => x.id === 'wall-1')!;
   assert.equal(w.disabledUntil - r.clock.now, config.destroyDisableS * 1000);
   assert.equal(r.state.cooldowns.A.destroy - r.clock.now, config.destroyCooldownS * 1000);
   r.state.cars.A.pos = { ...w.pos }; r.rules.afterMove('A', w.pos, r.clock.now);
@@ -1381,8 +1546,10 @@ test('destroy: disables a neutral wall but still spares legacy owned walls', () 
 // ─── Repair: T-09 ────────────────────────────────────────────────────────────
 
 section('Repair');
+/** Envoie le maintien ou le relâchement du pad de réparation étudié. */
 const pad = (r: Rig, team: Team, role: 'pilot' | 'copilot', on: boolean) =>
   r.rules.onPadHold(msg({ type: 'PadHold' as const, team, role, on }));
+/** Vérifie que la réparation demande les deux appuis et recommence dès qu’un partenaire lâche. */
 test('T-09 repair needs BOTH pads; releasing one resets the gauge', () => {
   const r = raceRig();
   r.state.cars.A.hp = 0; r.state.cars.A.disabled = true;
@@ -1401,6 +1568,7 @@ test('T-09 repair needs BOTH pads; releasing one resets the gauge', () => {
   assert.equal(r.state.cars.A.hp, config.repairHpRestore);
   assert.equal(r.state.cars.A.disabled, false);
 });
+/** Vérifie la réapparition de la voiture réparée au dernier checkpoint. */
 test('repair respawns a disabled car at the last checkpoint', () => {
   const r = raceRig();
   const car = r.state.cars.A;
@@ -1412,6 +1580,7 @@ test('repair respawns a disabled car at the last checkpoint', () => {
   const cp = r.state.track!.checkpoints[2];
   assert.ok(Math.hypot(car.pos.x - cp.pos.x, car.pos.y - cp.pos.y) < 5);
 });
+/** Vérifie qu’une voiture détruite s’arrête et ignore les commandes du pilote. */
 test('HP 0 → car stops and ignores the pilot', () => {
   const r = raceRig();
   r.rules.onPilotInput('A', msg({ type: 'PilotInput' as const, team: 'A' as Team, throttle: 1, steer: 0 }));
@@ -1425,8 +1594,10 @@ test('HP 0 → car stops and ignores the pilot', () => {
 // ─── Border pull (C-07) ──────────────────────────────────────────────────────
 
 section('PC test switches');
+/** Envoie le réglage d’aide de test que le scénario doit accepter ou ignorer. */
 const toggle = (r: Rig, flag: 'invincible' | 'allItems', on: boolean) =>
   r.rules.onTestToggle(msg({ type: 'TestToggle' as const, flag, on }));
+/** Vérifie que les aides de test sont ignorées en dehors du mode clavier. */
 test('test switches are ignored outside the PC mode', () => {
   const r = raceRig();
   r.state.mapMode = 'table';
@@ -1434,6 +1605,7 @@ test('test switches are ignored outside the PC mode', () => {
   toggle(r, 'allItems', true);
   assert.deepEqual(r.state.testMode, { invincible: false, allItems: false });
 });
+/** Vérifie l’invincibilité de test face aux murs, à l’électricité, aux pierres et aux chutes. */
 test('invincible: no damage from walls, arcs or stones, and a fall just respawns the car', () => {
   const r = raceRig();
   r.state.mapMode = 'pc';
@@ -1461,6 +1633,7 @@ test('invincible: no damage from walls, arcs or stones, and a fall just respawns
   r.rules.damage(A, 10, r.clock.now);
   assert.equal(A.hp, config.hpMax - 10);
 });
+/** Vérifie que les stocks libres de test exigent encore POWER et la réservation du geste. */
 test('allItems: free stock still needs POWER and respects the shared reservation', () => {
   const r = raceRig();
   r.state.mapMode = 'pc';
@@ -1488,6 +1661,7 @@ test('allItems: free stock still needs POWER and respects the shared reservation
 });
 
 section('Border pull');
+/** Vérifie une déformation locale temporaire sans modification de largeur de chaussée. */
 test('BorderPull shifts a local section, then reforms without changing its width', () => {
   const r = raceRig();
   const track = r.state.track!;
@@ -1497,6 +1671,7 @@ test('BorderPull shifts a local section, then reforms without changing its width
   const center = track.centerline[i];
   const outward = { x: edge.x - center.x, y: edge.y - center.y };
   const len = Math.hypot(outward.x, outward.y);
+  /** Transmet la commande construite par le scénario au composant étudié. */
   const send = () => r.rules.onBorderPull(msg({ type: 'BorderPull' as const, x: edge.x, y: edge.y, dx: outward.x / len * 70, dy: outward.y / len * 70, team: 'A' as Team }));
   const base = { ...center };
   send();
@@ -1507,7 +1682,7 @@ test('BorderPull shifts a local section, then reforms without changing its width
 
   // A fresh gesture is immediately accepted and begins easing the previous one home.
   send();
-  assert.ok(r.state.deformations.some(d => d.releaseAt !== null), 'previous deformation reforms');
+  assert.ok(r.state.deformations.some(/* Repère une déformation entrée dans sa phase de retour. */ d => d.releaseAt !== null), 'previous deformation reforms');
   r.advance((config.trackDeformRelaxS + config.trackDeformRampS + 0.2) * 1000);
   assert.equal(r.state.deformations.length, 1, 'only the latest deformation remains');
   r.advance((config.trackDeformHoldS + config.trackDeformRelaxS + 0.2) * 1000);
@@ -1518,6 +1693,7 @@ test('BorderPull shifts a local section, then reforms without changing its width
 // ─── Oz fallback & T-11 replay ───────────────────────────────────────────────
 
 section('Oz console');
+/** Vérifie qu’une relecture des poses et activations reproduit le même état tangible. */
 test('T-11 replaying atomic placement, activation and removal reproduces tangible state', () => {
   const a = raceRig();
   place(a, 1); place(a, 2);
@@ -1532,12 +1708,14 @@ test('T-11 replaying atomic placement, activation and removal reproduces tangibl
   assert.deepEqual(b.state.tangibles, a.state.tangibles);
   assert.deepEqual(b.state.walls, a.state.walls);
 });
+/** Vérifie que POWER ne peut armer le stock adverse ni renouveler artificiellement son armement. */
 test('POWER cannot arm enemy stock, and repeated POWER cannot extend the window', () => {
   const r = raceRig(); r.state.cars.A.heldItem = 'boost';
   r.rules.onPower('B'); assert.equal(r.state.cars.A.itemArmed, false);
   r.rules.onPower('A'); const expiry = r.state.cars.A.itemArmExpiry;
   r.clock.now += 1000; r.rules.onPower('A'); assert.equal(r.state.cars.A.itemArmExpiry, expiry);
 });
+/** Vérifie qu’un lance-pierre volé consomme seulement son propriétaire et peut toucher les deux voitures. */
 test('a stolen slingshot consumes only the owner stock and can hit either colour', () => {
   const r = raceRig(); r.state.cars.A.heldItem = 'slingshot'; r.rules.onPower('A');
   r.state.cars.B.heldItem = 'boost';
@@ -1546,10 +1724,11 @@ test('a stolen slingshot consumes only the owner stock and can hit either colour
   assert.equal(r.state.stones[0].team, 'B');
   r.clock.now += 1000; r.rules.updateStones(r.clock.now);
   assert.equal(r.state.cars.A.hp, Math.max(0, config.hpMax - config.dmgStone));
-  assert.equal(r.state.cars.B.hp,0,'both starting cars are inside this impact');
+  assert.equal(r.state.cars.B.hp,Math.max(0, config.hpMax - config.dmgStone),'both starting cars are inside this impact');
   r.rules.onSlingshot(msg({ type: 'Slingshot', team: 'A', ...aim({ x: 900, y: 500 }, 120) }));
   assert.equal(r.state.stones.length, 0, 'same stock cannot be consumed twice');
 });
+/** Vérifie qu’une accélération volée appartient à l’équipe du geste sans intervention d’Oz. */
 test('a stolen boost belongs to the gesturing team without Oz', () => {
   const r = raceRig(); r.state.cars.A.heldItem = 'boost'; r.rules.onPower('A');
   r.rules.onBoostGate(msg({ type: 'BoostGate', team: 'B', a: { x: 1500, y: 700 }, b: { x: 1700, y: 700 } }));
@@ -1557,6 +1736,7 @@ test('a stolen boost belongs to the gesturing team without Oz', () => {
 });
 
 section('Wall manipulation');
+/** Vérifie la rotation du second point autour du premier en conservant la longueur du mur. */
 test('endpoint 2 rotates around a fixed endpoint 1 with constant length through all angles', () => {
   const anchor = { x: 800, y: 500 }, length = config.wallLengthPx;
   for (let degrees = -720; degrees <= 720; degrees += 7) {
@@ -1568,6 +1748,7 @@ test('endpoint 2 rotates around a fixed endpoint 1 with constant length through 
   }
   assert.equal(rotateWall(anchor, anchor, length), null, 'zero-length direction is ignored');
 });
+/** Vérifie le pivot de rotation côté serveur et le rejet des murs sur les commandes. */
 test('server preserves the rotation anchor and rejects walls over the table controls', () => {
   const r = raceRig(); charge(r,1);
   const anchor = { x: 700, y: 500 };
@@ -1579,6 +1760,7 @@ test('server preserves the rotation anchor and rejects walls over the table cont
   r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 1, x: 450 / 1920, y: 990 / 1080, angle: 0 }));
   assert.deepEqual(r.state.tangibles[1], before, 'wall endpoint cannot overlap pilot controls');
 });
+/** Vérifie que désactiver un pilier coupe son arc et que le réactiver restaure la paire. */
 test('deactivating either pillar cuts its arc; reactivation restores the same pair', () => {
   const r = raceRig(); place(r, 2, .45); place(r, 3, .55);
   assert.equal(r.state.arcs.length, 1);
@@ -1587,22 +1769,28 @@ test('deactivating either pillar cuts its arc; reactivation restores the same pa
   r.rules.onTangibleControl(msg({ type: 'TangibleControl', id: 2, action: 'activate' })); assert.equal(r.state.arcs.length, 1);
 });
 
+/** Prépare une carte Oz avec un mur et des événements de pointeur simulés. */
 function mapRig() {
   const r = raceRig(); place(r, 1);
   r.rules.onTangibleMoved(msg({ type: 'TangibleMoved', id: 1, x: .5, y: .5, angle: 0 }));
   const listeners = new Map<string, (event: PointerEvent) => void>();
   let draws = 0;
-  const context = new Proxy({}, { get: () => () => { draws++; } });
-  const canvas = { width: 1920, height: 1080, getContext: () => context,
+  const context = new Proxy({}, { /* Compte les commandes de dessin émises par le contexte Canvas simulé. */ get: () => /* Compte une commande de dessin émise avant tout nouveau snapshot. */ () => { draws++; } });
+  const canvas = { width: 1920, height: 1080, /* Fournit le contexte Canvas de contrôle à la place du dessin réel. */ getContext: () => context,
+    /** Fournit les dimensions fixes du canvas de test pour convertir les contacts. */
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 960, height: 540 }),
-    addEventListener: (name: string, fn: (event: PointerEvent) => void) => listeners.set(name, fn), setPointerCapture: () => {} } as unknown as HTMLCanvasElement;
+    /** Conserve le gestionnaire du navigateur simulé pour pouvoir lui rejouer un événement. */
+    addEventListener: (name: string, fn: (event: PointerEvent) => void) => listeners.set(name, fn), /* Remplace la capture du navigateur, inutile lorsque les événements sont rejoués directement. */ setPointerCapture: () => {} } as unknown as HTMLCanvasElement;
   const sent: Array<{ x: number; y: number; angle: number }> = [];
-  const map = new OzMap(canvas, { enabled: () => true, selectedId: () => 1, selectedKind: () => 'wall', preparing: () => false, draftAngle: () => 0, onPlace: () => false, onDragStart: () => {}, onDragEnd: () => {},
-    onDock: () => {}, onSelect: () => {}, onMove: (_id, x, y, angle) => { sent.push({ x, y, angle }); return true; }, onRelocateTangible: (id, pos, angle) => { sent.push({ x: pos.x / 1920, y: pos.y / 1080, angle: angle ?? 0 }); } });
+  const map = new OzMap(canvas, { /* Expose à la carte l’autorisation de manipulation fixée ou calculée par le scénario. */ enabled: () => true, /* Fournit l’identifiant de l’objet sélectionné dans la console simulée. */ selectedId: () => 1, /* Fournit le type du tangible attendu par la prévisualisation du test. */ selectedKind: () => 'wall', /* Indique si le scénario prépare une pose ou manipule un objet déjà présent. */ preparing: () => false, /* Fournit l’angle de prévisualisation imposé par le test. */ draftAngle: () => 0, /* Remplace ou collecte la validation de pose selon le contrôleur utilisé par le scénario. */ onPlace: () => false, /* Remplace ou transmet le début du regroupement des modifications d’un geste. */ onDragStart: () => {}, /* Remplace ou transmet la clôture du groupe de modifications du geste. */ onDragEnd: () => {},
+    /** Remplace ou transmet le rangement du tangible sans utiliser l’interface HTML. */
+    onDock: () => {}, /* Remplace ou transmet la sélection d’objet au contrôleur du scénario. */ onSelect: () => {}, /* Collecte ou transmet la pose provisoire produite par le glissement sur la carte. */ onMove: (_id, x, y, angle) => { sent.push({ x, y, angle }); return true; }, /* Collecte la pose de déplacement avec ses coordonnées normalisées pour vérifier son exactitude. */ onRelocateTangible: (id, pos, angle) => { sent.push({ x: pos.x / 1920, y: pos.y / 1080, angle: angle ?? 0 }); } });
   map.setState(r.state);
-  const pointer = (name: string, x: number, y: number) => listeners.get(name)!({ pointerId: 1, clientX: x, clientY: y, preventDefault: () => {} } as PointerEvent);
-  return { map, sent, pointer, state: r.state, draws: () => draws };
+  /** Convertit le point étudié puis rejoue l’événement dans la carte Oz. */
+  const pointer = (name: string, x: number, y: number, options: Partial<PointerEvent> = {}) => listeners.get(name)!({ pointerId: 1, clientX: x, clientY: y, /* Remplace l’annulation de l’événement natif dans le navigateur simulé. */ preventDefault: () => {}, ...options } as PointerEvent);
+  return { map, sent, pointer, state: r.state, /* Renvoie le nombre de commandes de dessin émises par le contexte de test. */ draws: () => draws };
 }
+/** Vérifie la prévisualisation immédiate du pivot malgré la réception d’un ancien état réseau. */
 test('rotation handle previews immediately and keeps its anchor despite older network snapshots', () => {
   const r = mapRig();
   r.pointer('pointerdown', (960+config.wallLengthPx/2)/2, 270); // endpoint 2 of a 120 px logical wall
@@ -1618,6 +1806,7 @@ test('rotation handle previews immediately and keeps its anchor despite older ne
   }
   assert.ok(r.sent.length >= 2);
 });
+/** Vérifie le décalage de prise au glissement et l’arrêt des envois après annulation. */
 test('dragging the wall body preserves grab offset; cancelled drags stop sending', () => {
   const r = mapRig();
   r.pointer('pointerdown', 475, 270);
@@ -1628,7 +1817,27 @@ test('dragging the wall body preserves grab offset; cancelled drags stop sending
   const count = r.sent.length;
   r.pointer('pointermove', 600, 300); assert.equal(r.sent.length, count);
 });
+/** Vérifie la tolérance du toucher bref et l’impossibilité pour un second doigt de voler le glissement. */
+test('operator touch taps tolerate jitter and a second finger cannot steal the wall drag',()=>{
+  const r=mapRig(),touch={pointerType:'touch',isPrimary:true};
+  r.pointer('pointerdown',475,270,touch);
+  r.pointer('pointermove',481,273,touch);
+  r.pointer('pointerup',481,273,touch);
+  assert.equal(r.sent.length,0,'a touch tap selects without moving the real wall');
+  assert.equal(r.map.hasOperation,true,'pick and drop remains available without a keyboard');
+  r.map.cancel();assert.equal(r.map.hasOperation,false);
+  r.pointer('pointerdown',475,270,touch);
+  r.pointer('pointerdown',350,220,{pointerId:2,pointerType:'touch',isPrimary:false});
+  r.pointer('pointermove',600,400,{pointerId:2,pointerType:'touch',isPrimary:false});
+  r.pointer('pointercancel',600,400,{pointerId:2,pointerType:'touch',isPrimary:false});
+  assert.equal(r.sent.length,0);
+  r.pointer('pointermove',500,290,touch);
+  assert.equal(r.sent.length,1,'the original finger still owns the movement');
+  r.pointer('pointercancel',500,290,touch);
+  r.pointer('pointermove',550,330,touch);assert.equal(r.sent.length,1);
+});
 
+/** Vérifie qu’un retrait confirmé efface l’aperçu et empêche un déplacement tardif de ressusciter l’objet. */
 test('a confirmed removal clears the drag preview and stops movement', () => {
   const r = mapRig(); r.pointer('pointerdown', 475, 270);
   const next = structuredClone(r.state);
@@ -1637,6 +1846,7 @@ test('a confirmed removal clears the drag preview and stops movement', () => {
   r.pointer('pointermove', 485, 280); r.pointer('pointerup', 485, 280);
   assert.equal(r.sent.length, 0, 'an absent object is not moved back onto the map by an older gesture');
 });
+/** Vérifie le déplacement du mur en deux touches définissant sa position puis son orientation. */
 test('moving a wall with pick & drop supports 2-click positioning and orientation', () => {
   const r = mapRig();
   r.pointer('pointerdown', 480, 270); r.pointer('pointerup', 480, 270);
@@ -1649,15 +1859,18 @@ test('moving a wall with pick & drop supports 2-click positioning and orientatio
 });
 
 section('Fast Oz console');
+/** Prépare une console synchronisée avec collecte des commandes et horloge locale contrôlée. */
 function operatorRig() {
   const r = raceRig(), sent: Array<{ type: string } & Record<string, unknown>> = [];
   r.state.tangibles[1].angle=0; // This console geometry fixture starts horizontally.
   let time = 0;
-  const c = new OzController((type, params) => { sent.push({ type, ...params }); return true; }, () => {}, () => time);
+  const c = new OzController(/* Collecte la commande de pose du contrôleur sans utiliser de réseau réel. */ (type, params) => { sent.push({ type, ...params }); return true; }, /* Laisse cette notification sans effet dans le scénario local. */ () => {}, /* Fournit l’heure contrôlée du scénario au composant qui consulte son horloge. */ () => time);
   c.setConnected(true); c.applyState(structuredClone(r.state));
+  /** Sélectionne l’objet et efface les commandes de préparation avant les assertions du scénario. */
   const ready = (id:1|2|3) => { c.select(id); sent.length=0; };
-  return { c, sent, ready, source: r.state, tick: (ms: number) => { time += ms; } };
+  return { c, sent, ready, source: r.state, /* Avance l’horloge locale de la console sans attendre le temps réel. */ tick: (ms: number) => { time += ms; } };
 }
+/** Vérifie la préparation locale et le maintien d’une pose invalide sans envoi au serveur. */
 test('preparation and preview rotation are local; invalid placement stays prepared and is not sent', () => {
   const { c, sent, ready } = operatorRig(); ready(1);
   c.prepare(1); c.rotate(15); assert.equal(c.draftAngle, 15); assert.equal(sent.length, 0);
@@ -1665,6 +1878,7 @@ test('preparation and preview rotation are local; invalid placement stays prepar
   assert.equal(c.preparing, true); assert.equal(c.canUndo, false); assert.equal(sent.length, 0);
   c.cancelPreparation(); assert.equal(c.preparing, false);
 });
+/** Vérifie l’activation atomique et les modifications rapides à partir des poses optimistes. */
 test('one placement atomically activates; rapid edits and undo use optimistic poses despite old snapshots', () => {
   const { c, sent, source, ready } = operatorRig(); ready(1);
   c.prepare(1); c.place({ x: .4, y: .5, angle: 15 });
@@ -1674,6 +1888,7 @@ test('one placement atomically activates; rapid edits and undo use optimistic po
   assert.equal(c.state!.tangibles[1].x, .4); assert.equal(c.state!.tangibles[1].active, true);
   c.undo(); assert.equal(c.state!.tangibles[1].status, 'parked'); assert.equal(c.canUndo, false);
 });
+/** Vérifie que seule la première pose du premier pilier prépare automatiquement le second. */
 test('first pylon prepares the second only on its first placement', () => {
   const { c, ready } = operatorRig(); ready(2); ready(3); c.prepare(2); c.place({ x: .4, y: .5, angle: 0 });
   assert.equal(c.selectedId, 3); assert.equal(c.preparing, true);
@@ -1682,6 +1897,7 @@ test('first pylon prepares the second only on its first placement', () => {
   c.prepare(2); assert.equal(c.place({ x: .45, y: .5, angle: 0 }),true);
   assert.equal(c.selectedId, 2); assert.equal(c.preparing, false);
 });
+/** Vérifie la conservation de la pose lors d’un retrait puis d’une restauration. */
 test('temporary removal preserves pose and type; restore and undo do not need configuration', () => {
   const { c, sent, ready } = operatorRig(); c.presence(); assert.equal(sent.length, 0); assert.ok(c.notice); ready(1);
   c.prepare(1); c.place({ x: .5, y: .5, angle: 35 }); const before = { ...c.state!.tangibles[1] };
@@ -1689,6 +1905,7 @@ test('temporary removal preserves pose and type; restore and undo do not need co
   c.presence(); assert.deepEqual(c.state!.tangibles[1], before);
   c.undo(); assert.equal(c.state!.tangibles[1].active, false);
 });
+/** Vérifie qu’une rotation ou un glissement répété s’annule comme une seule action. */
 test('a repeated keyboard rotation or drag is undone in one action; keyboard rotation preserves center', () => {
   const { c, ready } = operatorRig(); ready(1); c.prepare(1); c.place({ x: .5, y: .5, angle: 0 });
   c.beginGesture(); for (let i = 0; i < 3; i++) c.rotate(5); c.endGesture();
@@ -1697,6 +1914,7 @@ test('a repeated keyboard rotation or drag is undone in one action; keyboard rot
   c.beginGesture(); c.move(1, { x: .505, y: .5, angle: 0 }); c.move(1, { x: .51, y: .5, angle: 0 }); c.endGesture();
   c.undo(); assert.equal(c.state!.tangibles[1].x, .5);
 });
+/** Vérifie qu’une reconnexion ne rejoue pas les anciennes préparations et modifications. */
 test('disconnect cancels preparation and queued previews; reconnect never replays commands', () => {
   const { c, sent, source, ready } = operatorRig(); ready(1); c.prepare(1); c.place({ x: .5, y: .5, angle: 0 }); c.prepare(2);
   const count = sent.length; c.setConnected(false); c.place({ x: .4, y: .5, angle: 0 });
@@ -1705,6 +1923,7 @@ test('disconnect cancels preparation and queued previews; reconnect never replay
   c.prepare(1); c.place({ x: .5, y: .5, angle: 0 }); c.applyState({ ...source, phase: 'LOBBY', tangibles: {} });
   assert.equal(c.canUndo, false); assert.equal(c.preparing, false); assert.equal(c.enabled, false);
 });
+/** Vérifie la réconciliation des aperçus avec les états confirmés ou rejetés. */
 test('confirmed snapshots reconcile pending edits; rejected or reset state cannot keep an immortal preview', () => {
   const { c, source, tick, ready } = operatorRig(); ready(1); c.prepare(1); c.place({ x: .5, y: .5, angle: 0 });
   const confirmed = structuredClone(c.state!); c.applyState(confirmed);
@@ -1712,7 +1931,9 @@ test('confirmed snapshots reconcile pending edits; rejected or reset state canno
   ready(1); c.prepare(1); c.place({ x: .5, y: .5, angle: 0 }); tick(1600); c.applyState(structuredClone(source));
   assert.equal(structuredClone(c.state!).tangibles[1].status, 'parked'); assert.equal(c.canUndo, false); assert.ok(c.notice.includes('resynchronisée'));
 });
+/** Vérifie les raccourcis AZERTY et pavé numérique sans détourner ceux du navigateur. */
 test('shortcuts support AZERTY, numpad and modifiers without hijacking other browser shortcuts', () => {
+  /** Construit un événement clavier avec les modificateurs demandés. */
   const event = (key: string, code = '', extra = {}) => ({ key, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...extra });
   assert.equal(ozShortcut(event('M')), null);
   assert.equal(ozShortcut(event('&', 'Digit1')), 'wall');
@@ -1725,8 +1946,9 @@ test('shortcuts support AZERTY, numpad and modifiers without hijacking other bro
   assert.equal(ozShortcut(event('r', '', { ctrlKey: true })), null);
   assert.equal(ozShortcut(event('m', '', { altKey: true })), null);
 });
+/** Vérifie l’aller-retour des coordonnées dans les quatre orientations de carte. */
 test('all four view transforms round-trip valid edges, center and forbidden player stations', () => {
-  for (let q = 0; q < 4; q++) for (const size of [[1920, 1080], [1280, 390], [700, 500]]) {
+  for (let q = 0; q < 4; q++) for (const size of [[1920, 1080], [1280, 390], [700, 500], [390, 640], [844, 390], [320, 560]]) {
     const transform = viewTransform(size[0], size[1], 1920, 1080, q);
     for (const p of [{ x: 0, y: 0 }, { x: 1920, y: 1080 }, { x: 960, y: 540 }, { x: 1627, y: 972 }, { x: 60, y: 500 }]) {
       const restored = viewToWorld(worldToView(p, transform), transform);
@@ -1734,19 +1956,27 @@ test('all four view transforms round-trip valid edges, center and forbidden play
     }
   }
 });
+/** Vérifie la sélection, le déplacement et le pivot dans les quatre orientations de carte. */
 test('map placement, body dragging and rotation-handle picking work in all four views', () => {
   for (let q = 0; q < 4; q++) {
     const rig = operatorRig(), listeners = new Map<string, (e: PointerEvent) => void>();
     const canvas = { width: 1920, height: 1080,
-      getContext: () => new Proxy({}, { get: () => () => {} }),
+      /** Fournit le contexte Canvas de contrôle à la place du dessin réel. */
+      getContext: () => new Proxy({}, { /* Compte les commandes de dessin émises par le contexte Canvas simulé. */ get: () => /* Laisse cette notification sans effet dans le scénario local. */ () => {} }),
+      /** Fournit les dimensions fixes du canvas de test pour convertir les contacts. */
       getBoundingClientRect: () => ({ left: 0, top: 0, width: 960, height: 540 }),
-      addEventListener: (name: string, fn: (e: PointerEvent) => void) => listeners.set(name, fn), setPointerCapture() {} } as unknown as HTMLCanvasElement;
-    const c = rig.c, map = new OzMap(canvas, { enabled: () => c.enabled, selectedId: () => c.selectedId,
-      selectedKind: () => 'wall', preparing: () => c.preparing, draftAngle: () => c.draftAngle,
-      onDock: team => c.dock(team), onSelect: id => c.select(id), onPlace: pose => c.place(pose), onMove: (id, x, y, angle) => c.move(id, { x, y, angle }),
-      onDragStart: () => c.beginGesture(), onDragEnd: () => c.endGesture() });
+      /** Conserve le gestionnaire du navigateur simulé pour pouvoir lui rejouer un événement. */
+      addEventListener: (name: string, fn: (e: PointerEvent) => void) => listeners.set(name, fn), /* Remplace la capture du navigateur, inutile lorsque les événements sont rejoués directement. */ setPointerCapture() {} } as unknown as HTMLCanvasElement;
+    const c = rig.c, map = new OzMap(canvas, { /* Expose à la carte l’autorisation de manipulation fixée ou calculée par le scénario. */ enabled: () => c.enabled, /* Fournit l’identifiant de l’objet sélectionné dans la console simulée. */ selectedId: () => c.selectedId,
+      /** Fournit le type du tangible attendu par la prévisualisation du test. */
+      selectedKind: () => 'wall', /* Indique si le scénario prépare une pose ou manipule un objet déjà présent. */ preparing: () => c.preparing, /* Fournit l’angle de prévisualisation imposé par le test. */ draftAngle: () => c.draftAngle,
+      /** Remplace ou transmet le rangement du tangible sans utiliser l’interface HTML. */
+      onDock: team => c.dock(team), /* Remplace ou transmet la sélection d’objet au contrôleur du scénario. */ onSelect: id => c.select(id), /* Remplace ou collecte la validation de pose selon le contrôleur utilisé par le scénario. */ onPlace: pose => c.place(pose), /* Collecte ou transmet la pose provisoire produite par le glissement sur la carte. */ onMove: (id, x, y, angle) => c.move(id, { x, y, angle }),
+      /** Remplace ou transmet le début du regroupement des modifications d’un geste. */
+      onDragStart: () => c.beginGesture(), /* Remplace ou transmet la clôture du groupe de modifications du geste. */ onDragEnd: () => c.endGesture() });
     const t = viewTransform(1920, 1080, 1920, 1080, q);
-    const pointer = (name: string, p: Vec2) => { const at = worldToView(p, t); listeners.get(name)!({ pointerId: 1, clientX: at.x / 2, clientY: at.y / 2, preventDefault() {} } as PointerEvent); };
+    /** Convertit le point étudié puis rejoue l’événement dans la carte Oz. */
+    const pointer = (name: string, p: Vec2) => { const at = worldToView(p, t); listeners.get(name)!({ pointerId: 1, clientX: at.x / 2, clientY: at.y / 2, /* Remplace l’annulation de l’événement natif dans le navigateur simulé. */ preventDefault() {} } as PointerEvent); };
     map.setQuarter(q); rig.ready(1); map.setState(c.state!); c.prepare(1);
     pointer('pointermove', { x: 960, y: 540 }); assert.equal(rig.sent.length, 0);
     pointer('pointerdown', { x: 960, y: 540 }); pointer('pointerup', { x: 960, y: 540 }); map.setState(c.state!);

@@ -1,3 +1,4 @@
+/* Vérifie les clients et les scripts de test avec les types du navigateur ; utilisé par typecheck dans package.json et complété par tsconfig.server.json. */
 {
   "compilerOptions": {
     "target": "ES2020",

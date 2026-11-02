@@ -1,10 +1,17 @@
+/**
+ * Dessine les nappes de vapeur animées du thème Ferraille à partir d’une texture réutilisable.
+ * Liens : client-table/IndustrialMotion.ts, client-table/neon.ts.
+ * Référencé par client-table/ScrapBackdrop.ts.
+ */
 import { steamSample } from './IndustrialMotion.js';
 import { noise } from './neon.js';
 
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
-/** One mottled sprite, reused for both broad fog banks and the bounded vent emissions. */
+/** Dessine les nappes de vapeur animées du thème Ferraille à partir d’une texture réutilisable. */
 export class IndustrialVapour {
   private texture: HTMLCanvasElement | null = null;
+  /** Prépare une texture diffuse commune aux différentes nappes de vapeur. */
   private prepare(): HTMLCanvasElement {
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
     const c = canvas.getContext('2d')!;
@@ -17,6 +24,7 @@ export class IndustrialVapour {
     }
     return canvas;
   }
+  /** Déplace et fond les nappes de vapeur en réutilisant leur texture. */
   draw(ctx: Ctx, time: number, quiet: boolean): void {
     this.texture ??= this.prepare();
     const t = time / 1000;

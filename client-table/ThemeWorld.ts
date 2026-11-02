@@ -1,3 +1,9 @@
+/**
+ * Compose les sols, les décors et le brouillard des thèmes Miniature, Grand Prix et Castagne.
+ * Liens : server/types.ts, client-table/themes.ts, client-table/neon.ts, client-table/SceneryLayout.ts,
+ * client-table/CircuitMaterials.ts et les utilitaires importés ci-dessous.
+ * Référencé par client-table/Renderer.ts, scripts/visuals.ts.
+ */
 import type { TrackGeometry } from '../server/types.js';
 import type { CircuitTheme } from './themes.js';
 import { noise, glow } from './neon.js';
@@ -6,9 +12,10 @@ import { materialWash } from './CircuitMaterials.js';
 import { F1Venue } from './F1Venue.js';
 import { ToyWorkshop } from './ToyWorkshop.js';
 import { MayhemFestival } from './MayhemFestival.js';
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx=CanvasRenderingContext2D;
 
-/** Detailed, track-aware venues. Original-map scenery stays cached during temporary deformations. */
+/** Compose les sols, les décors et le brouillard des thèmes Miniature, Grand Prix et Castagne. */
 export class ThemeWorld {
   private floor:HTMLCanvasElement|null=null;
   private scene:HTMLCanvasElement|null=null;
@@ -16,10 +23,12 @@ export class ThemeWorld {
   private key:string|null=null;
   private venue:F1Venue|ToyWorkshop|MayhemFestival;
   builds=0;
+  /** Choisit le décor Miniature, Grand Prix ou Castagne associé au thème. */
   constructor(private theme:CircuitTheme){
     this.venue=theme==='classic'?new F1Venue():theme==='toy'?new ToyWorkshop():new MayhemFestival();
   }
-  draw(ctx:Ctx,time:number,reduced:boolean,mapping:boolean,track:TrackGeometry|null=null,presentation?:SceneryPresentation):void {
+  /** Compose les couches de décor du thème en conservant les éléments statiques entre les images. */
+  draw(ctx:Ctx,time:number,reduced:boolean,mapping:boolean,track:TrackGeometry|null=null,presentation?:SceneryPresentation,venueOpacity=1):void {
     if(!this.floor)this.prepareFloor();
     const mode=presentation??(mapping?'map':track?'race':'lobby'),key=mode==='race'?`race-${sceneryKey(track)}`:mode;
     if(this.key!==key){
@@ -47,11 +56,12 @@ export class ThemeWorld {
         ctx.globalAlpha=.15*Math.sin(age*Math.PI);ctx.drawImage(this.fog!,x-160,y-90,320,180);
       }ctx.restore();
     }
-    ctx.save();ctx.globalAlpha=mapping?.36:1;
+    ctx.save();ctx.globalAlpha=(mapping?.36:1)*venueOpacity;
     ctx.drawImage(this.scene!,0,0,1920,1080);this.venue.draw(ctx,t,reduced);ctx.restore();
     ctx.restore();
     if(mapping){ctx.fillStyle='#0a17284d';ctx.fillRect(0,0,1920,1080);}
   }
+  /** Prépare les textures du sol et du brouillard communes à la scène du thème. */
   private prepareFloor():void {
     this.floor=document.createElement('canvas');this.floor.width=1440;this.floor.height=810;
     const c=this.floor.getContext('2d')!;c.scale(.75,.75);

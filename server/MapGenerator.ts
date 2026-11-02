@@ -1,17 +1,9 @@
 /**
- * MapGenerator — builds TrackGeometry from two freehand strokes.
- *
- * Pipeline (REQ-2.2.x, REQ-2.3.x, T-01):
- *  1. validate(stroke)          — length ≥ 150 px, endpoints inside a target ring
- *  2. closedFromHalves(A, B)    — the two half-strokes, hooked on P1 and P2, ARE the loop
- *  3. shapeHalf(half)           — d' = |d|, amplitude ≥ 150 px (context.md §5.2 step 4)
- *  4. smoothed loop             — zero-lag Gaussian smoothing, σ grows only until the
- *                                 tightest bend is drivable; 256 points
- *  5. fitToPlayArea             — translate (then shrink) into the free area of the table
- *  6. computeGeometry / placeFeatures / validateGeometry
- *     → if invalid: more amplitude, then the old fallbacks (R-06: mirror/merge, preset)
+ * Construit la géométrie du circuit à partir des tracés et place le départ, les checkpoints et les
+ * ramassables.
+ * Liens : server/layout.ts, server/geometry.ts, server/types.ts, server/config.ts.
+ * Référencé notamment par server/GameRules.ts, scripts/acceptance.ts, scripts/audio.ts.
  */
-
 import type { Vec2, TrackGeometry } from './types.js';
 import { config } from './config.js';
 import { segmentsIntersect, clampToTrackRibbon } from './geometry.js';
@@ -32,51 +24,59 @@ const START_LATERAL_OFFSET = 20;   // px — side-by-side start positions
 
 // ─── Math helpers ─────────────────────────────────────────────────────────────
 
+/** Mesure la distance entre deux points. */
 function dist(a: Vec2, b: Vec2): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+/** Additionne les deux vecteurs pour construire une nouvelle position. */
 function add(a: Vec2, b: Vec2): Vec2 {
   return { x: a.x + b.x, y: a.y + b.y };
 }
 
+/** Calcule le vecteur qui relie les deux points. */
 function sub(a: Vec2, b: Vec2): Vec2 {
   return { x: a.x - b.x, y: a.y - b.y };
 }
 
+/** Multiplie le vecteur par le facteur demandé. */
 function scale(v: Vec2, s: number): Vec2 {
   return { x: v.x * s, y: v.y * s };
 }
 
+/** Ramène le vecteur à une longueur unitaire en tolérant une longueur nulle. */
 function normalize(v: Vec2): Vec2 {
   const len = Math.sqrt(v.x * v.x + v.y * v.y);
   if (len < 1e-9) return { x: 1, y: 0 };
   return { x: v.x / len, y: v.y / len };
 }
 
+/** Interpole la position entre deux points selon la progression demandée. */
 function lerp(a: Vec2, b: Vec2, t: number): Vec2 {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
+/** Tourne le vecteur d’un quart de tour pour obtenir sa normale. */
 function perpendicular(v: Vec2): Vec2 {
   return { x: -v.y, y: v.x };
 }
 
+/** Additionne les longueurs des segments du tracé. */
 function strokeLength(pts: Vec2[]): number {
   let total = 0;
   for (let i = 1; i < pts.length; i++) total += dist(pts[i - 1], pts[i]);
   return total;
 }
 
-/** Project point p onto axis defined by (origin, direction), return signed scalar. */
+/** Mesure la position d’un point suivant l’axe de référence. */
 function projectOntoAxis(p: Vec2, origin: Vec2, dir: Vec2): number {
   const d = sub(p, origin);
   return d.x * dir.x + d.y * dir.y;
 }
 
-/** Mirror point p about the line through p1 and p2. */
+/** Construit le symétrique d’un point par rapport à la ligne des raccords. */
 function mirrorAboutLine(p: Vec2, p1: Vec2, p2: Vec2): Vec2 {
   const dir = normalize(sub(p2, p1));
   const d = sub(p, p1);
@@ -85,7 +85,7 @@ function mirrorAboutLine(p: Vec2, p1: Vec2, p2: Vec2): Vec2 {
   return { x: 2 * proj.x - p.x, y: 2 * proj.y - p.y };
 }
 
-/** Compute the signed area of a polygon (positive = CCW). */
+/** Calcule l’aire orientée de la boucle pour reconnaître son sens de parcours. */
 function signedArea(pts: Vec2[]): number {
   let area = 0;
   const n = pts.length;
@@ -99,6 +99,7 @@ function signedArea(pts: Vec2[]): number {
 
 // ─── Step 1: validate(stroke) ─────────────────────────────────────────────────
 
+/** Vérifie la longueur du tracé et la présence de ses extrémités dans les zones de raccord. */
 function validate(stroke: Vec2[], P1: Vec2, P2: Vec2): boolean {
   if (stroke.length < 2) return false;
   const len = strokeLength(stroke);
@@ -108,13 +109,14 @@ function validate(stroke: Vec2[], P1: Vec2, P2: Vec2): boolean {
   // Supports strokes drawn in either direction (P1→P2 or P2→P1).
   const head = stroke.slice(0, Math.min(10, stroke.length));
   const tail = stroke.slice(Math.max(0, stroke.length - 10));
-  const fwd = head.some(pt => dist(pt, P1) <= TOUCH_RADIUS) && tail.some(pt => dist(pt, P2) <= TOUCH_RADIUS);
-  const rev = head.some(pt => dist(pt, P2) <= TOUCH_RADIUS) && tail.some(pt => dist(pt, P1) <= TOUCH_RADIUS);
+  const fwd = head.some(/* Repère un point initial suffisamment proche du premier raccord. */ pt => dist(pt, P1) <= TOUCH_RADIUS) && tail.some(/* Repère un point final suffisamment proche du second raccord. */ pt => dist(pt, P2) <= TOUCH_RADIUS);
+  const rev = head.some(/* Reconnaît le premier raccord lorsque le joueur dessine dans le sens inverse. */ pt => dist(pt, P2) <= TOUCH_RADIUS) && tail.some(/* Reconnaît le raccord final lorsque le joueur dessine dans le sens inverse. */ pt => dist(pt, P1) <= TOUCH_RADIUS);
   return fwd || rev;
 }
 
 // ─── Step 2: resample(stroke, step) ───────────────────────────────────────────
 
+/** Redistribue les points d’un tracé à intervalles réguliers. */
 function resample(pts: Vec2[], step: number): Vec2[] {
   if (pts.length === 0) return [];
   const result: Vec2[] = [pts[0]];
@@ -134,9 +136,8 @@ function resample(pts: Vec2[], step: number): Vec2[] {
 // ─── Step 3: oneEuroFilter ────────────────────────────────────────────────────
 
 /**
- * Minimal 1€ filter implementation.
- * β=0.007, fCmin=1.0, dCutoff=1.0
- * Applied per-axis independently over an assumed constant dt = 1/60.
+ * Lisse les irrégularités du dessin en adaptant le filtrage à la vitesse du tracé.
+ * Le filtre 1 € travaille séparément sur chaque axe avec β = 0,007, fCmin = 1, dCutoff = 1 et un pas supposé de 1/60 s.
  */
 function oneEuroFilter(pts: Vec2[]): Vec2[] {
   const fCmin = 1.0;
@@ -144,6 +145,7 @@ function oneEuroFilter(pts: Vec2[]): Vec2[] {
   const dCutoff = 1.0;
   const dt = 1 / 60;
 
+  /** Calcule le coefficient de filtrage correspondant à la fréquence de coupure. */
   function alpha(cutoff: number): number {
     const tau = 1 / (2 * Math.PI * cutoff);
     return 1 / (1 + tau / dt);
@@ -183,17 +185,15 @@ function oneEuroFilter(pts: Vec2[]): Vec2[] {
 // ─── Step 4: autofill ────────────────────────────────────────────────────────
 
 /**
- * Close the stroke as a bean shape:
- * - Mirror each point about the line P1–P2
- * - Scale the mirrored path by κ ∈ [0.6, 1.0] from the midpoint of P1–P2
- * - Concatenate to form a closed loop
+ * Referme un demi-tracé avec son reflet pour les solutions de génération de secours.
+ * Le reflet autour de P1–P2 est redimensionné depuis leur milieu par κ entre 0,6 et 1, puis joint au tracé initial.
  */
 function autofill(stroke: Vec2[], P1: Vec2, P2: Vec2, kappa?: number): Vec2[] {
   const k = kappa ?? (0.6 + Math.random() * 0.4);
 
   // Mirror about the P1–P2 axis, then scale the distance to the axis by κ.
   // Scaling only across the axis keeps the loop closed on the imposed points.
-  const mirrored: Vec2[] = stroke.map(p => {
+  const mirrored: Vec2[] = stroke.map(/* Réfléchit chaque point et ajuste sa distance à l’axe pour fermer le demi-tracé. */ p => {
     const m = mirrorAboutLine(p, P1, P2);
     const proj = projectOnLine(p, P1, P2);
     return { x: proj.x + (m.x - proj.x) * k, y: proj.y + (m.y - proj.y) * k };
@@ -203,6 +203,7 @@ function autofill(stroke: Vec2[], P1: Vec2, P2: Vec2, kappa?: number): Vec2[] {
   return [...stroke, ...mirrored.reverse()];
 }
 
+/** Projette un point sur la ligne des deux raccords. */
 function projectOnLine(p: Vec2, p1: Vec2, p2: Vec2): Vec2 {
   const dir = normalize(sub(p2, p1));
   const dot = (p.x - p1.x) * dir.x + (p.y - p1.y) * dir.y;
@@ -211,9 +212,7 @@ function projectOnLine(p: Vec2, p1: Vec2, p2: Vec2): Vec2 {
 
 // ─── Step 5: makeLoop ────────────────────────────────────────────────────────
 
-/**
- * Resample to LOOP_N points, ensure anti-clockwise orientation.
- */
+/** Rééchantillonne une courbe fermée et normalise son sens de parcours. */
 function makeLoop(pts: Vec2[]): Vec2[] {
   const n = LOOP_N;
   const total = strokeLength(pts);
@@ -237,8 +236,8 @@ function makeLoop(pts: Vec2[]): Vec2[] {
 // ─── Step 6: mergeLoops ──────────────────────────────────────────────────────
 
 /**
- * Find the rotation offset for B that minimises total point distance to A,
- * then compute weighted average: C(i) = wA*A(i) + wB*B(i+offset).
+ * Aligne deux boucles puis mélange leurs points selon les poids demandés.
+ * Le décalage de B minimise la distance à A avant la moyenne pondérée C(i) = wA × A(i) + wB × B(i + décalage).
  */
 function mergeLoops(A: Vec2[], B: Vec2[], wA = 0.5, wB = 0.5): Vec2[] {
   const n = A.length; // both LOOP_N
@@ -272,8 +271,8 @@ function mergeLoops(A: Vec2[], B: Vec2[], wA = 0.5, wB = 0.5): Vec2[] {
 // ─── Step 7: catmullRom ──────────────────────────────────────────────────────
 
 /**
- * Centripetal Catmull-Rom spline (alpha=0.5).
- * Outputs the same number of points (N=256).
+ * Interpole une boucle lissée en conservant un espacement exploitable entre ses points.
+ * La spline Catmull–Rom centripète utilise α = 0,5 et conserve les 256 échantillons de la boucle.
  */
 function catmullRom(pts: Vec2[]): Vec2[] {
   const n = pts.length;
@@ -281,6 +280,7 @@ function catmullRom(pts: Vec2[]): Vec2[] {
   const result: Vec2[] = [];
   const segments = 4; // sub-samples per segment
 
+  /** Calcule le paramètre d’interpolation à partir de la distance entre deux points voisins. */
   function tj(ti: number, pi: Vec2, pj: Vec2): number {
     const dx = pj.x - pi.x;
     const dy = pj.y - pi.y;
@@ -316,13 +316,13 @@ function catmullRom(pts: Vec2[]): Vec2[] {
 
 // ─── Step 8: computeGeometry ─────────────────────────────────────────────────
 
+/** Regroupe la ligne centrale, les largeurs et les bordures avant le placement des éléments de course. */
 type BaseGeometry = Omit<TrackGeometry,
   'baseCenterline' | 'checkpoints' | 'startLine' | 'startPositions' | 'pickupPositions' | 'featureIndices'>;
 
 /**
- * Edges from a centerline and per-point widths. The loop is oriented so that the
- * left normal points to the inside of the circuit: outer = centre − normal·w/2.
- * Also used when the track is locally widened (C-07).
+ * Décale la ligne centrale de chaque côté pour calculer les deux bords de la chaussée.
+ * La normale gauche pointe vers l’intérieur : le bord extérieur vaut centre − normale × largeur/2, y compris après une déformation.
  */
 export function edgesFromWidths(centerline: Vec2[], widths: number[]): { outerEdge: Vec2[]; innerEdge: Vec2[] } {
   const n = centerline.length;
@@ -339,8 +339,8 @@ export function edgesFromWidths(centerline: Vec2[], widths: number[]): { outerEd
 }
 
 /**
- * Width varies with curvature: base 140 px, wider on straights (up to +30 px),
- * narrower in the tightest bends (down to −30 px), never below 90 px.
+ * Calcule les largeurs locales et les bords à partir de la courbure du circuit.
+ * La largeur de base est de 140 px, modulée de ±30 px selon la courbure et bornée à 90 px minimum.
  */
 function computeGeometry(centerline: Vec2[]): BaseGeometry {
   const n = centerline.length;
@@ -366,7 +366,7 @@ function computeGeometry(centerline: Vec2[]): BaseGeometry {
     smoothedK.push(sum / (2 * kWindow + 1));
   }
   const maxK = Math.max(...smoothedK, 1e-9);
-  const meanK = smoothedK.reduce((a, b) => a + b, 0) / n;
+  const meanK = smoothedK.reduce(/* Additionne les courbures pour calculer leur moyenne de référence. */ (a, b) => a + b, 0) / n;
 
   // Local radius of curvature (smoothed): the width is capped so the inner edge never folds
   const radii: number[] = [];
@@ -392,18 +392,21 @@ function computeGeometry(centerline: Vec2[]): BaseGeometry {
 
 // ─── Step 9: placeFeatures ───────────────────────────────────────────────────
 
+/** Calcule la direction de la piste autour du point indiqué. */
 function tangentAt(centerline: Vec2[], idx: number): Vec2 {
   const n = centerline.length;
   return normalize(sub(centerline[(idx + 1) % n], centerline[(idx - 1 + n) % n]));
 }
 
 /**
- * Checkpoint 0 is the start line: the 8 checkpoints are spread evenly starting
- * from it, so a lap is completed when the car crosses checkpoint 0 again.
+ * Place la ligne de départ, les voitures, les checkpoints et les emplacements initiaux des bonus.
+ * Le checkpoint 0 est la ligne de départ ; les huit checkpoints sont répartis depuis cette ligne, dont le nouveau franchissement termine le tour.
  */
-function placeFeatures(geo: BaseGeometry, randomStart = true, preferredStart?: Vec2): TrackGeometry {
+function placeFeatures(geo: BaseGeometry, randomStart = true, preferredStart?: Vec2, rng: () => number = Math.random): TrackGeometry {
   const { centerline, widths } = geo;
   const n = centerline.length;
+  const cum = cumulative(centerline);
+  const junction = junctionMask(centerline, widths, selfCrossings(centerline, cum), cum);
 
   let startIdx = 0;
   if (preferredStart) {
@@ -432,19 +435,19 @@ function placeFeatures(geo: BaseGeometry, randomStart = true, preferredStart?: V
       }
       candidates.push({ idx: (i + windowSize / 2) % n, curv: totalCurv });
     }
+    /** Classe les portions candidates du départ des plus droites aux plus courbées. */
     candidates.sort((a, b) => a.curv - b.curv);
-    const safePool = candidates.slice(0, Math.max(1, Math.floor(candidates.length * 0.18)));
-    startIdx = (randomStart ? safePool[Math.floor(Math.random() * safePool.length)] : safePool[0]).idx;
+    // Keep the line and the two cars clear of another branch at a crossing.
+    const clear=candidates.filter(/* Écarte un départ ou une position de voiture trop proche d’un croisement. */ c=>!junction[c.idx]&&!junction[(c.idx-3+n)%n]);
+    const pool=clear.length?clear:candidates;
+    const safePool = pool.slice(0, Math.max(1, Math.floor(pool.length * 0.18)));
+    startIdx = (randomStart ? safePool[Math.min(safePool.length-1,Math.floor(Math.max(0,rng()) * safePool.length))] : safePool[0]).idx;
   }
 
-  // A figure of eight: a checkpoint (or the start) on a junction would also be crossed
-  // by the other branch, so they are moved along the path to the nearest clear spot,
-  // keeping the checkpoints in order.
-  const cum = cumulative(centerline);
-  const junction = junctionMask(centerline, widths, selfCrossings(centerline, cum), cum);
+  // Preferred drawing anchors may be on a junction; keep checkpoints ordered and clear.
   if (junction[startIdx]) {
     for (let d = 1; d <= 40; d++) {
-      const k = [(startIdx + d) % n, (startIdx - d + n) % n].find(q => !junction[q]);
+      const k = [(startIdx + d) % n, (startIdx - d + n) % n].find(/* Cherche un indice voisin qui ne se trouve pas sur une jonction. */ q => !junction[q]);
       if (k !== undefined) { startIdx = k; break; }
     }
   }
@@ -456,6 +459,7 @@ function placeFeatures(geo: BaseGeometry, randomStart = true, preferredStart?: V
     const target = c === 0 ? 0 : Math.round((c / CHECKPOINT_COUNT) * n);
     let off = target;
     for (let d = 0; d <= 40; d++) {
+      /** Vérifie que le checkpoint proposé reste ordonné et hors des zones de croisement. */
       const ok = (o: number) => o > prevOff + 4 && o < n - 4 && !junction[(startIdx + o) % n];
       if (c === 0) break;
       if (ok(target + d)) { off = target + d; break; }
@@ -494,15 +498,43 @@ function placeFeatures(geo: BaseGeometry, randomStart = true, preferredStart?: V
 
   return {
     ...geo,
-    baseCenterline: centerline.map(p => ({ ...p })),
+    baseCenterline: centerline.map(/* Conserve une copie indépendante de la ligne centrale d’origine. */ p => ({ ...p })),
     checkpoints, startLine, startPositions, pickupPositions,
     featureIndices: { checkpoints: checkpointIndices, start: startIdx, starts: [behind, behind], pickups: pickupIndices },
   };
 }
 
+/** Tire un départ sûr et redistribue les bonus du circuit généré. */
+export function randomizeRaceStart(track: TrackGeometry, rng: () => number = Math.random): TrackGeometry {
+  return randomizePickups(placeFeatures(track, true, undefined, rng),rng);
+}
+
+/** Choisit des positions espacées sur la chaussée tout en évitant le départ et les croisements. */
+export function randomizePickups(track:TrackGeometry,rng:()=>number=Math.random):TrackGeometry {
+  const c=track.centerline,n=c.length,cum=cumulative(c);
+  const junction=junctionMask(c,track.widths,selfCrossings(c,cum),cum);
+  const candidates=Array.from({length:n},/* Énumère les indices de piste à mélanger pour le placement aléatoire. */ (_,i)=>i);
+  /** Borne le tirage aléatoire pour qu’il reste un indice exploitable dans les candidats. */
+  const random=()=>Math.max(0,Math.min(.999999999,rng()));
+  for(let i=n-1;i>0;i--){const j=Math.floor(random()*(i+1));[candidates[i],candidates[j]]=[candidates[j],candidates[i]];}
+  const positions:Vec2[]=[],indices:number[]=[];
+  for(const strict of [true,false])for(const i of candidates){
+    if(indices.includes(i)||positions.length>=PICKUP_COUNT)continue;
+    if(dist(c[i],track.startLine.pos)<135||track.startPositions.some(/* Écarte une position de bonus trop proche des voitures au départ. */ p=>dist(c[i],p)<90))continue;
+    if(strict&&(junction[i]||track.checkpoints.some(/* Écarte une position de bonus trop proche d’un checkpoint lors de la recherche stricte. */ cp=>dist(c[i],cp.pos)<60)))continue;
+    const normal=perpendicular(tangentAt(c,i)),lateral=track.widths[i]/2*.3*(positions.length%2===0?1:-1);
+    const at=clampToTrackRibbon(add(c[i],scale(normal,lateral)),track,25);
+    if(positions.some(/* Écarte un candidat trop proche d’un ramassable déjà choisi. */ p=>dist(p,at)<140)||dist(at,track.startLine.pos)<120)continue;
+    positions.push(at);indices.push(i);
+  }
+  // Valid generated tracks normally provide many candidates. Keep four objects even for legacy tiny fixtures.
+  for(let i=positions.length;i<PICKUP_COUNT;i++){positions.push({...track.pickupPositions[i]});indices.push(track.featureIndices.pickups[i]);}
+  return {...track,pickupPositions:positions,featureIndices:{...track.featureIndices,pickups:indices}};
+}
+
 // ─── Step 10: validateGeometry ───────────────────────────────────────────────
 
-/** Radius of curvature at vertex i of a closed loop (Infinity when it is straight). */
+/** Estime le rayon du virage au point étudié. */
 function radiusAt(pts: Vec2[], i: number): number {
   const n = pts.length;
   const prev = pts[(i - 1 + n) % n];
@@ -516,7 +548,7 @@ function radiusAt(pts: Vec2[], i: number): number {
   return curvature > 1e-4 ? 1 / curvature : Infinity;
 }
 
-/** Smallest radius of curvature of a closed loop. */
+/** Retrouve le rayon de courbure le plus serré de la boucle. */
 function tightestRadius(pts: Vec2[]): number {
   let minR = Infinity;
   for (let i = 0; i < pts.length; i++) minR = Math.min(minR, radiusAt(pts, i));
@@ -532,6 +564,7 @@ const MIN_CROSSING_SIN = Math.sin((40 * Math.PI) / 180);
 /** Path length (px) a loop needs to be a drivable loop and not a knot. */
 const MIN_LOOP_PATH = 2.5 * 140;
 
+/** Décrit les deux branches et les caractéristiques d’une intersection du circuit. */
 interface Crossing {
   i: number;       // segment of one branch
   j: number;       // segment of the other branch
@@ -540,7 +573,7 @@ interface Crossing {
   sin: number;     // sine of the angle between the branches
 }
 
-/** Cumulative path length along a closed polyline: cum[n] is the perimeter. */
+/** Calcule les distances cumulées le long de la boucle. */
 function cumulative(pts: Vec2[]): number[] {
   const n = pts.length;
   const cum: number[] = [0];
@@ -548,7 +581,7 @@ function cumulative(pts: Vec2[]): number[] {
   return cum;
 }
 
-/** Every place where the centerline crosses itself. */
+/** Repère les intersections entre les branches éloignées d’un même circuit. */
 function selfCrossings(c: Vec2[], cum = cumulative(c)): Crossing[] {
   const n = c.length;
   const total = cum[n];
@@ -572,15 +605,15 @@ function selfCrossings(c: Vec2[], cum = cumulative(c)): Crossing[] {
   return out;
 }
 
-/** Path distance between two vertices of the loop. */
+/** Mesure la plus petite distance parcourue sur la boucle entre deux indices. */
 function pathGap(cum: number[], a: number, b: number): number {
   const g = Math.abs(cum[a] - cum[b]);
   return Math.min(g, cum[cum.length - 1] - g);
 }
 
 /**
- * Vertices that belong to a junction: within about 1.5 track widths (at least 190 px,
- * the reach of a checkpoint line) of a crossing, on either branch.
+ * Marque les portions proches des croisements pour adapter les validations et les placements.
+ * Les deux branches sont protégées sur environ 1,5 largeur de piste autour du croisement, avec au moins 190 px pour les lignes de checkpoint.
  */
 function junctionMask(c: Vec2[], widths: number[], crossings: Crossing[], cum: number[]): boolean[] {
   const n = c.length;
@@ -594,11 +627,12 @@ function junctionMask(c: Vec2[], widths: number[], crossings: Crossing[], cum: n
   return mask;
 }
 
+/** Vérifie que la largeur, les virages et les rapprochements de branches laissent une piste jouable. */
 function validateGeometry(geo: TrackGeometry): boolean {
   const { centerline, widths } = geo;
   const n = centerline.length;
 
-  if (centerline.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) return false;
+  if (centerline.some(/* Signale une coordonnée de circuit invalide avant les calculs géométriques. */ p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) return false;
 
   // Width must clear the vehicle (24×14 px)
   for (const w of widths) {
@@ -611,13 +645,14 @@ function validateGeometry(geo: TrackGeometry): boolean {
   // Self-crossings are allowed when clean: no knot (short loop), no grazing contact
   const cum = cumulative(centerline);
   const crossings = selfCrossings(centerline, cum);
-  if (crossings.some(x => x.along < MIN_LOOP_PATH || x.sin < MIN_CROSSING_SIN)) return false;
+  if (crossings.some(/* Repère les croisements qui créeraient une petite boucle ou un passage trop rasant. */ x => x.along < MIN_LOOP_PATH || x.sin < MIN_CROSSING_SIN)) return false;
 
   // "No impossible passage": two parts of the track that are far apart along the
   // path must stay at least ~0.8 track widths apart, or the edges would overlap.
   // Inside a junction the two branches overlap on purpose.
-  const reach = crossings.map(x => Math.max(190, 1.5 * Math.max(widths[x.i], widths[x.j])));
-  const inJunction = (i: number, j: number): boolean => crossings.some((x, k) =>
+  const reach = crossings.map(/* Calcule l’étendue de sécurité de chaque jonction à partir des largeurs voisines. */ x => Math.max(190, 1.5 * Math.max(widths[x.i], widths[x.j])));
+  /** Indique si le rapprochement de deux portions appartient à un croisement déjà identifié. */
+  const inJunction = (i: number, j: number): boolean => crossings.some(/* Teste si les deux indices appartiennent aux branches d’une même jonction. */ (x, k) =>
     (pathGap(cum, i, x.i) <= reach[k] && pathGap(cum, j, x.j) <= reach[k]) ||
     (pathGap(cum, i, x.j) <= reach[k] && pathGap(cum, j, x.i) <= reach[k]));
   for (let i = 0; i < n; i++) {
@@ -632,7 +667,7 @@ function validateGeometry(geo: TrackGeometry): boolean {
   if (crossings.length === 0) {
     if (Math.abs(signedArea(centerline)) < 20000) return false;
   } else {
-    const xs = centerline.map(p => p.x), ys = centerline.map(p => p.y);
+    const xs = centerline.map(/* Extrait les abscisses pour mesurer l’étendue du circuit. */ p => p.x), ys = centerline.map(/* Extrait les ordonnées pour mesurer l’étendue du circuit. */ p => p.y);
     if (Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) < 200) return false;
   }
 
@@ -642,8 +677,8 @@ function validateGeometry(geo: TrackGeometry): boolean {
 // ─── Play-area fitting ───────────────────────────────────────────────────────
 
 /**
- * Uniformly scale (down only) and translate the loop so that it fits the free
- * area of the table. Uniform scaling preserves absence of self-intersection.
+ * Replace et réduit si nécessaire le circuit pour le maintenir dans la surface de jeu.
+ * La mise à l’échelle est uniforme et ne fait que réduire la boucle, ce qui conserve ses intersections.
  */
 function fitToPlayArea(pts: Vec2[]): Vec2[] {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -660,18 +695,18 @@ function fitToPlayArea(pts: Vec2[]): Vec2[] {
   const nw = w * s, nh = h * s;
   const tx = Math.min(Math.max(cx, PLAY_AREA.x0 + nw / 2), PLAY_AREA.x1 - nw / 2);
   const ty = Math.min(Math.max(cy, PLAY_AREA.y0 + nh / 2), PLAY_AREA.y1 - nh / 2);
-  return pts.map(p => ({ x: tx + (p.x - cx) * s, y: ty + (p.y - cy) * s }));
+  return pts.map(/* Recentre et redimensionne chaque point dans la surface de jeu. */ p => ({ x: tx + (p.x - cx) * s, y: ty + (p.y - cy) * s }));
 }
 
 /**
- * Round the cusps left where the stroke meets its mirror at the imposed points
- * (closed-loop Laplacian smoothing), then restore a uniform 256-point spacing.
+ * Adoucit progressivement les angles d’une boucle sans en changer le nombre de points.
+ * Le lissage laplacien de la boucle arrondit les raccords entre le dessin et son reflet avant un rééchantillonnage uniforme à 256 points.
  */
 function relax(pts: Vec2[], iterations: number): Vec2[] {
   const n = pts.length;
   let cur = pts;
   for (let it = 0; it < iterations; it++) {
-    cur = cur.map((p, i) => {
+    cur = cur.map(/* Mélange un point avec ses voisins pour adoucir la boucle. */ (p, i) => {
       const a = cur[(i - 1 + n) % n];
       const b = cur[(i + 1) % n];
       return { x: 0.5 * p.x + 0.25 * (a.x + b.x), y: 0.5 * p.y + 0.25 * (a.y + b.y) };
@@ -682,20 +717,20 @@ function relax(pts: Vec2[], iterations: number): Vec2[] {
 }
 
 /**
- * Stretch the loop across its minor axis (principal component analysis) so that
- * thin beans get a drivable thickness.
+ * Élargit la direction la plus étroite d’une boucle pour lui donner assez d’espace.
+ * L’axe mineur est trouvé par analyse en composantes principales pour épaissir les boucles trop étroites.
  */
 function stretchMinorAxis(pts: Vec2[], factor: number): Vec2[] {
   const n = pts.length;
-  const cx = pts.reduce((a, p) => a + p.x, 0) / n;
-  const cy = pts.reduce((a, p) => a + p.y, 0) / n;
+  const cx = pts.reduce(/* Additionne les abscisses pour calculer le centre du dessin. */ (a, p) => a + p.x, 0) / n;
+  const cy = pts.reduce(/* Additionne les ordonnées pour calculer le centre du dessin. */ (a, p) => a + p.y, 0) / n;
   let sxx = 0, syy = 0, sxy = 0;
   for (const p of pts) {
     sxx += (p.x - cx) ** 2; syy += (p.y - cy) ** 2; sxy += (p.x - cx) * (p.y - cy);
   }
   const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy); // major axis angle
   const mx = Math.cos(theta), my = Math.sin(theta);
-  return pts.map(p => {
+  return pts.map(/* Étire le point suivant l’axe le plus étroit tout en conservant son axe principal. */ p => {
     const dx = p.x - cx, dy = p.y - cy;
     const major = dx * mx + dy * my;
     const minor = -dx * my + dy * mx;
@@ -704,6 +739,7 @@ function stretchMinorAxis(pts: Vec2[], factor: number): Vec2[] {
   });
 }
 
+/** Lisse et ajuste une ligne centrale avant d’en accepter la géométrie. */
 function buildFromCenterline(raw: Vec2[], stretch = 1, preferredStart?: Vec2): TrackGeometry {
   let loop = relax(catmullRom(raw), 40);
   if (stretch !== 1) loop = stretchMinorAxis(loop, stretch);
@@ -712,7 +748,7 @@ function buildFromCenterline(raw: Vec2[], stretch = 1, preferredStart?: Vec2): T
 
 // ─── The circuit is the drawing ──────────────────────────────────────────────
 
-/** Growth of the half-strokes' amplitude when the loop drawn is still not a valid circuit. */
+/** Énumère les amplitudes essayées lorsque la géométrie initiale du dessin doit être élargie. */
 const AMPLITUDE_BOOSTS: Array<[minAmp: number, boost: number]> = [
   [0, 1],                       // exactly as drawn
   [90, 1], [105, 1], [120, 1], [135, 1],
@@ -730,6 +766,8 @@ const RADIUS_MARGINS = [1.03, 1.15];
 const CROSSING_DEPTH = 70;
 
 /**
+ * Projette un demi-tracé dans le repère des raccords en conservant l’amplitude nécessaire.
+ *
  * One half-stroke seen from the divider P1→P2 (context.md §5.2 step 4): the lateral
  * offset d becomes |d| (a wobble across the line is folded back) and the largest offset
  * is raised to MIN_AMPLITUDE, times `boost`. A half that dips deeper than CROSSING_DEPTH
@@ -740,23 +778,23 @@ const CROSSING_DEPTH = 70;
 function shapeHalf(half: Vec2[], P1: Vec2, P2: Vec2, boost: number, forceFold = false, minAmp = MIN_AMPLITUDE): Vec2[] {
   const u = normalize(sub(P2, P1));
   const nrm = perpendicular(u);
-  const lat = half.map(p => {
+  const lat = half.map(/* Mesure l’écart latéral de chaque point au raccord de référence. */ p => {
     const d = sub(p, P1);
     return d.x * nrm.x + d.y * nrm.y;
   });
   const side = Math.max(...lat) >= -Math.min(...lat) ? 1 : -1;
-  const own = lat.map(l => side * l); // > 0 on the half's own side
-  const fold = forceFold || Math.max(...own.map(o => -o)) <= CROSSING_DEPTH;
+  const own = lat.map(/* Oriente les écarts du demi-tracé vers le côté attribué à l’équipe. */ l => side * l); // > 0 on the half's own side
+  const fold = forceFold || Math.max(...own.map(/* Inverse un écart du mauvais côté pour préparer le repli éventuel du dessin. */ o => -o)) <= CROSSING_DEPTH;
   const amp = Math.max(...own);
   const k = Math.max(1, minAmp / Math.max(amp, 1)) * boost;
-  return half.map((p, i) => {
+  return half.map(/* Reconstruit le point avec son avancement longitudinal et son amplitude latérale. */ (p, i) => {
     const along = projectOntoAxis(p, P1, u);
     const d = fold ? Math.abs(own[i]) : own[i];
     return add(add(P1, scale(u, along)), scale(nrm, side * d * k));
   });
 }
 
-/** A (P1→P2) and B (P2→P1), oriented and snapped on the two shared anchors. */
+/** Oriente les deux tracés pour qu’ils se rejoignent sur les mêmes points. */
 function alignHalves(strokeA: Vec2[], strokeB: Vec2[], P1: Vec2, P2: Vec2): { a: Vec2[]; b: Vec2[] } {
   const a = dist(strokeA[0], P2) < dist(strokeA[0], P1) ? [...strokeA].reverse() : [...strokeA];
   const b = dist(strokeB[0], P1) < dist(strokeB[strokeB.length - 1], P1) ? [...strokeB].reverse() : [...strokeB];
@@ -768,9 +806,8 @@ function alignHalves(strokeA: Vec2[], strokeB: Vec2[], P1: Vec2, P2: Vec2): { a:
 }
 
 /**
- * Zero-lag Gaussian smoothing of a closed, uniformly sampled ring. Unlike the causal
- * 1€ filter it does not shift the drawing, and a bend of radius R shrinks by only
- * σ²/2R. It is meant for tremor: it rounds a sharp tip badly (radius ≈ σ/2.7).
+ * Lisse une boucle fermée avec un noyau gaussien sans créer de rupture au raccord.
+ * Le filtre gaussien sans décalage réduit les tremblements ; un virage de rayon R rétrécit d’environ σ²/2R et une pointe reste mal arrondie, avec un rayon proche de σ/2,7.
  */
 function gaussianClosed(ring: Vec2[], sigma: number): Vec2[] {
   const n = ring.length;
@@ -785,7 +822,7 @@ function gaussianClosed(ring: Vec2[], sigma: number): Vec2[] {
     w.push(v);
     sum += v;
   }
-  return ring.map((_, i) => {
+  return ring.map(/* Fait la moyenne pondérée des voisins du point en bouclant aux extrémités. */ (_, i) => {
     let x = 0, y = 0;
     for (let j = -k; j <= k; j++) {
       const p = ring[(i + j + n * 4) % n];
@@ -797,24 +834,24 @@ function gaussianClosed(ring: Vec2[], sigma: number): Vec2[] {
   });
 }
 
-/** Re-close, re-orient (CCW) and re-sample a ring to 256 evenly spaced points. */
+/** Redistribue régulièrement les points d’une boucle fermée. */
 function evenRing(ring: Vec2[]): Vec2[] {
   return makeLoop([...ring, ring[0]]);
 }
 
 /**
- * Replace the `k` samples each side of vertex i by a cubic Bézier that leaves and
- * re-joins the ring along its own tangents: a fillet, so only the corner moves and
- * both arms keep exactly the drawn path.
+ * Arrondit localement la courbe autour du sommet demandé.
+ * Les k points de chaque côté sont remplacés par une Bézier cubique tangente aux deux branches, qui restent sur le dessin.
  */
 function filletAround(ring: Vec2[], i: number, k: number, handle: number): Vec2[] {
   const n = ring.length;
+  /** Retrouve un point voisin de la boucle en bouclant correctement les indices. */
   const at = (j: number) => ring[((j % n) + n) % n];
   const a = at(i - k);
   const b = at(i + k);
   const c1 = add(a, scale(normalize(sub(at(i - k + 1), at(i - k - 1))), handle));
   const c2 = sub(b, scale(normalize(sub(at(i + k + 1), at(i + k - 1))), handle));
-  const out = ring.map(p => ({ x: p.x, y: p.y }));
+  const out = ring.map(/* Copie les points avant d’arrondir localement le sommet choisi. */ p => ({ x: p.x, y: p.y }));
   for (let s = 1; s < 2 * k; s++) {
     const t = s / (2 * k);
     const u = 1 - t;
@@ -827,9 +864,8 @@ function filletAround(ring: Vec2[], i: number, k: number, handle: number): Vec2[
 }
 
 /**
- * Round the corners too sharp to drive (the two anchors where the halves meet, tight
- * hairpins): at the worst bend, the smallest window and the gentlest handle that reach
- * TARGET_RADIUS are used, so the drawing moves as little as it can.
+ * Répète l’arrondi des angles trop serrés jusqu’à obtenir une chaussée praticable.
+ * Au pire virage, la plus petite fenêtre et la poignée la plus douce atteignant TARGET_RADIUS limitent la modification du dessin.
  */
 function roundCorners(loop: Vec2[], target = TARGET_RADIUS): Vec2[] {
   const n = loop.length;
@@ -871,9 +907,8 @@ function roundCorners(loop: Vec2[], target = TARGET_RADIUS): Vec2[] {
 }
 
 /**
- * A loop too small to be driven (a knot) is blown up about its crossing point until it
- * is a real loop, so the player's loop stays a loop; a mere kink of the hand is cut.
- * The crossing point does not move, so the circuit stays continuous.
+ * Éloigne les portions trop resserrées de la boucle pour réduire les nœuds.
+ * Une vraie petite boucle est agrandie autour de son croisement immobile ; un simple accroc du tracé est supprimé.
  */
 function inflateKnots(loop: Vec2[]): Vec2[] {
   let cur = loop;
@@ -881,8 +916,8 @@ function inflateKnots(loop: Vec2[]): Vec2[] {
     const n = cur.length;
     const cum = cumulative(cur);
     const knot = selfCrossings(cur, cum)
-      .filter(x => x.along < MIN_LOOP_PATH)
-      .sort((p, q) => p.along - q.along)[0];
+      .filter(/* Retient les nœuds correspondant à une boucle trop courte pour être jouable. */ x => x.along < MIN_LOOP_PATH)
+      .sort(/* Traite d’abord les nœuds dont la boucle est la plus resserrée. */ (p, q) => p.along - q.along)[0];
     if (!knot) break;
     // the shorter arc between the two passes is the loop
     const inner = cum[knot.j] - cum[knot.i] <= cum[n] / 2;
@@ -892,21 +927,21 @@ function inflateKnots(loop: Vec2[]): Vec2[] {
     for (let k = first; k <= last; k++) arc.push(k % n);
     const inArc = new Set(arc);
     if (knot.along < 100) { // a kink: cut it out
-      cur = evenRing(cur.filter((_, k) => !inArc.has(k)));
+      cur = evenRing(cur.filter(/* Isole les points situés hors de la petite boucle à élargir. */ (_, k) => !inArc.has(k)));
       continue;
     }
     // big enough to be a loop (path length) and for its tightest bend to be drivable
     let tight = Infinity;
     for (const k of arc) tight = Math.min(tight, radiusAt(cur, k));
     const f = Math.min(5, Math.max((MIN_LOOP_PATH * 1.15) / knot.along, (TARGET_RADIUS * 1.05) / Math.max(tight, 1)));
-    cur = evenRing(cur.map((p, k) => (inArc.has(k)
+    cur = evenRing(cur.map(/* Éloigne les points du nœud sans déplacer le reste de la piste. */ (p, k) => (inArc.has(k)
       ? { x: knot.at.x + (p.x - knot.at.x) * f, y: knot.at.y + (p.y - knot.at.y) * f }
       : p)));
   }
   return cur;
 }
 
-/** Dense (4 px) closed ring of the two halves, at `boost` × the minimum amplitude. */
+/** Assemble les deux demi-tracés en une boucle dense prête à être lissée. */
 function denseRing(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2, boost: number, forceFold = false, minAmp = MIN_AMPLITUDE): Vec2[] {
   const ring = [...shapeHalf(a, P1, P2, boost, forceFold, minAmp), ...shapeHalf(b, P2, P1, boost, forceFold, minAmp).slice(1, -1)];
   const dense = resample([...ring, ring[0]], 4);
@@ -915,6 +950,8 @@ function denseRing(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2, boost: number, forc
 }
 
 /**
+ * Construit en priorité une piste qui conserve la forme dessinée par les joueurs.
+ *
  * Circuit built on the drawing itself: the two halves hooked on P1 and P2 form the
  * loop, which is only denoised and rounded where it is too sharp to drive. If it is
  * still not a valid circuit (halves pinching, a bean thinner than a lane) the halves
@@ -953,6 +990,8 @@ const HEAVY_SIGMAS = [48, 58, 70, 85, 105, 130, 160, 200, 250, 310, 380];
 const HEAVY_STRETCH = [1, 1.2, 1.5, 2, 2.8, 3.6];
 
 /**
+ * Cherche un lissage plus fort du dessin lorsque sa première géométrie ne convient pas.
+ *
  * Last resort that still uses the drawing: when it cannot be driven as drawn (loops
  * crossing themselves, halves pinched together) it is smoothed harder and harder, back
  * to its drawn size, until the loop is simple and drivable. The result is the drawing
@@ -968,9 +1007,9 @@ function smoothestTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackGeometry
       const area = Math.abs(signedArea(loop));
       if (area > 1) {
         const k = Math.min(1.6, Math.max(1, Math.sqrt(area0 / area)));
-        const cx = loop.reduce((s, p) => s + p.x, 0) / loop.length;
-        const cy = loop.reduce((s, p) => s + p.y, 0) / loop.length;
-        loop = loop.map(p => ({ x: cx + (p.x - cx) * k, y: cy + (p.y - cy) * k }));
+        const cx = loop.reduce(/* Additionne les abscisses de la boucle pour en retrouver le centre. */ (s, p) => s + p.x, 0) / loop.length;
+        const cy = loop.reduce(/* Additionne les ordonnées de la boucle pour en retrouver le centre. */ (s, p) => s + p.y, 0) / loop.length;
+        loop = loop.map(/* Élargit la boucle autour de son centre dans la tentative de lissage courante. */ p => ({ x: cx + (p.x - cx) * k, y: cy + (p.y - cy) * k }));
       }
       for (const stretch of HEAVY_STRETCH) {
         const rounded = roundCorners(stretch === 1 ? loop : evenRing(stretchMinorAxis(loop, stretch)));
@@ -984,8 +1023,8 @@ function smoothestTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackGeometry
   const dense = denseRing(a, b, P1, P2, 1);
   // the best-fit ellipse of the drawing, at least wide enough to drive
   const n = dense.length;
-  const cx = dense.reduce((q, p) => q + p.x, 0) / n;
-  const cy = dense.reduce((q, p) => q + p.y, 0) / n;
+  const cx = dense.reduce(/* Additionne les abscisses de la boucle dense pour son ajustement de secours. */ (q, p) => q + p.x, 0) / n;
+  const cy = dense.reduce(/* Additionne les ordonnées de la boucle dense pour son ajustement de secours. */ (q, p) => q + p.y, 0) / n;
   let sxx = 0, syy = 0, sxy = 0;
   for (const p of dense) { sxx += (p.x - cx) ** 2; syy += (p.y - cy) ** 2; sxy += (p.x - cx) * (p.y - cy); }
   const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy);
@@ -994,7 +1033,7 @@ function smoothestTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackGeometry
   const lam2 = Math.max(0, (sxx + syy) / n - lam1);
   const semiMajor = Math.max(Math.SQRT2 * Math.sqrt(lam1), 200);
   const semiMinor = Math.max(Math.SQRT2 * Math.sqrt(lam2), Math.sqrt(60 * semiMajor), 110);
-  const ellipse = Array.from({ length: LOOP_N }, (_, i) => {
+  const ellipse = Array.from({ length: LOOP_N }, /* Construit les points de l’ellipse de dernier recours dans le repère du dessin. */ (_, i) => {
     const t = (i / LOOP_N) * 2 * Math.PI;
     const u = semiMajor * Math.cos(t), v = semiMinor * Math.sin(t);
     return { x: cx + u * mx - v * my, y: cy + u * my + v * mx };
@@ -1005,7 +1044,7 @@ function smoothestTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackGeometry
 
 // ─── Fallbacks ───────────────────────────────────────────────────────────────
 
-/** Predefined circuit used when the strokes cannot produce a valid track (REQ-2.3.3). */
+/** Construit le circuit prédéfini utilisé par le tutoriel et l’essai autonome. */
 export function generatePreset(): TrackGeometry {
   const pts: Vec2[] = [];
   const cx = 960, cy = 540;
@@ -1020,7 +1059,7 @@ export function generatePreset(): TrackGeometry {
   return { ...placeFeatures(computeGeometry(loop), false), preset: true };
 }
 
-/** Try the loop as drawn, then progressively fatter ones (thin beans overlap their own edges). */
+/** Essaie plusieurs élargissements d’une boucle de secours avant de la retenir. */
 function singleLoopTrack(loop: Vec2[], preferredStart?: Vec2): TrackGeometry | null {
   for (const stretch of [1, 1.2, 1.5, 2, 2.8]) {
     const geo = buildFromCenterline(loop, stretch, preferredStart);
@@ -1034,23 +1073,22 @@ function singleLoopTrack(loop: Vec2[], preferredStart?: Vec2): TrackGeometry | n
 /** Which strategy produced the last circuit (for logs and tests). */
 export const generationInfo = { method: '' };
 
-/** Validate a copilot stroke against its two imposed points (REQ-2.1.2). */
+/** Expose la validation d’un demi-tracé aux règles de création. */
 export function validateStroke(stroke: Vec2[], p1: Vec2, p2: Vec2): boolean {
   return validate(stroke, p1, p2);
 }
 
+/** Prépare une boucle de secours à partir d’un seul demi-tracé. */
 function prepareLoop(stroke: Vec2[], P1: Vec2, P2: Vec2): Vec2[] {
   const resampled = resample(stroke, RESAMPLE_STEP);
   const filtered = oneEuroFilter(resampled.length >= 2 ? resampled : stroke);
   return makeLoop(autofill(filtered, P1, P2));
 }
 
-/**
- * Generate a TrackGeometry from two freehand strokes.
- * Prioritises the closed-loop union of stroke A and stroke B connecting at P1 and
- * P2 (the circuit follows the drawing), placing the start line at P1A.
- *
+/** Choisit d’abord le circuit fidèle aux deux tracés puis les solutions de secours si nécessaire.
+
  * @param p1A/p2A/p1B/p2B  Imposed target points (inferred from stroke ends if omitted)
+
  */
 export function generate(
   strokeA: Vec2[],
@@ -1105,7 +1143,7 @@ export function generate(
   return generatePreset();
 }
 
-/** Recompute edges after `widths` were modified (C-07). */
+/** Recalcule les bordures après une modification de la ligne centrale ou de ses largeurs. */
 export function rebuildEdges(geo: TrackGeometry): void {
   const { outerEdge, innerEdge } = edgesFromWidths(geo.centerline, geo.widths);
   geo.outerEdge = outerEdge;

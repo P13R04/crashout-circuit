@@ -1,10 +1,18 @@
+/**
+ * Prépare les pièces mécaniques du décor Ferraille et anime leurs mouvements sans recréer les textures à
+ * chaque image.
+ * Liens : client-table/IndustrialMotion.ts, client-table/neon.ts.
+ * Référencé par client-table/ScrapBackdrop.ts.
+ */
 import { indexedRotation, pressStroke } from './IndustrialMotion.js';
 import { glow, noise } from './neon.js';
 
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
 const TAU = Math.PI * 2;
+/** Décrit la place, la taille et le cycle d’une machine du décor Ferraille. */
 export interface Machine { x: number; y: number; size: number; kind: 'gear' | 'press' | 'turbine'; phase: number; depth: number; angle: number; }
-/** Deliberately composed around the arena. All silhouettes and motion lie in the table plane. */
+/** Fixe les emplacements et les cycles des machines dans les différents plans industriels. */
 export const MACHINES: readonly Machine[] = [
   { x: 270, y: 430, size: 108, kind: 'gear', phase: .17, depth: 1, angle: -.3 },
   { x: 1540, y: 370, size: 124, kind: 'turbine', phase: .56, depth: 0, angle: .12 },
@@ -14,9 +22,10 @@ export const MACHINES: readonly Machine[] = [
   { x: 745, y: 490, size: 76, kind: 'turbine', phase: .34, depth: 0, angle: -.2 },
 ];
 
-/** These are raster parts, rotated/transformed each frame, not redrawn gear geometry. */
+/** Prépare les pièces mécaniques du décor Ferraille et anime leurs mouvements sans recréer les textures à chaque image. */
 export class IndustrialMachinery {
   private parts = new Map<string, HTMLCanvasElement>();
+  /** Fabrique une pièce mécanique seulement lors de sa première utilisation. */
   private part(kind: 'gear' | 'pinion' | 'turbine' | 'frame' | 'ram' | 'housing'): HTMLCanvasElement {
     const cached = this.parts.get(kind); if (cached) return cached;
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 320;
@@ -89,6 +98,7 @@ export class IndustrialMachinery {
     this.parts.set(kind, canvas); return canvas;
   }
 
+  /** Place les machines du plan demandé et applique leurs mouvements cycliques. */
   draw(ctx: Ctx, time: number, depth: number, quiet: boolean): void {
     for (const machine of MACHINES) {
       if (machine.depth !== depth) continue;

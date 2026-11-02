@@ -1,25 +1,23 @@
 /**
- * GameRules — everything that changes the game state in response to a message
- * or a timer: MAP strokes, pickups and arming, slingshot, boost gates, abilities,
- * tangible lifecycle, synchronous repair, border pull, PC test switches, victory,
- * and the guided tutorial (progression in Tutorial.ts, this class forwards the events).
- *
- * Vehicle motion and collisions live in PhysicsLoop; this class is driven by it
- * (`expire`, `afterMove`, `updateStones`, `updateRepair`, `checkEnd`, `tickMap`).
- * Time comes from an injectable clock so sessions can be replayed in tests (T-11).
+ * Valide et applique les fonctionnalités du jeu, des tracés et bonus jusqu’aux tangibles, réparations et
+ * résultats.
+ * Liens : server/Tutorial.ts, server/MapGenerator.ts, server/layout.ts, server/geometry.ts, server/types.ts
+ * et les utilitaires importés ci-dessous.
+ * Référencé notamment par server/GameServer.ts, server/PhysicsLoop.ts, scripts/acceptance.ts.
  */
 import type {
   GameState, Team, Vec2, Phase, ItemKind, Car, Wall, MapTargets, TrackGeometry, Tangible,
   StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg,
   PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg,
-  TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg,
+  TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg, TrackPresentation,
 } from './types.js';
+import { presentingTrack } from './trackPresentation.js';
 import { orientBoostGate, hitsBoostGate } from './boostGeometry.js';
 import { armedPickup, RESPAWN_COUNTDOWN_MS } from './armedPickup.js';
 import { AutomaticPilot } from './AutomaticPilot.js';
 import { config } from './config.js';
 import { dist, distToSegment, nearestOnTrack, trackTangent, segmentsIntersect, slingshotShot, wrapAngle, clampToTrackRibbon } from './geometry.js';
-import { generate, generatePreset, validateStroke, rebuildEdges } from './MapGenerator.js';
+import { generate, generatePreset, randomizeRaceStart, validateStroke, rebuildEdges } from './MapGenerator.js';
 import { nearestStationTeam, LOGICAL_W, checkDivider, insidePanel, inTangibleDepot, depotPose, TANGIBLE_DEPOT, rectContains } from './layout.js';
 import { activeMapTeam, mapEndpointError, mapStrokeEndpoints } from './mapCreation.js';
 import { Tutorial, TUTORIAL_ARM_WINDOW_S, TUTORIAL_PICKUP_RESPAWN_S, TUTORIAL_OBSTACLE_PREFIX } from './Tutorial.js';
@@ -35,13 +33,15 @@ const MAX_STROKE_POINTS = 4_000;
 const PICKUP_RADIUS = 30;
 const TEAMS: Team[] = ['A', 'B'];
 
+/** Déclare les notifications de réseau et de phase que les règles demandent à leur hôte. */
 export interface RulesHost {
-  feedback(kind: string, x: number, y: number, team: Team): void;
+  feedback(kind: string, x: number, y: number, team: Team, itemKind?: ItemKind): void;
   transition(phase: Phase, data?: unknown): void;
   /** Broadcast the full state (including the heavy track / QR fields). */
   broadcastFull(): void;
 }
 
+/** Décrit une pose ou une modification de tangible enregistrée dans le journal serveur. */
 export interface TangibleLogEntry {
   t: number;
   type: 'TangibleMoved' | 'TangibleRemoved' | 'TangibleControl';
@@ -55,9 +55,12 @@ export interface TangibleLogEntry {
   active?: boolean;
 }
 
+/** Renvoie l’équipe adverse à partir de l’équipe reçue. */
 export const other = (t: Team): Team => (t === 'A' ? 'B' : 'A');
+/** Borne la valeur dans l’intervalle autorisé. */
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/** Crée une voiture avec ses valeurs initiales de santé, de mouvement et de stock. */
 export function makeCar(team: Team): Car {
   return {
     team,
@@ -83,10 +86,12 @@ export function makeCar(team: Team): Car {
   };
 }
 
+/** Prépare une session vide avec les réglages par défaut et les deux voitures. */
 export function createInitialState(): GameState {
   return {
     phase: 'LOBBY',
     sessionMode: 'race',
+    developerTools: false,
     driveMode: { A: 'auto', B: 'auto' },
     tick: 0,
     cars: { A: makeCar('A'), B: makeCar('B') },
@@ -118,6 +123,7 @@ export function createInitialState(): GameState {
     mapMode: null,
     repairProgress: { A: 0, B: 0 },
     trackVersion: 0,
+    trackPresentation: null,
     tangibles: {},
     tangiblePlacementMode: 'manual',
     tangiblePlacement: null,
@@ -161,6 +167,7 @@ export function createInitialState(): GameState {
   };
 }
 
+/** Valide et applique les fonctionnalités du jeu, des tracés et bonus jusqu’aux tangibles, réparations et résultats. */
 export class GameRules {
   private placementToken = 0;
   readonly inputs: Record<Team, { throttle: number; steer: number }> = {
@@ -183,6 +190,7 @@ export class GameRules {
   private tutorial: Tutorial | null = null;
   private automaticPilot = new AutomaticPilot();
 
+  /** Conserve l’état et l’horloge puis relie les retours de jeu à la progression du tutoriel. */
   constructor(
     private state: GameState,
     private host: RulesHost,
@@ -194,24 +202,27 @@ export class GameRules {
     const base = host;
     this.host = {
       ...base,
-      feedback: (kind, x, y, team) => {
-        base.feedback(kind, x, y, team);
+      /** Transmet le retour de jeu au serveur et à la validation du tutoriel. */
+      feedback: (kind, x, y, team, itemKind) => {
+        base.feedback(kind, x, y, team, itemKind);
         this.tutorial?.onFeedback(kind, team);
       },
     };
   }
 
+  /** Fournit l’heure de simulation utilisée par les règles et les tests rejouables. */
   private get now(): number {
     return this.clock();
   }
 
+  /** Produit un identifiant d’objet unique à partir d’un préfixe et du compteur de session. */
   private nextId(prefix: string): string {
     return `${prefix}${++this.idCounter}`;
   }
 
-  // ─── MAP phase (task 2) ────────────────────────────────────────────────────
+  // --- Création du circuit avec les deux tracés ---
 
-  /** Open the shared map setup. The first two table contacts define the divider. */
+  /** Prépare la création à deux équipes et réinitialise les points, les tracés et les objets de session. */
   enterMap(mode: 'table' | 'pc' = 'table'): void {
     const s = this.state;
     s.mapTargets = null;
@@ -221,6 +232,7 @@ export class GameRules {
     s.mapDeadline = 0;
     s.mapMode = mode;
     s.track = null;
+    s.trackPresentation = null;
     s.deformations = [];
     s.trackVersion++;
     this.strokes = { A: null, B: null };
@@ -233,9 +245,8 @@ export class GameRules {
   }
 
   /**
-   * Accept the two initial shared contacts. A draws a→b on one half; B draws
-   * b→a on the other. The supplied line therefore stays visible and meaningful
-   * all the way from creation to the generated circuit.
+   * Valide les deux points de raccord et attribue les demi-tracés aux équipes.
+   * L’équipe A dessine de a vers b et l’équipe B de b vers a : la séparation reste le repère commun jusqu’au circuit final.
    */
   onMapDivider(msg: MapDividerMsg): void {
     const s = this.state;
@@ -254,6 +265,7 @@ export class GameRules {
     this.host.broadcastFull();
   }
 
+  /** Vérifie le tracé de l’équipe active avant de le conserver pour la génération. */
   onStrokeDraw(msg: StrokeDrawMsg): void {
     const s = this.state;
     if (s.phase !== 'MAP' || !s.mapTargets || !s.mapDivider || this.generating) return;
@@ -265,9 +277,9 @@ export class GameRules {
       return;
     }
     let pts = (msg.pts ?? [])
-      .filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))
+      .filter(/* Écarte les points de tracé manquants ou dont les coordonnées ne sont pas finies. */ p => p && Number.isFinite(p.x) && Number.isFinite(p.y))
       .slice(0, MAX_STROKE_POINTS)
-      .map(p => ({ x: p.x, y: p.y }));
+      .map(/* Copie uniquement les coordonnées utiles des points acceptés. */ p => ({ x: p.x, y: p.y }));
     const error = mapEndpointError(pts, p1, p2)
       ?? (!validateStroke(pts, p1, p2) ? 'mapError' : null)
       ?? (!this.staysInHalf(team, pts, s.mapDivider) ? 'mapWrongSide' : null);
@@ -288,53 +300,57 @@ export class GameRules {
     this.host.feedback('mapAccepted', drawEnd.x, drawEnd.y, team);
   }
 
-  /** The shared button is the explicit handoff from drawing to generation. */
+  /** Accepte la validation seulement lorsque les deux tracés sont disponibles. */
   onGenerateTrack(): void {
     if (this.state.phase !== 'MAP' || !this.strokes.A || !this.strokes.B || this.generating) return;
     void this.buildTrack();
   }
 
   /**
-   * A half-stroke belongs to its own side of the divider, but it may loop over it or
-   * cross it (a figure of eight is a legitimate circuit): it is refused only when most
-   * of it was drawn on the opponent's side.
+   * Contrôle que les points d’un tracé restent du côté de la ligne attribué à son équipe.
+   * Un circuit en huit est accepté ; le tracé est refusé seulement si sa majorité appartient à la moitié adverse.
    */
   private staysInHalf(team: Team, pts: Vec2[], divider: [Vec2, Vec2]): boolean {
     const [a, b] = divider;
     const dx = b.x - a.x, dy = b.y - a.y;
     const len = Math.hypot(dx, dy) || 1;
-    const own = pts.filter(p => (this.mapSide[team] * (dx * (p.y - a.y) - dy * (p.x - a.x))) / len >= 0).length;
+    const own = pts.filter(/* Retient les points situés dans la moitié du dessin attribuée à l’équipe. */ p => (this.mapSide[team] * (dx * (p.y - a.y) - dy * (p.x - a.x))) / len >= 0).length;
     return own >= 0.4 * pts.length;
   }
 
+  /** Conserve une création au rythme des joueurs sans terminer automatiquement un dessin incomplet. */
   tickMap(now: number): void {
     const s = this.state;
     // MAP is intentionally player-paced: time never erases a drawing attempt.
     void now;
   }
 
-  /** Runs outside the physics tick (REQ: generation happens once, in a Promise). */
+  /** Construit le circuit des joueurs puis prépare sa présentation avant le départ. */
   private async buildTrack(): Promise<void> {
     if (this.generating) return;
     this.generating = true;
     await Promise.resolve();
-    const t = this.state.mapTargets!;
+    if(this.state.phase!=='MAP'||!this.state.mapTargets){this.generating=false;return;}
+    const t = this.state.mapTargets;
     const a = this.strokes.A ?? [];
     const b = this.strokes.B ?? [];
     const started = Date.now();
     const track = generate(a, b, t.A[0], t.A[1], t.B[0], t.B[1]);
     console.log(`[GameRules] Track generated in ${Date.now() - started} ms`);
-    this.startRace(track, true);
+    const originIndex=nearestOnTrack(t.A[0],track).index;
+    this.startRace(randomizeRaceStart(track,this.rng), true, {startedAt:this.now+120,originIndex});
   }
 
-  // ─── RACE start ────────────────────────────────────────────────────────────
+  // --- Préparation du départ et lancement de la course ---
 
-  startRace(track = generatePreset(), waitForPlayers = false): void {
+  /** Installe le circuit, les voitures et les objets de la nouvelle course. */
+  startRace(track = generatePreset(), waitForPlayers = false, presentation: TrackPresentation | null = null): void {
     this.state.tangiblePlacement = null;
     const s = this.state;
     this.generating = true;
     this.automaticPilot.reset();
     s.track = track;
+    s.trackPresentation = presentation;
     s.pausedAt = 0;
     this.pausedAt = 0;
     s.deformations = [];
@@ -353,8 +369,8 @@ export class GameRules {
     }
     for (const pad of Object.values(s.repairPads)) { pad.held = false; pad.startedAt = 0; }
     s.walls = []; s.arcs = []; s.boostGates = []; s.stones = [];
-    s.pickups = track.pickupPositions.map((pos, i) => ({
-      id: i, pos: clampToTrackRibbon(pos, track, 25), kind: this.randomItem(), respawnAt: 0,
+    s.pickups = track.pickupPositions.map(/* Construit chaque ramassable avec une pose sûre et un type adapté au tutoriel ou à la course. */ (pos, i) => ({
+      id: i, pos: clampToTrackRibbon(pos, track, 25), kind: s.tutorial ? (i%2===0?'slingshot':'boost') : this.randomItem(), respawnAt: 0,
     }));
     s.winner = null;
     s.sessionStartAt = waitForPlayers ? 0 : this.now + COUNTDOWN_MS;
@@ -365,16 +381,18 @@ export class GameRules {
     this.host.broadcastFull();
   }
 
-  /** The generated circuit can be inspected before the actual race countdown. */
+  /** Lance les feux de départ lorsque la piste est prête et sa présentation terminée. */
   beginRace(): void {
-    if (this.state.phase !== 'READY') return;
+    if (this.state.phase !== 'READY' || presentingTrack(this.state,this.now)) return;
+    this.state.trackPresentation=null;
     this.state.sessionStartAt = this.now + COUNTDOWN_MS;
     this.state.raceDeadline=this.state.params.sessionMaxSeconds>0?this.state.sessionStartAt+this.state.params.sessionMaxSeconds*1000:0;
     this.host.transition('RACE', { startsAt: this.state.sessionStartAt });
     this.host.broadcastFull();
   }
 
-  /** One operator and one copilot can exercise real tangible rules without drivers. */
+  /** Prépare le circuit et les voitures autonomes du mode d’essai réservé au développement. */
+  // Essai autonome des tangibles ; entrée masquée et filtrée dans GameServer.ts.
   startTangibleTest(): void {
     const s = this.state;
     if (s.phase !== 'LOBBY') return;
@@ -384,6 +402,7 @@ export class GameRules {
     this.startRace(generatePreset(), true);
   }
 
+  /** Remplace les entrées pilotes par les commandes de suivi du centre dans le mode d’essai. */
   updateAutomaticPilots(now: number): void {
     const s = this.state;
     if (s.sessionMode !== 'tangibles-test' || !s.track || s.phase !== 'RACE') return;
@@ -394,18 +413,21 @@ export class GameRules {
   }
 
   /**
-   * Guided session on the predefined circuit: the race phase, but each team follows
-   * its own lessons (Tutorial.ts), nobody wins and nothing costs HP. `mode` only tells
-   * the table whether a mouse (PC) or fingers (table) are used.
+   * Crée la progression guidée des deux équipes et installe le circuit prédéfini.
+   * Tutorial.ts fait progresser chaque équipe séparément, sans victoire ni perte de vie ; mode distingue les doigts de la souris.
    */
+  // Tutoriel : démarrage, identification des postes et passage à une course normale.
   startTutorial(mode: 'table' | 'pc' = 'table'): void {
     const s = this.state;
     if (s.phase !== 'LOBBY') return;
     s.mapMode = mode;
     s.params.armWindowS = TUTORIAL_ARM_WINDOW_S;
     this.tutorial = new Tutorial(s, {
+      /** Réutilise la commande POWER pour préparer le bonus demandé par la leçon. */
       arm:team=>this.onPower(team),
+      /** Fournit l’heure de simulation utilisée par les règles et les tests rejouables. */
       now: () => this.now,
+      /** Immobilise la voiture pour l’exercice de réparation sans simuler un choc. */
       breakDown: (team) => {
         const car = s.cars[team];
         car.hp = 0;
@@ -414,6 +436,7 @@ export class GameRules {
         car.velocity = { x: 0, y: 0 };
         this.host.feedback('carDisabled', car.pos.x, car.pos.y, team);
       },
+      /** Remet la voiture sur le circuit lorsqu’une leçon de réparation est passée. */
       restore: (team) => {
         const car = s.cars[team];
         car.disabled = false;
@@ -423,16 +446,43 @@ export class GameRules {
         this.respawnAtCheckpoint(car);
         s.repairProgress[team] = 0;
       },
+      /** Transmet le retour de jeu au serveur et à la validation du tutoriel. */
       feedback: (kind, x, y, team) => this.host.feedback(kind, x, y, team),
     }, mode);
     this.startRace(generatePreset());
   }
 
+  /** Fait avancer l’équipe demandée lorsqu’une étape du tutoriel doit être débloquée. */
   tutorialSkip(team: Team): void {
-    if (this.state.phase === 'RACE' && (team === 'A' || team === 'B')) this.tutorial?.skip(team);
+    if (this.state.phase !== 'RACE' || (team !== 'A' && team !== 'B')) return;
+    const wasIdentifying = this.tutorialIdentifying();
+    this.tutorial?.skip(team);
+    this.launchTutorialIfReady(wasIdentifying);
   }
 
-  /** PC-only test switches: ignored unless the session was started in PC mode. */
+  /** Indique si une équipe attend encore l’identification de ses postes avant le départ. */
+  private tutorialIdentifying(): boolean {
+    const tut=this.state.tutorial;
+    return !!tut && TEAMS.some(/* Repère une équipe encore en attente d’identification de ses postes. */ t=>tut.steps[tut.teams[t].step]==='identify');
+  }
+
+  /** Lance le compte à rebours une fois les quatre postes identifiés. */
+  private launchTutorialIfReady(wasIdentifying: boolean): void {
+    if (wasIdentifying && !this.tutorialIdentifying()) {
+      this.state.sessionStartAt = this.now + COUNTDOWN_MS;
+      for(const team of TEAMS) this.inputs[team].steer=0;
+    }
+  }
+
+  /** Quitte l’entraînement terminé et ouvre la création d’une course normale. */
+  tutorialRace(): void {
+    if (this.state.phase !== 'RACE' || !this.state.tutorial?.finished) return;
+    const mode = this.state.mapMode ?? 'table';
+    this.resetToLobby();
+    this.enterMap(mode);
+  }
+
+  /** Applique les aides de test uniquement dans le mode clavier hors tutoriel. */
   onTestToggle(msg: TestToggleMsg): void {
     const s = this.state;
     // The lessons need the real item rules: no free items, no invincibility switch
@@ -450,7 +500,8 @@ export class GameRules {
     this.host.broadcastFull();
   }
 
-  /** Pause freezes physics and timers; resuming shifts the race clock accordingly. */
+  /** Fige les commandes et les échéances puis les décale ensemble lors de la reprise. */
+  // Pause et reprise ; resetToLobby, plus bas, nettoie toute la session.
   togglePause(): void {
     this.cancelTangiblePlacement();
     const s = this.state;
@@ -462,6 +513,7 @@ export class GameRules {
       this.host.broadcastFull();
     } else if (s.phase === 'PAUSED') {
       const delta = this.now - this.pausedAt;
+      /** Décale les échéances encore actives de la durée de pause. */
       const shift = (value: number) => value > this.pausedAt ? value + delta : value;
       s.sessionStartAt += delta;
       if(s.raceDeadline)s.raceDeadline+=delta;
@@ -482,14 +534,17 @@ export class GameRules {
     }
   }
 
+  /** Tire le prochain type de bonus à partir du générateur aléatoire de la session. */
   private randomItem(): ItemKind {
     return this.rng() < 0.5 ? 'slingshot' : 'boost';
   }
 
+  /** Efface les objets, commandes et progressions de session avant de revenir à l’accueil. */
   resetToLobby(): void {
     const s = this.state;
     s.winner = null;
     s.track = null;
+    s.trackPresentation = null;
     s.trackVersion++;
     s.walls = []; s.arcs = []; s.boostGates = []; s.stones = []; s.pickups = [];
     s.tangibles = {};
@@ -524,8 +579,9 @@ export class GameRules {
     this.host.broadcastFull();
   }
 
-  // ─── Pilot input & items (task 5, 7) ───────────────────────────────────────
+  // --- Conduite et réglages de course ---
 
+  /** Valide et mémorise la commande du pilote puis informe le tutoriel des actions effectuées. */
   onPilotInput(team: Team, msg: PilotInputMsg): void {
     if (this.state.sessionMode === 'tangibles-test') return;
     if (!Number.isFinite(msg.throttle) || !Number.isFinite(msg.steer)) return;
@@ -538,7 +594,7 @@ export class GameRules {
     if (this.now >= this.state.sessionStartAt) this.tutorial?.onPilotInput(team, steer, this.inputs[team].throttle);
   }
 
-  /** Table settings are shared by all clients and persist across races/reset. */
+  /** Applique les réglages de difficulté, de tours et de durée en dehors du tutoriel. */
   updateRaceSettings(msg: RaceSettingsMsg): void {
     const s=this.state;if(s.tutorial||s.phase==='RESULT')return;
     if(msg.difficulty!==undefined&&!['easy','medium','hard'].includes(msg.difficulty))return;
@@ -554,7 +610,7 @@ export class GameRules {
     this.host.broadcastFull();
   }
 
-  /** Each pilot chooses continuous acceleration or a held pedal. */
+  /** Bascule la conduite d’une équipe entre avance automatique et pédale tout en relâchant son entrée précédente. */
   toggleDriveMode(team?: Team): void {
     if (this.state.phase === 'RESULT' || this.state.sessionMode === 'tangibles-test') return;
     if (team) {
@@ -571,7 +627,7 @@ export class GameRules {
     this.host.broadcastFull();
   }
 
-  /** Safety net for a lost pointer-up, a crashed client or a dropped WebSocket. */
+  /** Relâche une commande de conduite qui n’a plus reçu de nouvelles du client. */
   expirePilotInputs(now: number): void {
     if (this.state.sessionMode === 'tangibles-test') return;
     for (const team of TEAMS) {
@@ -579,7 +635,8 @@ export class GameRules {
     }
   }
 
-  /** POWER only arms the copilot team’s pickup; tangible activation belongs to Oz. */
+  /** Arme le stock du copilote si aucun autre bonus ne réserve déjà le geste partagé. */
+  // POWER arme le stock du copilote ; la réservation commune est dans armedPickup.ts.
   onPower(team: Team, _msg?: PowerMsg): void {
     if (this.state.phase !== 'RACE' || this.state.tangiblePlacement || armedPickup(this.state)) return;
     const car = this.state.cars[team];
@@ -591,29 +648,32 @@ export class GameRules {
     }
   }
 
-  // ─── Slingshot (C-01) ──────────────────────────────────────────────────────
+  // --- Stock armé et lance-pierre ---
 
-  /** Resolve the armed stock owner; the gesturing team may steal that stock. */
+  /** Retrouve le propriétaire du stock armé qui correspond au geste reçu. */
   private resolveArmedTeam(kind: ItemKind, at: Vec2): Team | null {
     const armed=armedPickup(this.state);
     void at;
     return armed && (armed.kind===kind || this.state.testMode.allItems) ? armed.team : null;
   }
 
+  /** Utilise l’équipe annoncée ou, à défaut, le poste copilote le plus proche du geste. */
   private gestureTeam(at: Vec2, reported?: Team): Team {
     return reported === 'A' || reported === 'B' ? reported : nearestStationTeam(at);
   }
 
+  /** Vide le stock utilisé et envoie le retour visuel de consommation à son propriétaire. */
   private consumeItem(team: Team): void {
-    const car = this.state.cars[team];
+    const car = this.state.cars[team],kind=car.heldItem;
     car.heldItem = null;
     car.itemArmed = false;
     car.itemArmExpiry = 0;
+    if(kind)this.host.feedback('itemUsed',car.pos.x,car.pos.y,team,kind);
   }
 
   /**
-   * The stone is launched from the pouch through the fork. Too short a pull does
-   * nothing and keeps the item armed, so the copilot can simply try again.
+   * Valide le geste reçu puis consomme le stock armé pour créer une vraie pierre.
+   * La pierre part de la poche vers la fourche ; une traction trop courte conserve le bonus armé pour réessayer.
    */
   onSlingshot(msg: SlingshotMsg): void {
     this.tickTangiblePlacement(this.now);
@@ -640,6 +700,7 @@ export class GameRules {
     this.host.feedback('stoneWarning', shot.target.x, shot.target.y, team);
   }
 
+  /** Fait progresser les pierres et applique leurs dégâts aux voitures atteintes. */
   updateStones(now: number): void {
     const s = this.state;
     if (s.stones.length === 0) return;
@@ -657,8 +718,9 @@ export class GameRules {
     s.stones = remaining;
   }
 
-  // ─── Boost gate (C-02) ─────────────────────────────────────────────────────
+  // --- Zones d’accélération ---
 
+  /** Valide les deux contacts puis consomme le bonus armé pour créer une zone d’accélération. */
   onBoostGate(msg: BoostGateMsg): void {
     this.tickTangiblePlacement(this.now);
     if (this.state.tangiblePlacement) return;
@@ -676,6 +738,7 @@ export class GameRules {
     this.addBoostGate(team, a, b);
   }
 
+  /** Oriente et installe la zone d’accélération dans le sens local du circuit. */
   private addBoostGate(team: Team, a: Vec2, b: Vec2): void {
     const mid = { x: (a.x+b.x)/2, y: (a.y+b.y)/2 };
     const pose = orientBoostGate(a,b,this.state.track);
@@ -689,17 +752,19 @@ export class GameRules {
     this.host.feedback('boostGate', mid.x, mid.y, team);
   }
 
+  /** Vérifie si le déplacement de la voiture traverse la surface active de la zone. */
   carHitsBoostGate(prev: Vec2, pos: Vec2, g: BoostGate): boolean {
     return hitsBoostGate(prev,pos,g);
   }
 
-  /** k = clamp(length / boostLenMaxPx, 0.3, 1) (REQ-4.3.2) */
+  /** Déduit l’intensité d’accélération de l’espacement des deux contacts. */
   boostFactor(a: Vec2, b: Vec2): number {
     return clamp(dist(a, b) / config.boostLenMaxPx, 0.3, 1);
   }
 
-  // ─── Abilities (C-03, C-04) ────────────────────────────────────────────────
+  // --- Anciennes capacités fantôme et destruction, hors interface actuelle ---
 
+  /** Conserve le traitement historique des capacités fantôme et destruction, absentes de l’interface actuelle. */
   onAbility(msg: AbilityMsg): void {
     const s = this.state;
     if (s.phase !== 'RACE') return;
@@ -717,7 +782,7 @@ export class GameRules {
       this.host.feedback('ghost', car.pos.x, car.pos.y, team);
     } else if (msg.kind === 'destroy') {
       if ((!s.testMode.allItems && now < cd.destroy) || !msg.targetId) return;
-      const target = s.walls.find(w => w.id === msg.targetId) ?? s.arcs.find(a => a.id === msg.targetId);
+      const target = s.walls.find(/* Retrouve le mur ciblé par l’ancienne capacité de destruction. */ w => w.id === msg.targetId) ?? s.arcs.find(/* Retrouve l’arc ciblé par l’ancienne capacité de destruction. */ a => a.id === msg.targetId);
       if (!target || target.team === team) return;
       target.disabledUntil = now + config.destroyDisableS * 1000;
       if (!s.testMode.allItems) cd.destroy = now + config.destroyCooldownS * 1000;
@@ -726,21 +791,28 @@ export class GameRules {
     }
   }
 
-  // ─── Synchronous repair (C-06) ─────────────────────────────────────────────
+  // --- Réparation coopérative et réapparition ---
 
+  /** Met à jour l’appui de réparation du poste et le transmet au tutoriel si nécessaire. */
   onPadHold(msg: PadHoldMsg): void {
     if (this.state.sessionMode === 'tangibles-test' && msg.role === 'pilot') return;
     const pad = this.state.repairPads[`${msg.team}-${msg.role}`];
     if (!pad) return;
     pad.held = !!msg.on;
     pad.startedAt = pad.held ? this.now : 0;
+    if (pad.held && this.state.phase === 'RACE' && this.state.tutorial) {
+      const wasIdentifying = this.tutorialIdentifying();
+      this.tutorial?.onStation(msg.team, msg.role);
+      this.launchTutorialIfReady(wasIdentifying);
+    }
   }
 
+  /** Relâche les appuis de réparation lorsque la session ou la connexion est interrompue. */
   releaseAllPads(): void {
     for (const pad of Object.values(this.state.repairPads)) { pad.held = false; pad.startedAt = 0; }
   }
 
-  /** Gauge fills only while BOTH pads of a team are held; any release resets it (T-09). */
+  /** Fait progresser la réparation seulement lorsque les deux partenaires maintiennent leurs appuis. */
   updateRepair(dt: number, now: number): void {
     const s = this.state;
     for (const team of TEAMS) {
@@ -757,6 +829,7 @@ export class GameRules {
     }
   }
 
+  /** Restaure la voiture et prépare son retour avec les feux de reprise si elle était en panne. */
   private completeRepair(team: Team, now: number): void {
     const s = this.state;
     const car = s.cars[team];
@@ -779,6 +852,7 @@ export class GameRules {
     this.host.feedback('repairDone', car.pos.x, car.pos.y, team);
   }
 
+  /** Replace la voiture au dernier point de passage validé avec la direction de la piste. */
   respawnAtCheckpoint(car: Car): void {
     const track = this.state.track!;
     const last = (car.checkpointIndex - 1 + track.checkpoints.length) % track.checkpoints.length;
@@ -789,13 +863,14 @@ export class GameRules {
     car.velocity = { x: 0, y: 0 };
   }
 
-  // ─── Damage ────────────────────────────────────────────────────────────────
+  // --- Dégâts et sortie de piste ---
 
-  damage(car: Car, amount: number, now: number): void {
+  /** Applique les dégâts autorisés et immobilise la voiture lorsque sa santé atteint zéro. */
+  damage(car: Car, amount: number, now: number,feedback='hit'): void {
     if (car.disabled || this.state.testMode.invincible) return;
     if (this.state.tutorial) amount = 0; // lessons show the hit, never its cost
     car.hp = Math.max(0, car.hp - amount);
-    this.host.feedback('hit', car.pos.x, car.pos.y, car.team);
+    this.host.feedback(feedback, car.pos.x, car.pos.y, car.team);
     if (car.hp === 0) {
       car.disabled = true;
       car.speed = 0;
@@ -805,7 +880,7 @@ export class GameRules {
     void now;
   }
 
-  /** Leaving the neon ribbon is a fall, not a wall collision. */
+  /** Traite une sortie de piste ou remet la voiture sur la route pendant l’entraînement. */
   fallOffTrack(team: Team, now: number): void {
     const car = this.state.cars[team];
     if (car.disabled) return;
@@ -824,8 +899,9 @@ export class GameRules {
     void now;
   }
 
-  // ─── Tangible pylons (C-05) ────────────────────────────────────────────────
+  // --- Tangibles : annonce, pose, activation, retrait et arc électrique ---
 
+  /** Change la méthode de pose des tangibles et annule une éventuelle annonce en cours. */
   setTangiblePlacementMode(mode: TangiblePlacementMode): void {
     if (mode !== 'manual' && mode !== 'touch') return;
     this.state.tangiblePlacementMode = mode;
@@ -833,11 +909,12 @@ export class GameRules {
     this.host.broadcastFull();
   }
 
+  /** Construit la pose inactive de l’objet à sa place dans la réserve neutre. */
   private parkedTangible(id:number): Tangible {
     return {...depotPose(id),kind:tangibleDefinition(id)!.kind,team:null,active:false,status:'parked',dockTeam:null};
   }
 
-  /** Oz identifies the next object; no charging cycle or cooldown is required. */
+  /** Retire l’ancien effet de l’objet et crée une autorisation unique pour ses prochains contacts. */
   prepareTangiblePlacement(id: number): void {
     if (this.state.tangiblePlacementMode !== 'touch' || !tangibleDefinition(id)
       || !['READY','RACE'].includes(this.state.phase)) return;
@@ -847,17 +924,20 @@ export class GameRules {
     this.host.broadcastFull();
   }
 
+  /** Supprime l’annonce de pose sans modifier les objets déjà présents. */
   cancelTangiblePlacement(): void {
     if (!this.state.tangiblePlacement) return;
     this.state.tangiblePlacement = null;
     this.host.broadcastFull();
   }
 
+  /** Annule une annonce périmée ou devenue incompatible avec la phase de jeu. */
   tickTangiblePlacement(now: number): void {
     const pending=this.state.tangiblePlacement;
     if (pending && (now>=pending.expiresAt || !['READY','RACE'].includes(this.state.phase))) this.cancelTangiblePlacement();
   }
 
+  /** Valide le jeton et les contacts puis installe le tangible à la pose recalculée par le serveur. */
   onTangibleTouchPlaced(msg: TangibleTouchPlacedMsg): void {
     this.tickTangiblePlacement(this.now);
     const s=this.state, pending=s.tangiblePlacement, definition=tangibleDefinition(msg.id);
@@ -871,10 +951,11 @@ export class GameRules {
     s.tangibles[msg.id]={...pose,kind:definition.kind,team:null,active:!parked,status:parked?'parked':'placed',dockTeam:null,placementOrigin:{...pose}};
     this.tangibleLog.push({t:this.now,type:'TangibleMoved',id:msg.id,...pose,active:!parked});
     this.rebuildTangibles();
+    this.tutorial?.onTangiblePlaced(msg.id);
     this.host.broadcastFull();
   }
 
-  /** Only Oz changes tangible activation and removal. */
+  /** Active, désactive ou range le tangible demandé par la console. */
   onTangibleControl(msg: TangibleControlMsg): void {
     const id = Number(msg.id), definition = tangibleDefinition(id);
     if (!definition || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
@@ -893,6 +974,7 @@ export class GameRules {
     this.rebuildTangibles();
   }
 
+  /** Valide et applique une pose manuelle reçue de la console lorsque ce mode est actif. */
   onTangibleMoved(msg: TangibleMovedMsg): void {
     if (this.state.tangiblePlacementMode === 'touch') return;
     const id = Number(msg.id), definition = tangibleDefinition(id);
@@ -909,8 +991,10 @@ export class GameRules {
       dockTeam: null, status: parked?'parked':'placed', placementOrigin };
     this.tangibleLog.push({ t: this.now, type: 'TangibleMoved', id, x, y, angle, active });
     this.rebuildTangibles();
+    this.tutorial?.onTangiblePlaced(id);
   }
 
+  /** Retire l’effet de l’objet et le remet inactif dans la réserve. */
   onTangibleRemoved(msg: TangibleRemovedMsg): void {
     const id = Number(msg.id);
     if (!tangibleDefinition(id) || !['READY', 'RACE', 'PAUSED'].includes(this.state.phase)) return;
@@ -920,11 +1004,13 @@ export class GameRules {
     this.rebuildTangibles();
   }
 
+  /** Reconstruit les murs et l’arc actifs à partir des poses des trois objets neutres. */
   private rebuildTangibles(): void {
     const s = this.state;
-    const oldDisabled = new Map([...s.walls, ...s.arcs].map(w => [w.id, w.disabledUntil]));
-    s.walls = s.walls.filter(w => w.expiresAt);
-    s.arcs = s.arcs.filter(a => a.id.startsWith(TUTORIAL_OBSTACLE_PREFIX));
+    const oldDisabled = new Map([...s.walls, ...s.arcs].map(/* Conserve les échéances de désactivation avant de reconstruire les obstacles. */ w => [w.id, w.disabledUntil]));
+    s.walls = s.walls.filter(/* Conserve les murs temporaires de démonstration pendant la reconstruction des tangibles. */ w => w.expiresAt);
+    s.arcs = s.arcs.filter(/* Conserve les arcs du tutoriel clavier qui ne proviennent pas de la paire réelle. */ a => a.id.startsWith(TUTORIAL_OBSTACLE_PREFIX));
+    /** Convertit une pose normalisée de tangible en pixels logiques de la table. */
     const px = (t: { x: number; y: number }): Vec2 => ({ x: t.x * config.logicalWidth, y: t.y * config.logicalHeight });
     const wall = s.tangibles[1];
     if (wall?.active && wall.status === 'placed') s.walls.push({ id: 'wall-1', team: null, pos: px(wall), angle: wall.angle,
@@ -934,7 +1020,7 @@ export class GameRules {
     this.tutorial?.onTangibles();
   }
 
-  /** Wall as a segment: centre ± direction·length/2 (angle in degrees). */
+  /** Calcule les extrémités du mur à partir de son centre, de son angle et de sa longueur. */
   static wallEnds(w: Pick<Wall, 'pos' | 'angle' | 'lengthPx'>): [Vec2, Vec2] {
     const a = (w.angle * Math.PI) / 180;
     const hx = (Math.cos(a) * w.lengthPx) / 2;
@@ -942,8 +1028,9 @@ export class GameRules {
     return [{ x: w.pos.x - hx, y: w.pos.y - hy }, { x: w.pos.x + hx, y: w.pos.y + hy }];
   }
 
-  // ─── Local border pull (C-07) ──────────────────────────────────────────────
+  // --- Déformation temporaire du circuit ---
 
+  /** Valide la traction du bord puis la transmet au calcul de déformation temporaire. */
   onBorderPull(msg: BorderPullMsg): void {
     this.tickTangiblePlacement(this.now);
     if (this.state.tangiblePlacement) return;
@@ -960,15 +1047,14 @@ export class GameRules {
   }
 
   /**
-   * Shift a short piece of the centerline sideways. Both edges follow the same
-   * displacement, so this creates a temporary double chicane rather than a
-   * wider road. A new pull starts immediately while the prior one reforms.
+   * Crée ou actualise une traction locale en bornant son amplitude et sa durée.
+   * Les deux bords suivent le même déplacement latéral pour créer une chicane temporaire, et un nouveau geste peut commencer pendant le retour du précédent.
    */
   private deformTrack(at: Vec2, drag: Vec2, team: Team, gestureId?:string, ended=false, indexHint?:number): void {
     const track = this.state.track;
     if (!track) return;
     const id=gestureId?`deform-${team}-${gestureId}`:`deform-${++this.deformCounter}`;
-    const existing=this.state.deformations.find(d=>d.id===id);
+    const existing=this.state.deformations.find(/* Retrouve la déformation déjà créée par le même geste continu. */ d=>d.id===id);
     if(existing?.gestureEnded || existing?.releaseAt)return;
     const hit=nearestOnTrack(at,track);
     const index=existing?.index??indexHint??hit.index;
@@ -983,6 +1069,7 @@ export class GameRules {
     if(projected<20)return;
     let amount=Math.min(config.trackDeformMaxShiftPx,projected);
     // One uniform limit preserves the requested shape and clears the screen/UI.
+    /** Vérifie que le déplacement proposé conserve toute la portion déformée hors des commandes et des bords. */
     const safe=(shift:number)=>{
       const n=track.baseCenterline.length,radius=config.trackDeformRadiusPoints;
       for(let offset=-radius;offset<=radius;offset++){
@@ -1022,7 +1109,7 @@ export class GameRules {
     this.host.feedback('trackDeformed', hit.closest.x, hit.closest.y, team);
   }
 
-  /** Rebuild the transient road from the immutable centerline every simulation step. */
+  /** Recompose la piste depuis sa forme de base avec les déplacements temporaires encore actifs. */
   updateTrackDeformations(now: number, force = false): void {
     const track = this.state.track;
     if (!track || this.state.deformations.length === 0) return;
@@ -1041,14 +1128,14 @@ export class GameRules {
     }
     // A just-created pull starts at strength 0, so only discard a deformation
     // once its release animation has actually reached zero.
-    const kept = this.state.deformations.filter(d => d.releaseAt === null || d.strength > 0);
+    const kept = this.state.deformations.filter(/* Conserve les tractions maintenues et celles dont le retour n’est pas terminé. */ d => d.releaseAt === null || d.strength > 0);
     if (kept.length !== this.state.deformations.length) changed = true;
     this.state.deformations = kept;
 
     if (!changed) return;
     const n = track.baseCenterline.length;
     const radius = config.trackDeformRadiusPoints;
-    track.centerline = track.baseCenterline.map((base, i) => {
+    track.centerline = track.baseCenterline.map(/* Applique les déplacements actifs au point de base sans cumuler les déformations au-delà de la limite. */ (base, i) => {
       let x = base.x, y = base.y, shiftX=0, shiftY=0, weight=0;
       for (const d of this.state.deformations) {
         const delta = Math.abs(i - d.index);
@@ -1064,8 +1151,9 @@ export class GameRules {
     this.state.trackVersion++;
   }
 
-  /** Keep lap marks and checkpoints locked to their centerline anchors. */
+  /** Repositionne les éléments accrochés à la piste après une déformation de la chaussée. */
   private alignTrackFeatures(track: TrackGeometry): void {
+    /** Calcule la direction locale de la piste déformée pour y réaligner les éléments attachés. */
     const tangent = (index: number) => {
       const n = track.centerline.length;
       const a = track.centerline[(index - 1 + n) % n];
@@ -1073,6 +1161,7 @@ export class GameRules {
       const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
       return { x: (b.x - a.x) / length, y: (b.y - a.y) / length };
     };
+    /** Replace chaque checkpoint sur son ancrage et sa direction de piste déformée. */
     track.checkpoints.forEach((checkpoint, i) => {
       const index = track.featureIndices.checkpoints[i];
       checkpoint.pos = { ...track.centerline[index] };
@@ -1083,6 +1172,7 @@ export class GameRules {
     const t = tangent(start);
     track.startLine = { pos: { ...track.centerline[start] }, normal: { x: -t.y, y: t.x } };
     // Baptiste's pickups follow their own anchor when the road is pulled, even while respawning.
+    /** Replace chaque bonus sur son ancrage en conservant sa marge de chaussée. */
     track.featureIndices.pickups.forEach((index, i) => {
       const direction = tangent(index), normal = { x: -direction.y, y: direction.x };
       const lateral = (track.widths[index] / 2) * .3 * (i % 2 === 0 ? 1 : -1);
@@ -1093,21 +1183,22 @@ export class GameRules {
     });
   }
 
-  /** A small grace band prevents an easing edge from unfairly dropping a car. */
+  /** Indique qu’un bord revient à sa place et qu’une petite marge de sécurité doit être conservée. */
   isTrackReforming(): boolean {
-    return this.state.deformations.some(d => d.releaseAt !== null);
+    return this.state.deformations.some(/* Signale qu’au moins une déformation est dans sa phase de retour. */ d => d.releaseAt !== null);
   }
 
-  // ─── Periodic housekeeping (driven by PhysicsLoop) ─────────────────────────
+  // --- Expiration des effets et contacts après déplacement ---
 
+  /** Retire les effets terminés, fait réapparaître les bonus et actualise les besoins du tutoriel. */
   expire(now: number): void {
     const s = this.state;
-    s.boostGates = s.boostGates.filter(g => g.expiresAt > now);
-    s.walls = s.walls.filter(w => !w.expiresAt || w.expiresAt > now);
+    s.boostGates = s.boostGates.filter(/* Conserve les accélérations dont la durée d’existence n’est pas écoulée. */ g => g.expiresAt > now);
+    s.walls = s.walls.filter(/* Conserve les murs permanents et les murs de démonstration encore valables. */ w => !w.expiresAt || w.expiresAt > now);
 
     for (const p of s.pickups) {
       if (p.respawnAt !== 0 && p.respawnAt <= now) {
-        p.respawnAt = 0; p.kind = this.randomItem();
+        p.respawnAt = 0; p.kind = s.tutorial ? (p.id%2===0?'slingshot':'boost') : this.randomItem();
         if (s.track) p.pos = clampToTrackRibbon(s.track.pickupPositions[p.id] ?? p.pos, s.track, 25);
       }
     }
@@ -1122,26 +1213,27 @@ export class GameRules {
     this.tutorial?.tick();
   }
 
-  /** Pickups, boost gates, hostile elements and checkpoints after a car moved. */
+  /** Traite le ramassage, les accélérations, les collisions électriques et les checkpoints après le déplacement d’une voiture. */
   afterMove(team: Team, prev: Vec2, now: number): void {
     const s = this.state;
     const car = s.cars[team];
     const track = s.track;
     if (!track || car.disabled || car.respawnUntil>now) return;
 
-    // Pickups (R-11): picked up only when the stock is empty
+    // Ramassage des bonus ; la réapparition est réglée dans expire.
     if (car.heldItem === null) {
       for (const p of s.pickups) {
-        if (p.respawnAt === 0 && dist(car.pos, p.pos) <= PICKUP_RADIUS) {
-          car.heldItem = this.tutorial?.forcedItem(team) ?? p.kind;
+        const expected = this.tutorial?.forcedItem(team);
+        if (p.respawnAt === 0 && (!expected || p.kind===expected) && dist(car.pos, p.pos) <= PICKUP_RADIUS) {
+          car.heldItem = p.kind;
           p.respawnAt = now + (s.tutorial ? TUTORIAL_PICKUP_RESPAWN_S : config.pickupRespawnS) * 1000;
-          this.host.feedback('pickup', p.pos.x, p.pos.y, team);
+          this.host.feedback('pickup', p.pos.x, p.pos.y, team, p.kind);
           break;
         }
       }
     }
 
-    // Allied boost gates
+    // Traversée d’une zone d’accélération de son équipe.
     if (car.boostUntil <= now) {
       for (const g of s.boostGates) {
         if (g.team !== team) continue;
@@ -1156,7 +1248,7 @@ export class GameRules {
       }
     }
 
-    // Neutral obstacles affect both teams; legacy owned obstacles still spare their owner.
+    // Chocs contre les murs, champs des piliers et arcs électriques.
     if (car.ghostUntil <= now && car.invulnUntil <= now && !s.testMode.invincible) {
       for (const w of s.walls) {
         if (w.team === team || w.disabledUntil > now) continue;
@@ -1176,10 +1268,11 @@ export class GameRules {
           if (!t.active || t.status !== 'placed' || t.kind !== 'pylon') continue;
           const at = { x: t.x * config.logicalWidth, y: t.y * config.logicalHeight };
           if (distToSegment(at, prev, car.pos) > config.pylonFieldRadiusPx + CAR_RADIUS) continue;
-          this.damage(car, config.dmgArc, now);
+          this.damage(car, config.dmgArc, now,'electricHit');
           car.invulnUntil = now + config.invulnAfterHitS * 1000;
           car.slowUntil = now + config.arcSlowS * 1000;
           car.speed *= config.arcSlowFactor;
+          this.tutorial?.onObstacleHit(team, 'arc');
           break;
         }
       }
@@ -1187,7 +1280,7 @@ export class GameRules {
         for (const arc of s.arcs) {
           if (arc.team === team || arc.disabledUntil > now) continue;
           if (Math.min(distToSegment(car.pos, arc.pylon1, arc.pylon2), distToSegment(arc.pylon1, prev, car.pos), distToSegment(arc.pylon2, prev, car.pos)) <= CAR_RADIUS + WALL_HALF_THICKNESS || segmentsIntersect(prev, car.pos, arc.pylon1, arc.pylon2)) {
-            this.damage(car, config.dmgArc, now);
+            this.damage(car, config.dmgArc, now,'electricHit');
             car.invulnUntil = now + config.invulnAfterHitS * 1000;
             car.slowUntil = now + config.arcSlowS * 1000;
             car.speed *= config.arcSlowFactor;
@@ -1198,7 +1291,7 @@ export class GameRules {
       }
     }
 
-    // Checkpoints, in order (R-07)
+    // Checkpoints et comptage des tours.
     const cp = track.checkpoints[car.checkpointIndex];
     if (cp) {
       const half = 110;
@@ -1214,7 +1307,7 @@ export class GameRules {
     }
   }
 
-  /** Reflect the car's velocity about a segment and push it clear (rebound ×0.6). */
+  /** Éloigne la voiture du segment touché et réfléchit sa vitesse pour produire le rebond. */
   bounceOffSegment(car: Car, a: Vec2, b: Vec2): void {
     const dx = b.x - a.x, dy = b.y - a.y;
     const len2 = dx * dx + dy * dy || 1;
@@ -1229,7 +1322,7 @@ export class GameRules {
     this.reflect(car, nx, ny);
   }
 
-  /** `n` = unit normal pointing back into free space. Speed ×0.6 (REQ-3.2.2). */
+  /** Projette la direction de la voiture sur la normale du contact pour calculer sa direction de rebond. */
   reflect(car: Car, nx: number, ny: number): void {
     const hx = Math.cos(car.angle), hy = Math.sin(car.angle);
     const vx = hx * car.speed, vy = hy * car.speed;
@@ -1244,11 +1337,13 @@ export class GameRules {
     car.speed = forward ? sp : -sp;
   }
 
-  // ─── Victory (task 5) ──────────────────────────────────────────────────────
+  // --- Tours, chronomètre et résultat ---
 
+  /** Détermine le résultat lorsque le nombre de tours ou la durée de course est atteint. */
   checkEnd(now: number): void {
     const s = this.state;
     if (s.phase !== 'RACE' || s.tutorial || s.sessionMode === 'tangibles-test' || now < s.sessionStartAt) return;
+    /** Classe la progression d’une voiture à partir de ses tours et de son prochain checkpoint. */
     const progress = (c: Car) => c.lap * 8 + c.checkpointIndex;
     let winner: Team | 'draw' | null = null;
     for (const t of TEAMS) if (s.cars[t].lap >= s.params.lapsToWin) { winner = t; break; }

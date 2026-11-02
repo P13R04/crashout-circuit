@@ -1,29 +1,48 @@
-import { localToWorld, panelOf, POWER_BTN_LOCAL } from '../server/layout.js';
+/**
+ * Dessine les retours ponctuels des actions dans les cinq thèmes, notamment les impacts et les transferts de
+ * bonus.
+ * Liens : server/layout.ts, client-table/view.ts, client-table/HUD.ts, client-table/themes.ts,
+ * client-table/neon.ts.
+ * Référencé par client-table/Renderer.ts.
+ */
+import { localToWorld, panelOf, POWER_BTN_LOCAL, ITEM_SLOT_LOCAL } from '../server/layout.js';
 import type { View } from './view.js';
+import { drawItemIcon } from './HUD.js';
 import { TEAM_COLOR } from './view.js';
 import { themeLook } from './themes.js';
 import { glow, NEON, noise } from './neon.js';
 
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
 const TAU = Math.PI * 2;
-/** Feedback has a shape per action, bounded by the client pool; no full-screen flashes. */
+/** Dessine les retours ponctuels des actions dans les cinq thèmes, notamment les impacts et les transferts de bonus. */
 export class NeonEffects {
-  draw(ctx: Ctx, view: View): void {
+  /** Dessine les retours d’action encore vivants dans leur couche, notamment le trajet du bonus vers le copilote. */
+  draw(ctx: Ctx, view: View, foreground=false): void {
     const time = view.visualTime, reduced = view.reducedMotion,accent=themeLook(view.theme).accent;
-    view.effects = view.effects.filter(e => time - e.start < e.dur);
+    view.effects = view.effects.filter(/* Conserve les retours visuels dont la durée d’affichage n’est pas écoulée. */ e => time - e.start < e.dur);
     for (const e of view.effects) {
+      if(['pickup','itemArmed','itemUsed','itemLost'].includes(e.kind)!==foreground)continue;
       const k = Math.max(0, Math.min(1, (time - e.start) / e.dur)), fade = 1 - k;
       const color = TEAM_COLOR[e.team];
       ctx.save(); ctx.translate(e.x, e.y); ctx.globalAlpha = fade;
       switch (e.kind) {
         case 'pickup': {
           ctx.translate(-e.x, -e.y);
-          const to = localToWorld(panelOf(e.team, 'copilot'), POWER_BTN_LOCAL.x + 82, -67);
+          const panel=panelOf(e.team,'copilot'),to=localToWorld(panel,ITEM_SLOT_LOCAL.x,ITEM_SLOT_LOCAL.y);
           const p = reduced ? 1 : 1 - (1 - k) ** 2;
           const bow = Math.sin(p * Math.PI) * 90;
           const x = e.x + (to.x - e.x) * p, y = e.y + (to.y - e.y) * p - bow;
-          glow(ctx, x, y, 24, accent, .75);
-          ctx.fillStyle = NEON.white; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, TAU); ctx.fill();
+          ctx.globalAlpha=k<.8?1:fade/.2;
+          glow(ctx,x,y,27,accent,.5);
+          const kind=e.itemKind??view.state?.cars[e.team].heldItem;
+          ctx.save();ctx.translate(x,y);ctx.rotate(panel.rot*p);
+          if(kind)drawItemIcon(ctx,kind,0,0,14-p*2,NEON.white);
+          else{ctx.fillStyle=NEON.white;ctx.beginPath();ctx.arc(0,0,4,0,TAU);ctx.fill();}
+          ctx.restore();
+          if(k<.3){ctx.strokeStyle=color;ctx.lineWidth=2;ctx.globalAlpha=1-k/.3;ctx.beginPath();ctx.arc(e.x,e.y,14+k*80,0,TAU);ctx.stroke();}
+          if(k>.72){ctx.strokeStyle=color;ctx.lineWidth=2;ctx.globalAlpha=fade/.28;ctx.beginPath();ctx.arc(to.x,to.y,12+(k-.72)*75,0,TAU);ctx.stroke();}
+          ctx.globalAlpha=k<.8?1:fade/.2;
           if (!reduced) {
             ctx.strokeStyle = '#ffce6660'; ctx.lineWidth = 1.5; ctx.beginPath();
             for (let i = 0; i < 7; i++) {
@@ -33,6 +52,12 @@ export class NeonEffects {
             ctx.stroke();
           }
           break;
+        }
+        case 'itemUsed': {
+          ctx.translate(-e.x,-e.y);const panel=panelOf(e.team,'copilot'),at=localToWorld(panel,ITEM_SLOT_LOCAL.x,ITEM_SLOT_LOCAL.y);
+          ctx.translate(at.x,at.y);ctx.rotate(panel.rot);ctx.scale(1-k*.45,1-k*.45);
+          if(e.itemKind)drawItemIcon(ctx,e.itemKind,0,0,12,accent);
+          ctx.strokeStyle=accent;ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,14+k*25,0,TAU);ctx.stroke();break;
         }
         case 'itemArmed': case 'itemLost': {
           ctx.translate(-e.x, -e.y);
@@ -46,7 +71,7 @@ export class NeonEffects {
           }
           break;
         }
-        case 'stoneImpact': case 'stoneHit': case 'hit': case 'wallDestroyed': {
+        case 'stoneImpact': case 'stoneHit': case 'hit': case 'electricHit': case 'wallDestroyed': {
           if(view.theme==='toy'){
             for(let i=0;i<(reduced?4:12);i++){
               const a=i*2.4,d=(reduced?12:10+k*48)*( .5+noise(i*31));

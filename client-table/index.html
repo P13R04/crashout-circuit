@@ -1,10 +1,12 @@
 <!DOCTYPE html>
+<!-- Définit le canvas et les paramètres de la table ; main.ts branche les commandes et Renderer.ts dessine les écrans. -->
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Crashout Circuit — Table</title>
   <style>
+    /* Organise les commandes HTML et leurs adaptations de taille sans intervenir dans le rendu Canvas. */
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; background: #030611; overflow: hidden; }
     canvas { display: block; touch-action: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
@@ -24,10 +26,13 @@
     summary svg { color: #8ee7ec; width:calc(32px * var(--tools-scale,1)); height:calc(32px * var(--tools-scale,1)); }
     .tools-content {
       position: absolute; top: 50%; left: calc(100% + 10px); transform: translateY(-50%); max-height:calc(100vh - 24px); overflow-y:auto;
-      width: min(400px, calc(100vw - 32px)); padding: 16px; background: #080f26f5;
+      width: min(340px, calc(100vw - 32px)); padding: 16px; background: #080f26f5;
       border: 1px solid #64748b; border-radius: 18px; box-shadow: 0 8px 30px #0008;
     }
-    #settings-home { width:100%; margin-bottom:14px; }
+    #settings-home { width:100%; margin-top:14px; }
+    #audio-volumes summary { min-height:42px; padding:10px; font-size:13px; justify-content:space-between; height:auto; }
+    #audio-volumes summary::after { content:"＋"; } #audio-volumes[open] summary::after { content:"−"; }
+    #audio-volumes > button { width:100%; }
     #fullscreen { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; margin-bottom: 14px; }
     #fullscreen-notice { color: #ffca8b; font-size: 12px; margin-bottom: 10px; }
     #drive-options { margin-bottom:14px; }
@@ -39,6 +44,10 @@
     #race-options input[type=checkbox] { width:18px;height:18px;vertical-align:middle; }
     #race-options :disabled { opacity:.4; }
     .setting-label { font-size: 12px; color: #b9cbd0; margin-bottom: 10px; }
+    #audio-options { margin:14px 0; padding-top:12px; border-top:1px solid #ffffff18; }
+    #audio-options label { display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0; }
+    #audio-options input[type=range] { width:60%;accent-color:var(--look-accent,#ffce66);min-height:28px; }
+    .audio-buttons { display:flex;gap:8px;margin-bottom:10px; }
     #theme-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 4px; }
     .theme-option { padding: 12px; text-align: left; background: #101b26; }
     .theme-option[aria-pressed="true"] { border-color: #9becf2; box-shadow: inset 0 0 0 1px #9becf2; background: #223a44; }
@@ -74,38 +83,55 @@
   </style>
 </head>
 <body>
+  <!-- Surface de jeu dessinée par Renderer.ts à partir de l’état reçu dans main.ts. -->
   <canvas id="canvas" aria-label="Table de jeu Crashout Circuit"></canvas>
+  <!-- Paramètres HTML pilotés par main.ts ; le bouton reste dans la zone neutre de la table. -->
   <details id="pc-tools">
     <summary title="Paramètres" aria-label="Paramètres"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z"/></svg></summary>
     <div class="tools-content">
       <button type="button" id="fullscreen" aria-pressed="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg><span>Plein écran</span></button>
-      <button type="button" id="settings-home">⌂ Accueil</button>
       <p id="fullscreen-notice" role="status" hidden></p>
+      <!-- Conduite séparée par équipe, réservée à la préparation de développement. -->
       <div id="drive-options" role="group" aria-label="Conduite" hidden>
         <p class="setting-label">Conduite</p>
         <button id="drive-A" aria-label="Conduite cyan" aria-pressed="false">Cyan · AUTO</button>
         <button id="drive-B" aria-label="Conduite rose" aria-pressed="false">Rose · AUTO</button>
       </div>
+      <!-- Réglages partagés de vitesse, de tours et de durée, envoyés par RaceSettings. -->
       <div id="race-options" role="group" aria-label="Course">
         <p class="setting-label">Course</p>
-        <label>Difficulté <select id="race-difficulty"><option value="easy">Easy · 50 %</option><option value="medium">Medium · 75 %</option><option value="hard">Hard · 100 %</option></select></label>
+        <label>Difficulté <select id="race-difficulty"><option value="easy">Facile</option><option value="medium">Moyen</option><option value="hard">Difficile</option></select></label>
         <label>Tours <input id="race-laps" type="number" min="1" max="99" step="1" value="3" /></label>
-        <label><span><input id="race-timer" type="checkbox" /> Chronomètre</span><span><input id="race-minutes" aria-label="Durée en minutes" type="number" min="0.5" max="120" step="0.5" value="2" disabled /> min</span></label>
+        <label><span><input id="race-timer" type="checkbox" /> Chronomètre</span><span id="timer-duration" hidden><input id="race-minutes" aria-label="Durée en minutes" type="number" min="0.5" max="120" step="0.5" value="2" disabled /> min</span></label>
       </div>
-      <p class="setting-label">Ambiance</p>
-      <div id="theme-options" role="group" aria-label="Thème visuel"></div>
+      <!-- Réglages locaux reliés à Sound.ts, avec les volumes détaillés repliés. -->
+      <div id="audio-options" role="group" aria-label="Audio">
+        <div class="audio-buttons"><button id="audio-enabled" type="button" aria-pressed="true">Son activé</button></div>
+        <details id="audio-volumes"><summary>Volumes</summary>
+        <label>Effets <input id="audio-effects" aria-label="Volume des effets" type="range" min="0" max="100" step="1" value="70" /></label>
+        <label>Ambiance <input id="audio-ambience" aria-label="Volume de l’ambiance" type="range" min="0" max="100" step="1" value="22" /></label>
+        <label>Musique <input id="audio-music" aria-label="Volume de la musique" type="range" min="0" max="100" step="1" value="12" /></label>
+        <button id="audio-test" type="button">Écouter</button></details>
+      </div>
+      <!-- Catalogue visuel de themes.ts, masqué pendant une séance publique. -->
+      <div id="theme-settings" hidden><p class="setting-label">Ambiance</p>
+      <div id="theme-options" role="group" aria-label="Thème visuel"></div></div>
+      <!-- Substituts de gestes à la souris, accessibles seulement dans le lancement de développement. -->
       <div id="sim" role="group" aria-label="Simuler un geste">
         <button id="sim3" aria-label="Lance-pierre" aria-pressed="false" title="Maintenir le clic, tirer et relâcher">Lance-pierre</button>
-        <button id="sim2" aria-label="Boost" aria-pressed="false" title="Placer les deux contacts du boost par deux clics">Boost</button>
+        <button id="sim2" aria-label="Accélération" aria-pressed="false" title="Placer la zone d’accélération avec deux clics">Accélération</button>
         <span id="sim-hint" role="status"></span>
       </div>
+      <!-- Aides clavier dont les commandes sont également filtrées par GameServer.ts. -->
       <div id="testbar" role="group" aria-label="Options de test PC">
         <button id="test-invincible" aria-label="Invincibles" aria-pressed="false" title="Rendre les deux véhicules invincibles">Invincibles</button>
         <button id="test-items" aria-label="Objets libres" aria-pressed="false" title="Utiliser les deux gestes sans limite de stock">Objets libres</button>
       </div>
+      <button type="button" id="settings-home">⌂ Accueil</button>
     </div>
   </details>
   <div id="status" role="status">Connexion…</div>
+  <!-- Point d’entrée qui relie ces éléments HTML aux commandes et au réseau. -->
   <script type="module" src="./main.ts"></script>
 </body>
 </html>

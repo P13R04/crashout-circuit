@@ -1,3 +1,10 @@
+/**
+ * Dessine la carte de la console et gère la sélection, le déplacement et la rotation des tangibles au doigt
+ * ou à la souris.
+ * Liens : server/layout.ts, server/geometry.ts, server/types.ts, client-shared/tangibleGeometry.ts,
+ * server/tangibles.ts et les utilitaires importés ci-dessous.
+ * Référencé par client-oz/main.ts, scripts/acceptance.ts.
+ */
 import type { GameState, Tangible, Vec2, Team } from '../server/types.js';
 import { wallEndpoints, rotateWall, wallCorners, type TangiblePose } from '../client-shared/tangibleGeometry.js';
 import { tangibleDefinition, validTangiblePose, type TangibleId } from '../server/tangibles.js';
@@ -6,8 +13,10 @@ import { visibleTrackEdges } from '../client-shared/trackVisibility.js';
 import { viewTransform, viewToWorld } from './ozView.js';
 import { PANELS, PANEL_H, panelWidth, localToWorld, TANGIBLE_DEPOT, NEUTRAL_CONTROLS } from '../server/layout.js';
 
+/** Limite les outils manuels de la console à la paire de piliers, au mur ou à aucun outil. */
 export type OzTool = 'arc' | 'wall' | null;
 
+/** Décrit les commandes et les lectures que la carte délègue au contrôleur de console. */
 export interface OzMapHandlers {
   onRemove?(id: TangibleId): void;
   onMove(id: TangibleId, x: number, y: number, angle: number): boolean;
@@ -28,8 +37,10 @@ export interface OzMapHandlers {
   onMovingTangibleChange?(id: TangibleId | null, step?: number): void;
 }
 
+/** Conserve le doigt, le pivot et l’aperçu de l’objet pendant son glissement. */
 interface Drag {
   pointer: number;
+  moved?: boolean;
   id: TangibleId;
   mode: 'move' | 'rotate' | 'place';
   anchor: Vec2;
@@ -37,7 +48,7 @@ interface Drag {
   pose: TangiblePose;
 }
 
-/** Drawing and pointer geometry; operator commands live in OzController / toolbar. */
+/** Dessine la carte de la console et gère la sélection, le déplacement et la rotation des tangibles au doigt ou à la souris. */
 export class OzMap {
   private ctx: CanvasRenderingContext2D;
   private state: GameState | null = null;
@@ -59,8 +70,10 @@ export class OzMap {
   private movingWallDraftAngle: number | null = null;
   private downClientPos = { x: 0, y: 0 };
 
+  /** Installe le contexte de dessin et les événements qui manipulent la carte. */
   constructor(private canvas: HTMLCanvasElement, private h: OzMapHandlers) {
     this.ctx = canvas.getContext('2d')!;
+    /** Tourne l’aperçu du mur à la molette lorsqu’un repositionnement est en cours. */
     canvas.addEventListener('wheel', e => {
       if (!this.state || !this.h.enabled()) return;
       if (this.movingTangibleId === 1) {
@@ -71,16 +84,21 @@ export class OzMap {
         this.draw();
       }
     }, { passive: false });
+    /** Transmet le début de contact au choix de manipulation de la carte. */
     canvas.addEventListener('pointerdown', e => this.down(e));
+    /** Transmet le déplacement du doigt ou de la souris à la manipulation courante. */
     canvas.addEventListener('pointermove', e => this.move(e));
+    /** Efface le survol lorsque le pointeur quitte la carte. */
     canvas.addEventListener('pointerleave', () => { this.hover = null; this.draw(); });
+    /** Confirme la pose ou le glissement sans transformer un toucher de poignée en repositionnement. */
     canvas.addEventListener('pointerup', e => {
       if (this.drag?.pointer !== e.pointerId) return;
       this.move(e);
-      const distMoved = Math.hypot(e.clientX - this.downClientPos.x, e.clientY - this.downClientPos.y);
       if (this.drag.mode === 'place') {
         this.h.onPlace(this.drag.pose);
-      } else if (distMoved <= 3) {
+      } else if(this.drag.mode==='rotate'){
+        // Rotation was already sent by pointermove; a tap on its handle is not a relocation.
+      } else if (!this.drag.moved) {
         // Pure click on placed tangible: activate pick & drop mode!
         this.movingTangibleId = this.drag.id;
         this.movingWallStep = 0;
@@ -101,10 +119,15 @@ export class OzMap {
       this.h.onDragEnd();
       this.draw();
     });
-    canvas.addEventListener('pointercancel', () => this.cancel());
+    /** Empêche le menu contextuel du navigateur de prendre la place de la manipulation tactile. */
+    canvas.addEventListener('contextmenu',e=>e.preventDefault());
+    /** Annule le geste seulement lorsque son contact principal est interrompu. */
+    canvas.addEventListener('pointercancel', e => {if(e.isPrimary!==false)this.cancel();});
+    /** Abandonne le glissement si le navigateur ne possède plus la capture du pointeur. */
     canvas.addEventListener('lostpointercapture', () => { if (this.drag) this.cancel(); });
   }
 
+  /** Change l’outil de pose et efface les étapes incomplètes de l’outil précédent. */
   setTool(tool: OzTool): void {
     this.movingTangibleId = null;
     this.movingWallStep = 0;
@@ -118,10 +141,15 @@ export class OzMap {
     this.draw();
   }
 
+  /** Indique qu’une pose, un déplacement ou une rotation reste à terminer. */
+  get hasOperation():boolean {return !!(this.tool||this.drag||this.movingTangibleId||this.h.preparing());}
+
+  /** Renvoie l’outil de pose actuellement sélectionné sur la carte. */
   getTool(): OzTool {
     return this.tool;
   }
 
+  /** Efface le geste et la prévisualisation locale sans déplacer les objets confirmés. */
   cancel(): void {
     this.drag = null;
     this.hover = null;
@@ -138,12 +166,14 @@ export class OzMap {
     this.draw();
   }
 
+  /** Tourne la vue par quarts de tour en annulant le geste local devenu ambigu. */
   setQuarter(quarter: number): void {
     this.cancel();
     this.quarter = ((quarter % 4) + 4) % 4;
     this.draw();
   }
 
+  /** Installe le nouvel état reçu et abandonne une manipulation devenue incompatible avec les objets confirmés. */
   setState(state: GameState): void {
     if(this.state && this.state.tangiblePlacementMode!==state.tangiblePlacementMode)this.cancel();
     if (this.drag && (!state.tangibles[this.drag.id] || !this.h.enabled() || (this.drag.mode !== 'place' && (state.tangibles[this.drag.id].status !== 'placed' || this.state?.tangibles[this.drag.id]?.active !== state.tangibles[this.drag.id].active)))) this.cancel();
@@ -156,6 +186,7 @@ export class OzMap {
     this.draw();
   }
 
+  /** Convertit les coordonnées du doigt dans le canvas puis dans le repère logique de la table. */
   private point(e: PointerEvent): Vec2 {
     const r = this.canvas.getBoundingClientRect();
     return viewToWorld({
@@ -164,9 +195,10 @@ export class OzMap {
     }, viewTransform(this.canvas.width, this.canvas.height, this.state!.params.logicalWidth, this.state!.params.logicalHeight, this.quarter));
   }
 
+  /** Réunit les poses reçues et la pose provisoire du geste en cours pour le dessin. */
   private visibleTangibles(): Array<[number, Tangible]> {
     if (!this.state) return [];
-    const all = new Map(Object.entries(this.state.tangibles).map(([id, t]) => [Number(id), t]));
+    const all = new Map(Object.entries(this.state.tangibles).map(/* Associe chaque pose à son identifiant numérique pour y superposer l’aperçu. */ ([id, t]) => [Number(id), t]));
     if (this.drag) {
       const old = all.get(this.drag.id);
       if (old) all.set(this.drag.id, { ...old, ...this.drag.pose });
@@ -174,7 +206,9 @@ export class OzMap {
     return [...all];
   }
 
+  /** Choisit entre retrait tactile, pose manuelle, déplacement et rotation selon l’objet touché. */
   private down(e: PointerEvent): void {
+    if (e.isPrimary===false||this.drag&&this.drag.pointer!==e.pointerId)return;
     if (!this.h.enabled() || !this.state || (e.button !== undefined && e.button !== 0)) return;
     e.preventDefault();
     const s = this.state, p = this.point(e);
@@ -193,7 +227,7 @@ export class OzMap {
         // Wall relocation with orientation handling
         if (this.movingWallStep === 0) {
           // Check if clicking another tangible to switch to it
-          const candidates = this.visibleTangibles().filter(([tid, t]) => t.status === 'placed' && tid !== 1);
+          const candidates = this.visibleTangibles().filter(/* Retient les piliers posés pour leur sélection lors d’un repositionnement. */ ([tid, t]) => t.status === 'placed' && tid !== 1);
           let switched = false;
           const transform = viewTransform(this.canvas.width, this.canvas.height, s.params.logicalWidth, s.params.logicalHeight, this.quarter);
           const radius = 24 * this.canvas.width / Math.max(1, this.canvas.getBoundingClientRect().width) / transform.scale;
@@ -312,8 +346,8 @@ export class OzMap {
 
     const transform = viewTransform(this.canvas.width, this.canvas.height, s.params.logicalWidth, s.params.logicalHeight, this.quarter);
     const radius = 24 * this.canvas.width / this.canvas.getBoundingClientRect().width / transform.scale;
-    const candidates = this.visibleTangibles().filter(([, t]) => t.status === 'placed')
-      .sort(([a], [b]) => Number(b === this.h.selectedId()) - Number(a === this.h.selectedId()));
+    const candidates = this.visibleTangibles().filter(/* Limite la sélection aux objets présents sur la piste. */ ([, t]) => t.status === 'placed')
+      .sort(/* Donne la priorité à l’objet déjà sélectionné lorsque plusieurs prises sont proches. */ ([a], [b]) => Number(b === this.h.selectedId()) - Number(a === this.h.selectedId()));
     let hit: { id: number; t: Tangible; rotate: boolean } | null = null;
     for (const [id, t] of candidates) {
       if (t.kind !== 'wall') continue;
@@ -340,6 +374,7 @@ export class OzMap {
     this.draw();
   }
 
+  /** Actualise l’aperçu et transmet le déplacement ou la rotation du doigt qui possède le geste. */
   private move(e: PointerEvent): void {
     if (!this.state || !this.h.enabled()) return;
     const p = this.point(e);
@@ -358,7 +393,7 @@ export class OzMap {
       if (this.movingTangibleId || this.tool) {
         this.canvas.style.cursor = 'crosshair';
       } else {
-        const candidates = this.visibleTangibles().filter(([, t]) => t.status === 'placed');
+        const candidates = this.visibleTangibles().filter(/* Retient les objets posés pour calculer le retour de survol. */ ([, t]) => t.status === 'placed');
         let over = false;
         for (const [, t] of candidates) {
           const center = { x: t.x * W, y: t.y * H };
@@ -372,6 +407,10 @@ export class OzMap {
 
     const d = this.drag;
     if (!d || d.pointer !== e.pointerId) { this.draw(); return; }
+    if(d.mode==='move'&&!d.moved){
+      if(Math.hypot(e.clientX-this.downClientPos.x,e.clientY-this.downClientPos.y)<=(e.pointerType==='touch'?10:3))return;
+      d.moved=true;
+    }
     const logical = d.mode !== 'move' ? rotateWall(d.anchor, p, s.params.wallLengthPx)
       : { x: p.x - d.offset.x, y: p.y - d.offset.y, angle: d.pose.angle };
     if (!logical) return;
@@ -381,6 +420,7 @@ export class OzMap {
     this.draw();
   }
 
+  /** Retrouve le tangible le plus proche du contact avec une marge adaptée à la taille de la carte. */
   private tangibleAt(p: Vec2): TangibleId | null {
     const s=this.state;if(!s)return null;
     const transform=viewTransform(this.canvas.width,this.canvas.height,s.params.logicalWidth,s.params.logicalHeight,this.quarter);
@@ -394,6 +434,7 @@ export class OzMap {
     return hit;
   }
 
+  /** Dessine la piste, les voitures, les objets et les aperçus dans l’orientation choisie. */
   draw(): void {
     const ctx = this.ctx, s = this.state;
     ctx.fillStyle = '#04081f';
@@ -409,6 +450,7 @@ export class OzMap {
     ctx.scale(transform.scale, transform.scale);
     ctx.translate(-W / 2, -H / 2);
 
+    /** Dessine un libellé lisible sur la carte même lorsque la vue générale est tournée. */
     const textAt = (text: string, x: number, y: number, size: number, color: string, offsetY = 0) => {
       ctx.save();
       ctx.translate(x, y);
@@ -458,7 +500,7 @@ export class OzMap {
       }
       ctx.lineCap = 'butt';
       if (this.trackVersion !== s.trackVersion) {
-        this.hiddenEdges = visibleTrackEdges(track).map(edge => edge.map(visible => !visible));
+        this.hiddenEdges = visibleTrackEdges(track).map(/* Prépare les portions cachées de chaque bordure au croisement. */ edge => edge.map(/* Inverse le masque de visibilité pour repérer les segments à ignorer. */ visible => !visible));
         this.trackVersion = s.trackVersion;
       }
       ctx.lineWidth = 2 * unit;
@@ -559,6 +601,7 @@ export class OzMap {
         ctx.fillStyle = t.active ? 'rgba(255, 59, 59, 0.35)' : 'rgba(122, 132, 152, 0.15)';
         ctx.lineWidth = (selected ? 4 : 3) * unit;
         ctx.beginPath();
+        /** Ajoute les points du contour au tracé Canvas. */
         points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
         ctx.closePath();
         ctx.fill();
@@ -605,7 +648,7 @@ export class OzMap {
         ctx.arc(this.hover.x, this.hover.y, 18 * unit, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        textAt('⚡ 1er Pylône (cliquez)', this.hover.x, this.hover.y, 12, '#ffe14a', -28);
+        textAt('⚡ 1er Pylône (touchez)', this.hover.x, this.hover.y, 12, '#ffe14a', -28);
       } else if (this.toolStep === 1 && this.firstPoint) {
         const p1 = this.firstPoint;
         // Pylon 1 placed
@@ -691,7 +734,7 @@ export class OzMap {
         ctx.arc(this.hover.x, this.hover.y, 14 * unit, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        textAt('🧱 1er point du mur (cliquez)', this.hover.x, this.hover.y, 12, '#ff6a6a', -24);
+        textAt('🧱 1er point du mur (touchez)', this.hover.x, this.hover.y, 12, '#ff6a6a', -24);
       } else if (this.toolStep === 1 && this.firstPoint) {
         const p1 = this.firstPoint;
         // Anchor 1
@@ -731,6 +774,7 @@ export class OzMap {
           ctx.fillStyle = wallFill;
           ctx.lineWidth = 3 * unit;
           ctx.beginPath();
+          /** Trace successivement les coins de l’empreinte du tangible. */
           corners.forEach((pt, i) => i ? ctx.lineTo(pt.x, pt.y) : ctx.moveTo(pt.x, pt.y));
           ctx.closePath();
           ctx.fill();
@@ -747,7 +791,7 @@ export class OzMap {
           }
 
           const label = isValid
-            ? `🧱 Mur orienté (${Math.round(angle)}°) — Cliquez pour poser`
+            ? `🧱 Mur orienté (${Math.round(angle)}°) — Touchez pour poser`
             : `⚠️ Emplacement sur commandes joueur — Déplacez le mur`;
           const labelColor = isValid ? '#ff6a6a' : '#fbbf24';
           textAt(label, center.x, center.y, 12, labelColor, -26);
@@ -774,6 +818,7 @@ export class OzMap {
           ctx.fillStyle = fillColor;
           ctx.lineWidth = 3 * unit;
           ctx.beginPath();
+          /** Trace les coins du mur dans sa pose affichée. */
           corners.forEach((pt, i) => i ? ctx.lineTo(pt.x, pt.y) : ctx.moveTo(pt.x, pt.y));
           ctx.closePath();
           ctx.fill();
@@ -789,7 +834,7 @@ export class OzMap {
           }
 
           const label = isValid
-            ? `🧱 Cliquez pour poser le 1er point (ou molette pour tourner)`
+            ? `🧱 Touchez pour poser le 1er point (ou molette pour tourner)`
             : `⚠️ Emplacement sur commandes joueur — Déplacez le mur`;
           textAt(label, p.x, p.y, 12, isValid ? '#00e5ff' : '#fbbf24', -26);
         } else if (this.movingWallStep === 1 && this.movingWallFirstPoint) {
@@ -832,6 +877,7 @@ export class OzMap {
           ctx.fillStyle = wallFill;
           ctx.lineWidth = 3 * unit;
           ctx.beginPath();
+          /** Trace le contour de l’aperçu du tangible avant confirmation. */
           corners.forEach((pt, i) => i ? ctx.lineTo(pt.x, pt.y) : ctx.moveTo(pt.x, pt.y));
           ctx.closePath();
           ctx.fill();
@@ -848,7 +894,7 @@ export class OzMap {
           }
 
           const label = isValid
-            ? `🧱 Mur orienté (${Math.round(angle)}°) — Cliquez pour déposer`
+            ? `🧱 Mur orienté (${Math.round(angle)}°) — Touchez pour déposer`
             : `⚠️ Emplacement sur commandes joueur — Déplacez le mur`;
           const labelColor = isValid ? '#00e5ff' : '#fbbf24';
           textAt(label, center.x, center.y, 12, labelColor, -26);
@@ -880,7 +926,7 @@ export class OzMap {
             ctx.lineTo(op.x, op.y);
             ctx.stroke();
             ctx.shadowBlur = 0;
-            textAt(`⚡ Arc lié (${Math.round(d)} px ≤ ${arcRange} px) — Cliquez pour déposer`, p.x, p.y, 12, '#ffe14a', -26);
+            textAt(`⚡ Arc lié (${Math.round(d)} px ≤ ${arcRange} px) — Touchez pour déposer`, p.x, p.y, 12, '#ffe14a', -26);
           } else {
             // Out of range
             ctx.strokeStyle = 'rgba(255, 110, 110, 0.55)';
@@ -891,10 +937,10 @@ export class OzMap {
             ctx.lineTo(op.x, op.y);
             ctx.stroke();
             ctx.setLineDash([]);
-            textAt(`⚠ Hors portée (${Math.round(d)} px > ${arcRange} px) — Cliquez pour déposer`, p.x, p.y, 12, '#f87171', -26);
+            textAt(`⚠ Hors portée (${Math.round(d)} px > ${arcRange} px) — Touchez pour déposer`, p.x, p.y, 12, '#f87171', -26);
           }
         } else {
-          textAt(`⚡ Pylône ${id === 2 ? '1' : '2'} — Cliquez pour déposer`, p.x, p.y, 12, '#ffe14a', -26);
+          textAt(`⚡ Pylône ${id === 2 ? '1' : '2'} — Touchez pour déposer`, p.x, p.y, 12, '#ffe14a', -26);
         }
 
         // Pylon preview circle
@@ -920,6 +966,7 @@ export class OzMap {
       ctx.beginPath();
       if (kind === 'wall') {
         const corners = wallCorners(p, angle, s.params.wallLengthPx, s.params.wallWidthPx);
+        /** Trace les quatre coins du volume affiché pour la manipulation. */
         corners.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y));
         ctx.closePath();
       } else ctx.arc(p.x, p.y, 12 * unit, 0, Math.PI * 2);

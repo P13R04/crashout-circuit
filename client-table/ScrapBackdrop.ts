@@ -1,25 +1,34 @@
+/**
+ * Prépare le vide industriel du thème Ferraille et compose ses plans, machines, éclairages et nappes de
+ * vapeur.
+ * Liens : server/layout.ts, client-table/IndustrialMachinery.ts, client-table/IndustrialVapour.ts,
+ * client-table/neon.ts.
+ * Référencé par client-table/Renderer.ts, scripts/visuals.ts.
+ */
 import { IndustrialMachinery } from './IndustrialMachinery.js';
 import { IndustrialVapour } from './IndustrialVapour.js';
 import { glow, noise } from './neon.js';
 import { LOGICAL_W as W, LOGICAL_H as H } from '../server/layout.js';
 
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
 const TAU = Math.PI * 2;
 
-/** Orthographic industrial abyss: horizontal machinery at three depths, never a skyline. */
+/** Prépare le vide industriel du thème Ferraille et compose ses plans, machines, éclairages et nappes de vapeur. */
 export class ScrapBackdrop {
   private planes: HTMLCanvasElement[] = [];
   private machinery = new IndustrialMachinery();
   private vapour = new IndustrialVapour();
   private powerPaths: Path2D[] = [];
 
+  /** Construit les plans de structures et les nappes lumineuses du vide industriel. */
   private prepare(): void {
     for (const points of [
       [[85, 330], [210, 330], [210, 430], [370, 430], [370, 710], [510, 710], [510, 790]],
       [[1120, 540], [1120, 295], [1070, 295], [1070, 215], [1430, 215], [1430, 370], [1540, 370], [1690, 370], [1690, 510]],
       [[745, 490], [745, 685], [1170, 685], [1170, 860], [1570, 860], [1570, 770]],
     ]) {
-      const path = new Path2D(); points.forEach(([x, y], i) => i ? path.lineTo(x, y) : path.moveTo(x, y)); this.powerPaths.push(path);
+      const path = new Path2D(); /* Relie les sommets d’un élément structurel dans le plan de décor préparé. */ points.forEach(([x, y], i) => i ? path.lineTo(x, y) : path.moveTo(x, y)); this.powerPaths.push(path);
     }
     for (let depth = 0; depth < 3; depth++) {
       const sheet = document.createElement('canvas'); sheet.width = 1440; sheet.height = 810;
@@ -58,6 +67,7 @@ export class ScrapBackdrop {
     }
   }
 
+  /** Compose le décor Ferraille avec profondeur, machines et vapeur selon le temps visuel. */
   draw(ctx: Ctx, time: number, reduced: boolean, quiet: boolean): void {
     if (!this.planes.length) this.prepare();
     const t = reduced ? 0 : time / 1000;

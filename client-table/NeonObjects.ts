@@ -1,3 +1,9 @@
+/**
+ * Dessine les ramassables, les zones d’accélération, les murs, les piliers et les arcs dans les cinq thèmes.
+ * Liens : server/types.ts, server/boostGeometry.ts, client-table/themes.ts, client-table/HUD.ts,
+ * client-table/view.ts et les utilitaires importés ci-dessous.
+ * Référencé par client-table/Renderer.ts.
+ */
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import { boostFrame } from '../server/boostGeometry.js';
 import { themeLook, type ThemeId } from './themes.js';
@@ -5,34 +11,48 @@ import { drawItemIcon } from './HUD.js';
 import { TEAM_COLOR } from './view.js';
 import { glow, noise, NEON, plate } from './neon.js';
 
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
 const TAU = Math.PI * 2;
+/** Atténue un objet appartenant à la voiture proche tout en gardant les tangibles neutres bien visibles. */
 function ownerAlpha(state: GameState, team: Team | null, p: Vec2): number {
   if (team === null) return 1;
   const own = state.cars[team].pos;
   return Math.hypot(own.x - p.x, own.y - p.y) < 90 ? .35 : 1;
 }
+/** Dessine les ramassables, les zones d’accélération, les murs, les piliers et les arcs dans les cinq thèmes. */
 export class NeonObjects {
+  private pickupLife=new Map<number,{available:boolean;born:number}>();
+  /** Oublie les apparitions des bonus lors du retour aux écrans de création. */
+  clearPickups():void{this.pickupLife.clear();}
+  /** Conserve le thème qui détermine les matériaux et les couleurs des objets. */
   constructor(private theme: ThemeId = 'neon') {}
+  /** Renvoie la couleur électrique adaptée au thème courant. */
   private get electric(): string { return themeLook(this.theme).electric; }
+  /** Dessine les bonus disponibles et leurs apparitions en conservant une mémoire bornée des identifiants. */
   drawPickups(ctx: Ctx, state: GameState, time: number, reduced: boolean): void {
+    const ids=new Set(state.pickups.map(/* Recense les bonus encore présents pour nettoyer la mémoire de leurs apparitions. */ p=>p.id));for(const id of this.pickupLife.keys())if(!ids.has(id))this.pickupLife.delete(id);
     for (const p of state.pickups) {
       const available = p.respawnAt === 0, color = p.kind === 'slingshot' ? '#ffb08a' : themeLook(this.theme).accent;
+      const previous=this.pickupLife.get(p.id),born=available&&(!previous||!previous.available)?time:previous?.born??time;
+      this.pickupLife.set(p.id,{available,born});
+      const birth=reduced?1:Math.max(0,Math.min(1,(time-born)/380));
       const lift = reduced ? 0 : Math.sin(time / 650 + p.id * 1.7) * 2.5;
-      ctx.save(); ctx.globalAlpha = available ? 1 : .16;
+      ctx.save(); ctx.globalAlpha = available ? birth : .13;
       ctx.fillStyle = '#00000050'; ctx.beginPath(); ctx.ellipse(p.pos.x, p.pos.y + 5, 12, 5, 0, 0, TAU); ctx.fill();
       if (available) glow(ctx, p.pos.x, p.pos.y, 34, color, .3, .7);
       ctx.translate(p.pos.x, p.pos.y - 3 + lift);
+      const scale=available?.65+.35*birth+.1*Math.sin(birth*Math.PI):1;ctx.scale(scale,scale);
       ctx.beginPath();
       for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; const x = Math.cos(a) * 16, y = Math.sin(a) * 16; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
       ctx.closePath(); ctx.fillStyle = themeLook(this.theme).button; ctx.fill(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
-      drawItemIcon(ctx, p.kind, 0, 0, 9, color);
+      if(available)drawItemIcon(ctx, p.kind, 0, 0, 9, color);
       if (available) { ctx.fillStyle = NEON.white; ctx.fillRect(-3, -18, 6, 1); }
       ctx.restore();
     }
   }
 
-  /** Baptiste's energy runway, with cached glow and a quiet expiry in every theme. */
+  /** Dessine les zones d’accélération actives avec leur sens de passage et leur animation de pose. */
   drawGates(ctx: Ctx, state: GameState, now: number, time: number, reduced: boolean): void {
     for (const g of state.boostGates) {
       const left=g.expiresAt-now;if(left<=0)continue;
@@ -81,6 +101,7 @@ export class NeonObjects {
     }
   }
 
+  /** Dessine le volume, l’épaisseur et les retours lumineux des murs présents. */
   drawWalls(ctx: Ctx, state: GameState, now: number, time: number, reduced: boolean): void {
     for (const w of state.walls) {
       const disabled = w.disabledUntil > now, length = w.lengthPx;
@@ -127,6 +148,7 @@ export class NeonObjects {
     }
   }
 
+  /** Dessine les arcs entre les piliers avec leurs branches électriques et leurs variations d’énergie. */
   drawArcs(ctx: Ctx, state: GameState, now: number, time: number, reduced: boolean): void {
     for (const arc of state.arcs) {
       const a = arc.pylon1, b = arc.pylon2, dx = b.x - a.x, dy = b.y - a.y;
@@ -166,6 +188,7 @@ export class NeonObjects {
     }
   }
 
+  /** Dessine les socles des piliers et leurs champs électriques au sol. */
   drawPylons(ctx: Ctx, state: GameState, time: number, reduced: boolean): void {
     for (const t of Object.values(state.tangibles)) {
       if (t.status !== 'placed' || !t.active || t.kind !== 'pylon') continue;

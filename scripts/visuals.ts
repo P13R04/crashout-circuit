@@ -1,4 +1,10 @@
-/** Visual invariants and rendering smoke checks; actual raster/performance QA runs in the browser. */
+/**
+ * Vérifie les géométries et les rendus des cinq thèmes avec un contexte Canvas de contrôle, sans modifier
+ * l’état de jeu.
+ * Liens : server/GameRules.ts, server/Tutorial.ts, server/MapGenerator.ts, server/geometry.ts,
+ * client-table/IndustrialMotion.ts et les utilitaires importés ci-dessous.
+ * Lancé depuis les scripts npm de package.json.
+ */
 import assert from 'node:assert/strict';
 import { indexedRotation, pressStroke, steamSample } from '../client-table/IndustrialMotion.js';
 import { layoutScenery, sceneryKey, sceneryReservations, standClearance, venuePoint, roadClearance } from '../client-table/SceneryLayout.js';
@@ -14,12 +20,17 @@ import { NeonVehicles } from '../client-table/NeonVehicles.js';
 import { generatePreset, generate, selfCrossings } from '../server/MapGenerator.js';
 import { createInitialState } from '../server/GameRules.js';
 import { THEMES, loadTheme, saveTheme, THEME_STORAGE_KEY } from '../client-table/themes.js';
+import { TRACK_PRESENTATION_MS,TRACK_REVEAL_MS,FINISH_ROULETTE_MS } from '../server/trackPresentation.js';
+import { tutorialSteps } from '../server/Tutorial.js';
+import { drawTangibleTouchPreview } from '../client-table/TangibleTouchPreview.js';
 import { createView } from '../client-table/view.js';
 import type { TrackGeometry, Vec2 } from '../server/types.js';
 
 let passed = 0;
+/** Enregistre ou exécute le scénario et l’ajoute au bilan de vérification. */
 function test(name: string, run: () => void): void { run(); passed++; console.log(`  ✓ ${name}`); }
 
+/** Vérifie la pause de l’horloge visuelle et la limite des grands écarts de temps d’onglet caché. */
 test('visual clock freezes in pause and caps hidden-tab gaps without going backwards', () => {
   assert.equal(advanceVisualTime(100, 16, false), 116);
   assert.equal(advanceVisualTime(100, 60_000, true), 100);
@@ -27,6 +38,7 @@ test('visual clock freezes in pause and caps hidden-tab gaps without going backw
   assert.equal(advanceVisualTime(100, -50, false), 100);
   assert.equal(advanceVisualTime(100, Number.NaN, false), 100);
 });
+/** Vérifie les temps d’arrêt et les crans de rotation des machines sans saut de fin de cycle. */
 test('mechanical indexing holds still, advances once per cycle and settles without a discontinuity', () => {
   assert.equal(indexedRotation(300), indexedRotation(1600));
   assert.ok(indexedRotation(3100) > indexedRotation(1600));
@@ -34,6 +46,7 @@ test('mechanical indexing holds still, advances once per cycle and settles witho
   assert.ok(Math.abs(indexedRotation(3699) - indexedRotation(3700)) < .004);
   assert.equal(indexedRotation(4100), indexedRotation(5000));
 });
+/** Vérifie les phases des presses et les limites des échantillons de vapeur sur une longue durée. */
 test('presses dwell under load and retract, while steam remains bounded over long sessions', () => {
   assert.equal(pressStroke(0), 0); assert.equal(pressStroke(2500), 1);
   assert.equal(pressStroke(3000), 1); assert.equal(pressStroke(6000), 0);
@@ -44,6 +57,7 @@ test('presses dwell under load and retract, while steam remains bounded over lon
     assert.ok(puff.scale >= .25 && puff.scale <= 1.65);
   }
 });
+/** Vérifie la mémoire bornée des trajectoires et leur disparition lorsque la voiture s’arrête. */
 test('trajectory history stays bounded and expires when the car stops', () => {
   const trail = new TrailBuffer();
   for (let i = 0; i < 10_000; i++) trail.add({ x: i, y: i * .2 }, i * 31, i % 5 === 0, true);
@@ -52,38 +66,43 @@ test('trajectory history stays bounded and expires when the car stops', () => {
   trail.add({ x: 9999, y: 1999.8 }, 10_000 * 31 + TRAIL_LIFE_MS + 1, false, false);
   assert.equal(trail.points.length, 0);
 });
+/** Vérifie qu’une téléportation ou une réapparition ne trace pas une ligne à travers le circuit. */
 test('teleports / respawns and time resets never draw a line across the circuit', () => {
   const trail = new TrailBuffer();
   trail.add({ x: 10, y: 10 }, 0, false, true); trail.add({ x: 20, y: 10 }, 40, false, true);
   trail.add({ x: 1000, y: 600 }, 80, true, true);
-  assert.deepEqual(trail.points.map(p => [p.x, p.y]), [[1000, 600]]);
+  assert.deepEqual(trail.points.map(/* Extrait les points de trajectoire après téléportation pour vérifier qu’aucun trait ne relie deux scènes. */ p => [p.x, p.y]), [[1000, 600]]);
   trail.add({ x: 1002, y: 600 }, 0, false, true);
   assert.equal(trail.points.length, 1);
   trail.add({ x: Number.NaN, y: 1 }, 40, false, true);
   assert.equal(trail.points.length, 1);
 });
+/** Vérifie que les frames immobiles ou en pause ne remplissent pas l’historique de trajectoire. */
 test('paused / duplicate samples add no points, resumed samples preserve their own energy state', () => {
   const trail = new TrailBuffer();
   trail.add({ x: 10, y: 10 }, 100, false, true);
   for (let i = 0; i < 300; i++) trail.add({ x: 10, y: 10 }, 100, true, false);
   assert.equal(trail.points.length, 1);
   trail.add({ x: 20, y: 10 }, 140, true, true);
-  assert.deepEqual(trail.points.map(p => p.boosted), [false, true]);
+  assert.deepEqual(trail.points.map(/* Extrait l’état d’accélération conservé dans chaque échantillon de trajectoire. */ p => p.boosted), [false, true]);
 });
 
+/** Calcule les bords visibles sans index spatial pour servir de référence au rendu optimisé. */
 function bruteVisibility(track: TrackGeometry): boolean[][] {
   const c = track.centerline, n = c.length, cum = [0];
   for (let i = 1; i <= n; i++) cum.push(cum[i - 1] + Math.hypot(c[i % n].x - c[i - 1].x, c[i % n].y - c[i - 1].y));
-  return [track.outerEdge, track.innerEdge].map(edge => edge.map((p, k) => !c.some((q, m) => {
+  return [track.outerEdge, track.innerEdge].map(/* Construit la référence de visibilité des deux bords sans accélération spatiale. */ edge => edge.map(/* Vérifie chaque point de bord contre toutes les branches centrales éloignées. */ (p, k) => !c.some(/* Détecte une branche distincte qui recouvre ce point de bordure. */ (q, m) => {
     const gap = Math.abs(cum[m] - cum[k]);
     return Math.min(gap, cum[n] - gap) >= 200 && Math.hypot(p.x - q.x, p.y - q.y) < track.widths[m] / 2 - 1;
   })));
 }
 const p1 = { x: 560, y: 540 }, p2 = { x: 1360, y: 540 };
-const wave = (a: Vec2, b: Vec2) => Array.from({ length: 121 }, (_, i) => {
+/** Construit une portion ondulée pour tester les courbes et les croisements du circuit. */
+const wave = (a: Vec2, b: Vec2) => Array.from({ length: 121 }, /* Construit un point échantillonné de la courbe utilisée par le scénario. */ (_, i) => {
   const t = i / 120; return { x: a.x + (b.x - a.x) * t, y: 540 - 170 * Math.sin(2 * Math.PI * t) };
 });
 const eight = generate(wave(p1, p2), wave(p2, p1), p1, p2, p2, p1);
+/** Compare les bordures visibles calculées par l’index spatial à la référence exhaustive. */
 test('spatially indexed lighting keeps exactly the previous visible edges at crossings', () => {
   assert.ok(selfCrossings(eight.centerline).length > 0, 'fixture really crosses itself');
   for (const track of [generatePreset(), eight]) {
@@ -92,11 +111,13 @@ test('spatially indexed lighting keeps exactly the previous visible edges at cro
     visibleTrackEdges(track);
     assert.equal(JSON.stringify(track), before, 'visual geometry never changes physics geometry');
   }
-  assert.ok(visibleTrackEdges(eight).flat().some(v => !v), 'junctions do not get LED barriers');
+  assert.ok(visibleTrackEdges(eight).flat().some(/* Vérifie que le circuit en huit contient bien des bordures masquées. */ v => !v), 'junctions do not get LED barriers');
 });
+/** Vérifie la visibilité des bordures après déformation et translation du circuit. */
 test('lighting visibility stays exact after a deformation and at a translated origin', () => {
   const track = structuredClone(eight);
   for (const pts of [track.centerline, track.outerEdge, track.innerEdge]) {
+    /** Translate puis déforme les points pour vérifier la stabilité du repérage spatial. */
     pts.forEach((p, i) => { p.x -= 900; p.y += Math.sin(i / 8) * 22 - 300; });
   }
   assert.deepEqual(visibleTrackEdges(track), bruteVisibility(track));
@@ -105,31 +126,40 @@ test('lighting visibility stays exact after a deformation and at a translated or
 // Finite drawing commands, complete canvas shape, and no DOM dependency in the game rules.
 const calls = new Map<string, number>();
 let recordedText: string[] | null = null;
+/** Refuse toute coordonnée ou valeur de rendu qui n’est pas un nombre fini. */
 function finite(args: unknown[]): void { for (const x of args) if (typeof x === 'number') assert.ok(Number.isFinite(x)); }
+/** Vérifie les géométries et les rendus des cinq thèmes avec un contexte Canvas de contrôle, sans modifier l’état de jeu. */
 class TestPath {
+  /** Contrôle les coordonnées du début de trait envoyé au canvas simulé. */
   moveTo(...a: number[]): void { finite(a); }
+  /** Contrôle les coordonnées du segment de dessin ajouté par le rendu. */
   lineTo(...a: number[]): void { finite(a); }
+  /** Remplace la fermeture du trait, qui ne nécessite aucune géométrie supplémentaire dans le double. */
   closePath(): void {}
 }
+/** Crée un canvas de contrôle et compte ses allocations pour vérifier les caches. */
 function canvas(): HTMLCanvasElement {
   calls.set('canvasAllocations', (calls.get('canvasAllocations') ?? 0) + 1);
   const result = { width: 1920, height: 1080 } as HTMLCanvasElement;
-  const gradient = { addColorStop(offset: number): void { assert.ok(offset >= 0 && offset <= 1); } };
+  const gradient = { /* Vérifie qu’un arrêt de dégradé reste dans l’intervalle autorisé. */ addColorStop(offset: number): void { assert.ok(offset >= 0 && offset <= 1); } };
   const props: Record<string, unknown> = { canvas: result, globalAlpha: 1 };
   const context = new Proxy(props, {
+    /** Fournit les méthodes du contexte Canvas simulé et enregistre leur utilisation. */
     get(target, key: string) {
       if (key in target) return target[key];
-      if (key === 'createLinearGradient' || key === 'createRadialGradient') return (...args: number[]) => { finite(args); return gradient; };
-      if (key === 'measureText') return (text: string) => ({ width: text.length * 8 });
-      return (...args: unknown[]) => { if (key === 'fillText' && recordedText) recordedText.push(String(args[0])); finite(args); calls.set(key, (calls.get(key) ?? 0) + 1); };
+      if (key === 'createLinearGradient' || key === 'createRadialGradient') return /* Contrôle les coordonnées d’un dégradé avant de fournir son double au rendu. */ (...args: number[]) => { finite(args); return gradient; };
+      if (key === 'measureText') return /* Fournit une largeur de texte déterministe pour les essais de mise en page. */ (text: string) => ({ width: text.length * 8 });
+      return /* Enregistre les textes dessinés et contrôle les valeurs de chaque commande Canvas. */ (...args: unknown[]) => { if (key === 'fillText' && recordedText) recordedText.push(String(args[0])); finite(args); calls.set(key, (calls.get(key) ?? 0) + 1); };
     },
+    /** Contrôle les valeurs écrites dans le contexte de rendu avant de les conserver. */
     set(target, key: string, value) { if (typeof value === 'number') finite([value]); target[key] = value; return true; },
   });
-  result.getContext = (() => context) as never;
+  result.getContext = (/* Fournit le contexte de contrôle à un canvas fabriqué par le rendu. */ () => context) as never;
   return result;
 }
 Object.assign(globalThis, { document: { createElement: canvas }, Path2D: TestPath });
 const { Renderer } = await import('../client-table/Renderer.js');
+/** Vérifie que machines et vapeur réutilisent leurs textures pendant toutes les phases d’animation. */
 test('industrial machinery and vapour reuse their raster parts through motion and reduced frames', () => {
   const backdrop = new ScrapBackdrop(), ctx = canvas().getContext('2d')!;
   backdrop.draw(ctx, 0, false, false);
@@ -137,28 +167,30 @@ test('industrial machinery and vapour reuse their raster parts through motion an
   for (let frame = 0; frame < 120; frame++) backdrop.draw(ctx, frame * 131, frame > 80, frame > 100);
   assert.equal(calls.get('canvasAllocations'), prepared, 'no new canvases in ongoing animation');
 });
-for(const id of ['toy','classic','mayhem'] as const)test(`${id}: scenery reuses its sprites through long animations and reduced motion`,()=>{
+for(const id of ['toy','classic','mayhem'] as const)/* Vérifie le réemploi des textures de décor pour chaque nouveau thème et en animations réduites. */ test(`${id}: scenery reuses its sprites through long animations and reduced motion`,()=>{
   const world=new ThemeWorld(id),ctx=canvas().getContext('2d')!;
   world.draw(ctx,0,false,false);const allocated=calls.get('canvasAllocations');
   for(let i=0;i<160;i++)world.draw(ctx,i*1271,i>120,i>140);
   assert.equal(calls.get('canvasAllocations'),allocated,'live scenery never allocates new canvases');
 });
+/** Vérifie que les tribunes entourent les deux grands côtés sans empiéter sur la piste ni les commandes. */
 test('grandstands surround the drawing on both long sides and leave road and controls clear',()=>{
   const track=generatePreset(),layout=layoutScenery(track),frames=layout.stands.flat();
-  assert.ok(frames.some(f=>f.ny<-.8),'grandstands reach the upper straight');
-  assert.ok(frames.some(f=>f.ny>.8),'grandstands reach the lower straight');
+  assert.ok(frames.some(/* Vérifie la présence d’une tribune sur l’un des grands côtés du circuit. */ f=>f.ny<-.8),'grandstands reach the upper straight');
+  assert.ok(frames.some(/* Vérifie la présence d’une tribune sur le grand côté opposé. */ f=>f.ny>.8),'grandstands reach the lower straight');
   for(const f of frames){assert.ok(roadClearance(venuePoint(f,42),track)>28,'front terraces stay away from the road');assert.ok(roadClearance(venuePoint(f,110),track)>65,'the rear terrace does not overlap another branch');}
   const key=sceneryKey(track),copy=structuredClone(track);copy.centerline[0].x+=100;
   assert.equal(sceneryKey(copy),key,'a temporary pull does not make the venue slide around');
   copy.baseCenterline[0].x+=50;assert.notEqual(sceneryKey(copy),key,'a different circuit rebuilds the venue');
 });
-for(const id of ['toy','classic','mayhem'] as const)test(`${id}: populated venue stays cached across snapshots and temporary pulls`,()=>{
+for(const id of ['toy','classic','mayhem'] as const)/* Vérifie la conservation du décor entre les snapshots et les déformations temporaires de la piste. */ test(`${id}: populated venue stays cached across snapshots and temporary pulls`,()=>{
   const world=new ThemeWorld(id),ctx=canvas().getContext('2d')!,track=generatePreset();world.draw(ctx,0,false,false,track);
   const allocated=calls.get('canvasAllocations');
   for(let i=0;i<80;i++){const copy=structuredClone(track);copy.centerline[3].x+=i;world.draw(ctx,i*313,false,false,copy);}
   assert.equal(world.builds,1,'drawing-based scenery is prepared once');assert.equal(calls.get('canvasAllocations'),allocated,'no new canvases during venue animations');
   const changed=structuredClone(track);changed.baseCenterline[3].x+=25;world.draw(ctx,25000,true,false,changed);assert.equal(world.builds,2,'a new drawing updates the scenery');
 });
+/** Vérifie l’espace libre autour des titres, des boutons et de la zone de dessin. */
 test('title and creation layouts keep the full prop footprint away from text and drawing surfaces',()=>{
   for(const mode of ['lobby','map'] as const){
     const layout=layoutScenery(generatePreset(),mode);assert.ok(layout.anchors.length>=2,'peripheral decoration remains present');
@@ -168,6 +200,7 @@ test('title and creation layouts keep the full prop footprint away from text and
     }
   }
 });
+/** Vérifie que les grands décors ne recouvrent ni la chaussée, ni les gradins, ni les autres stands. */
 test('large scenery clears the road, grandstands and other full-sized props, including on a figure eight',()=>{
   for(const track of [generatePreset(),eight]){
     const layout=layoutScenery(track);
@@ -178,6 +211,7 @@ test('large scenery clears the road, grandstands and other full-sized props, inc
     }
   }
 });
+/** Vérifie que les emplacements décoratifs du départ restent dans les courbes de la piste. */
 test('F1 start boxes follow curved approaches and stay inside the road at bends and crossings',()=>{
   let visible=0;
   for(const base of [generatePreset(),eight])for(const index of [0,35,65,100,160,220]){
@@ -188,37 +222,42 @@ test('F1 start boxes follow curved approaches and stay inside the road at bends 
   }
   assert.ok(visible>30,'the safety check preserves grid boxes on ordinary curves');
 });
+/** Vérifie les chevauchements, les inclusions et les allées entre les empreintes de gradins. */
 test('grandstand footprints detect overlap, containment and a separate aisle',()=>{
+  /** Construit le rectangle de référence utilisé par les tests de chevauchement. */
   const box=(x:number,y:number)=>[{x,y},{x:x+20,y},{x:x+20,y:y+40},{x,y:y+40}];
   assert.equal(standFootprintsOverlap(box(0,0),box(10,10)),true);
   assert.equal(standFootprintsOverlap(box(0,0),box(20,0)),false,'a shared seam is valid');
   assert.equal(standFootprintsOverlap(box(0,0),box(24,0),8),true,'independent sections need an aisle');
   assert.equal(standFootprintsOverlap(box(0,0),box(30,0),8),false);
 });
+/** Vérifie qu’un gradin est interrompu avant le repli de sa terrasse dans un virage concave. */
 test('a tight concave offset is split before its rear terraces fold backwards',()=>{
-  const frames=Array.from({length:45},(_,i):VenueFrame=>{
+  const frames=Array.from({length:45},/* Construit les repères d’un virage concave trop serré pour une terrasse continue. */ (_,i):VenueFrame=>{
     const a=i*.04;return{x:960+100*Math.cos(a),y:540+100*Math.sin(a),tx:-Math.sin(a),ty:Math.cos(a),nx:-Math.cos(a),ny:-Math.sin(a),half:65,distance:i*14,index:i};
   });
-  assert.equal(planStandSections(frames,()=>true).length,0,'reversed rear edges never produce a stand');
-  const convex=frames.map(f=>({...f,nx:-f.nx,ny:-f.ny}));
-  assert.ok(planStandSections(convex,()=>true).length>0,'ordinary outside curves retain their stands');
+  assert.equal(planStandSections(frames,/* Autorise le terrain pour isoler le seul problème de repli des gradins. */ ()=>true).length,0,'reversed rear edges never produce a stand');
+  const convex=frames.map(/* Inverse les normales pour comparer au cas d’un virage extérieur praticable. */ f=>({...f,nx:-f.nx,ny:-f.ny}));
+  assert.ok(planStandSections(convex,/* Autorise le terrain autour de la courbe convexe de référence. */ ()=>true).length>0,'ordinary outside curves retain their stands');
 });
+/** Vérifie l’absence de chevauchement entre les sections de tribunes dans des virages successifs. */
 test('successive turns cannot overlap another section or an earlier part of the same terrace',()=>{
-  const frames=Array.from({length:310},(_,i):VenueFrame=>{
+  const frames=Array.from({length:310},/* Construit une succession de virages qui rapprochent leurs propres terrasses. */ (_,i):VenueFrame=>{
     const a=i*.035,r=260-a*9,dx=-9*Math.cos(a)-r*Math.sin(a),dy=-9*Math.sin(a)+r*Math.cos(a),length=Math.hypot(dx,dy);
     return{x:960+r*Math.cos(a),y:540+r*Math.sin(a),tx:dx/length,ty:dy/length,nx:dy/length,ny:-dx/length,half:50,distance:i*14,index:i};
   });
-  const sections=planStandSections(frames,()=>true);
+  const sections=planStandSections(frames,/* Autorise le terrain pour étudier les chevauchements entre sections de gradins. */ ()=>true);
   assert.ok(sections.length>0,'visible terraces remain around the curve');
-  const tiles=sections.flatMap((run,section)=>run.slice(1).map((b,i)=>({section,i,shape:standFootprint(run[i],b)})));
+  const tiles=sections.flatMap(/* Décompose les sections en volumes élémentaires à comparer entre eux. */ (run,section)=>run.slice(1).map(/* Associe chaque volume à sa section et à son voisinage dans la terrasse. */ (b,i)=>({section,i,shape:standFootprint(run[i],b)})));
   for(let i=0;i<tiles.length;i++)for(let j=i+1;j<tiles.length;j++){
     const a=tiles[i],b=tiles[j];if(a.section===b.section&&Math.abs(a.i-b.i)===1)continue;
     assert.equal(standFootprintsOverlap(a.shape,b.shape,a.section===b.section?0:8),false,'non-neighbouring terrace volumes never intersect');
   }
   assert.ok(tiles.length<frames.length-10,'the overlapping later turn is actually trimmed');
 });
+/** Prépare une scène de rendu avec piste, voiture, objets et horloge visuelle contrôlés. */
 function scene() {
-  const view = createView(() => 1_000_000), state = createInitialState();
+  const view = createView(/* Fournit l’heure contrôlée du scénario au composant qui consulte son horloge. */ () => 1_000_000), state = createInitialState();
   view.state = state; view.visualTime = 200; state.track = generatePreset(); state.trackVersion = 1;
   state.sessionStartAt = 990_000;
   state.cars.A.pos = { ...state.track.centerline[20] }; state.cars.A.speed = 260;
@@ -230,6 +269,50 @@ function scene() {
   const surface = canvas(), renderer = new Renderer(surface.getContext('2d')!);
   return { view, state, renderer, surface };
 }
+/** Vérifie toutes les poses animées du tutoriel dans les cinq thèmes sans état opérateur visible. */
+test('four-player lessons render every animated pose in each theme without operator text or state changes', () => {
+  const {view,state,renderer}=scene();state.phase='RACE';state.mapMode='table';
+  const steps=tutorialSteps('table');
+  state.tutorial={steps,teams:{A:{step:0,sub:0},B:{step:0,sub:0}},finished:false};
+  for(const theme of THEMES)for(let i=0;i<steps.length;i++)for(const time of [0,450,1450,2950]){
+    view.theme=theme.id;view.visualTime=time;view.reducedMotion=time===0;
+    state.tutorial.teams.A={step:i,sub:0};state.tutorial.teams.B={step:i,sub:1};
+    recordedText=[];const before=JSON.stringify(state);renderer.render(view);
+    assert.equal(JSON.stringify(state),before);assert.ok(recordedText.every(/* Vérifie que les consignes visibles ne contiennent aucun texte technique opérateur ou provisoire. */ t=>!/\boz\b|magicien|placeholder/i.test(t)));
+    assert.ok(recordedText.some(/* Repère le libellé du pilote cyan dans le tutoriel. */ t=>t==='CYAN · PILOTE'));assert.ok(recordedText.some(/* Repère le libellé du copilote cyan dans le tutoriel. */ t=>t==='CYAN · COPILOTE'));
+    assert.ok(recordedText.some(/* Repère le libellé du pilote rose dans le tutoriel. */ t=>t==='ROSE · PILOTE'));assert.ok(recordedText.some(/* Repère le libellé du copilote rose dans le tutoriel. */ t=>t==='ROSE · COPILOTE'));
+  }
+  state.tutorial.finished=true;recordedText=[];renderer.render(view);
+  assert.equal(recordedText.filter(/* Compte le bouton final dans les deux orientations de lecture. */ t=>t==='CRÉER LE CIRCUIT ›').length,2);recordedText=null;
+});
+/** Vérifie le silence graphique de l’annonce opérateur et le maintien du retour des vrais doigts. */
+test('operator preparation alone draws no tangible waiting symbol; real contacts retain feedback', () => {
+  const {view,state,surface}=scene();state.phase='RACE';state.tangiblePlacementMode='touch';
+  state.tangiblePlacement={id:1,token:1,expiresAt:view.now()+20000};
+  calls.clear();drawTangibleTouchPreview(surface.getContext('2d')!,view);
+  assert.equal(calls.size,0,'no remote-selection badge or ghost before actual contact');
+  view.tangibleTouch={points:[{x:800,y:450}],valid:false};drawTangibleTouchPreview(surface.getContext('2d')!,view);
+  assert.ok((calls.get('arc')??0)>0,'a real finger still receives local feedback');
+});
+
+/** Vérifie la révélation et la roulette avec deux constructions de revêtement et sans commandes prématurées. */
+test('track reveal and roulette render in all themes with two deck builds, stable geometry and no premature controls',()=>{
+  for(const reduced of [false,true]){
+    const {view,state,renderer}=scene();state.phase='READY';view.reducedMotion=reduced;
+    let now=1_000_000;view.now=/* Fournit l’heure contrôlée du scénario au composant qui consulte son horloge. */ ()=>now;state.trackPresentation={startedAt:now,originIndex:16};
+    view.strokes.set(1,{team:'A',pts:state.track!.centerline.slice(0,80),done:true});
+    for(const theme of THEMES){view.theme=theme.id;
+      for(const age of [0,140,900,TRACK_REVEAL_MS-1,TRACK_REVEAL_MS,3000,TRACK_REVEAL_MS+FINISH_ROULETTE_MS,TRACK_PRESENTATION_MS-1,TRACK_PRESENTATION_MS,8000]){
+        now=1_000_000+age;view.visualTime=age;recordedText=[];
+        const before=JSON.stringify(state);renderer.render(view);assert.equal(JSON.stringify(state),before);
+        if(age<TRACK_PRESENTATION_MS)assert.equal(recordedText.some(/* Détecte un poste pilote qui ne doit pas apparaître trop tôt pendant la révélation. */ t=>t.includes('PILOTE')),false,'stations wait until the finish is fixed');
+      }
+    }
+    recordedText=null;assert.equal(renderer.stats.trackBuilds,THEMES.length*2,'one finish-free deck plus the final markings, never one build per frame');
+  }
+});
+
+/** Vérifie tous les écrans et retours visuels sans modifier l’état de jeu reçu. */
 test('every phase, both motion preferences and all feedback effects render without changing authoritative state', () => {
   const { view, state, renderer } = scene();
   for (const theme of THEMES) for (const track of [generatePreset(), eight]) for (const reduced of [false, true]) {
@@ -237,8 +320,8 @@ test('every phase, both motion preferences and all feedback effects render witho
     view.reducedMotion = reduced;
     for (const phase of ['LOBBY', 'MAP', 'READY', 'RACE', 'PAUSED', 'RESULT'] as const) {
       state.phase = phase; state.winner = 'A'; state.pausedAt = 1_000_000;
-      view.effects = ['pickup', 'itemArmed', 'itemLost', 'stoneImpact', 'stoneHit', 'hit', 'wallDestroyed', 'repairDone', 'boostHit', 'boostGate', 'fall', 'carDisabled', 'checkpoint', 'trackDeformed']
-        .map(kind => ({ kind, x: 900, y: 600, team: 'A', start: 0, dur: 900 }));
+      view.effects = ['pickup', 'itemArmed', 'itemUsed', 'itemLost', 'stoneImpact', 'stoneHit', 'hit', 'electricHit', 'wallDestroyed', 'repairDone', 'boostHit', 'boostGate', 'fall', 'carDisabled', 'checkpoint', 'trackDeformed']
+        .map(/* Construit un exemple de chaque retour d’action pour les vérifier dans tous les thèmes. */ kind => ({ kind, itemKind:'slingshot', x: 900, y: 600, team: 'A', start: 0, dur: 900 }));
       const before = JSON.stringify(state);
       renderer.render(view);
       assert.equal(JSON.stringify(state), before);
@@ -246,6 +329,7 @@ test('every phase, both motion preferences and all feedback effects render witho
   }
   assert.ok((calls.get('drawImage') ?? 0) > 0);
 });
+/** Vérifie les libellés P1 et P2 après transfert JSON et changement du sens du tracé. */
 test('map labels remain P1 and P2 after JSON synchronization and either drawing direction', () => {
   const {view,state,renderer}=scene(),a={x:600,y:540},b={x:1400,y:540};
   state.phase='MAP';state.mapDivider=[a,b];state.mapTargets={A:[a,b],B:[b,a]};
@@ -254,11 +338,12 @@ test('map labels remain P1 and P2 after JSON synchronization and either drawing 
     const endpoints=view.state!.mapTargets![team],first=endpoints[reverse?1:0];
     view.strokes.set(1,{team,pts:[{...first},{x:1000,y:team==='A'?700:380}],done:false});
     recordedText=[];renderer.render(view);
-    assert.equal(recordedText.filter(t=>t==='P1').length,1,'one P1 after crossing the network');
-    assert.equal(recordedText.filter(t=>t==='P2').length,1,'one P2 after crossing the network');
+    assert.equal(recordedText.filter(/* Compte les repères P1 conservés après la synchronisation. */ t=>t==='P1').length,1,'one P1 after crossing the network');
+    assert.equal(recordedText.filter(/* Compte les repères P2 conservés après la synchronisation. */ t=>t==='P2').length,1,'one P2 after crossing the network');
     recordedText=null;view.strokes.clear();
   }
 });
+/** Vérifie le dessin fini et immuable des accélérations à la pose comme à l’expiration. */
 test('boost deployment and expiry remain finite and immutable across all themes and reduced motion', () => {
   const {view,state,renderer}=scene();state.phase='RACE';
   for(const theme of THEMES)for(const reduced of [false,true]){
@@ -270,6 +355,7 @@ test('boost deployment and expiry remain finite and immutable across all themes 
   }
   assert.equal(renderer.stats.trackBuilds,THEMES.length,'object animation never rebuilds a theme deck');
 });
+/** Vérifie les postes compacts et la réparation dans les cinq thèmes sans changement de physique. */
 test('automatic-pilot HUD and repair feedback render in all themes without changing physics', () => {
   const {view,state,renderer}=scene();state.sessionMode='tangibles-test';
   state.cars.A.disabled=true;state.cars.A.hp=0;
@@ -279,6 +365,7 @@ test('automatic-pilot HUD and repair feedback render in all themes without chang
     const before=JSON.stringify(state);renderer.render(view);assert.equal(JSON.stringify(state),before);
   }
 });
+/** Vérifie les repères neutres des contacts et les dimensions fixes de l’aperçu tangible. */
 test('touch placement shows neutral contact cues and a fixed-size preview in all themes without state mutations',()=>{
   const {view,state,renderer}=scene();state.phase='RACE';state.tangiblePlacementMode='touch';
   for(const theme of THEMES)for(const reduced of [false,true])for(const id of [1,2,3] as const){
@@ -289,7 +376,7 @@ test('touch placement shows neutral contact cues and a fixed-size preview in all
   }
   state.tangiblePlacement=null;view.tangibleTouch=null;renderer.render(view);
 });
-for (const theme of THEMES) test(`${theme.name}: static / paused frames reuse the deck, deformed geometry updates it and resize invalidates it`, () => {
+for (const theme of THEMES) /* Vérifie la réutilisation du revêtement statique et son invalidation après déformation ou redimensionnement. */ test(`${theme.name}: static / paused frames reuse the deck, deformed geometry updates it and resize invalidates it`, () => {
   const { view, state, renderer, surface } = scene(); view.theme = theme.id; state.phase = 'RACE'; renderer.render(view);
   assert.equal(renderer.stats.trackBuilds, 1);
   for (let i = 0; i < 100; i++) { view.visualTime += 16; state.cars.A.pos.x += 1; renderer.render(view); }
@@ -312,6 +399,7 @@ for (const theme of THEMES) test(`${theme.name}: static / paused frames reuse th
   surface.width = 3840; surface.height = 2160; renderer.render(view);
   assert.equal(renderer.stats.trackBuilds, 4, 'resize updates the cached deck resolution');
 });
+/** Vérifie le nettoyage des trajectoires lors d’un changement de session et en animations réduites. */
 test('reduced motion and new game clear trajectory history', () => {
   const { view, state, renderer } = scene(); state.phase = 'RACE';
   for (let i = 0; i < 20; i++) { view.visualTime += 33; state.cars.A.pos.x += 2; renderer.render(view); }
@@ -320,6 +408,7 @@ test('reduced motion and new game clear trajectory history', () => {
   view.reducedMotion = false; view.visualTime += 40; renderer.render(view);
   state.phase = 'LOBBY'; renderer.render(view); assert.equal(renderer.stats.trailPoints, 0);
 });
+/** Vérifie qu’une voiture tombée reste invisible jusqu’à sa réparation. */
 test('a fallen vehicle stays hidden after its effect expires and becomes visible after repair', () => {
   const vehicles = new NeonVehicles(), c = canvas().getContext('2d')!, car = createInitialState().cars.A;
   car.disabled = true; car.hp = 0;
@@ -332,6 +421,7 @@ test('a fallen vehicle stays hidden after its effect expires and becomes visible
   vehicles.draw(c, car, 1100, 1000, false, []);
   assert.ok((calls.get('drawImage') ?? 0) > falling, 'the repaired vehicle is visible again');
 });
+/** Vérifie qu’un changement de thème ne fait pas réapparaître une voiture tombée. */
 test('changing theme after a fall never reveals the vanished car, but repair still restores it', () => {
   const fallen = new Set<'A' | 'B'>(), neon = new NeonVehicles('neon', fallen), scrap = new NeonVehicles('scrap', fallen);
   const ctx = canvas().getContext('2d')!, car = createInitialState().cars.A;
@@ -347,8 +437,10 @@ test('changing theme after a fall never reveals the vanished car, but repair sti
   assert.ok((calls.get('drawImage') ?? 0) > (drawn ?? 0), 'repair restores the vehicle in the selected theme');
   assert.equal(fallen.size, 0);
 });
+/** Vérifie le changement de thème sans perte de course, de cache réutilisable ni de nettoyage des anciennes traînées. */
 test('switching themes preserves race data, reuses each deck and clears incompatible trails', () => {
   const { view, state, renderer } = scene(); state.phase = 'RACE';
+  view.theme = 'neon';
   renderer.render(view); view.visualTime += 40; state.cars.A.pos.x += 2; renderer.render(view);
   assert.ok(renderer.stats.trailPoints > 1);
   const before = JSON.stringify(state);
@@ -359,12 +451,27 @@ test('switching themes preserves race data, reuses each deck and clears incompat
   assert.equal(renderer.stats.trackBuilds, 2, 'the previous theme is retained, including its cached road');
   assert.equal(JSON.stringify(state), before);
 });
+/** Vérifie les deux seules entrées publiques et l’activation explicite des outils de développement. */
+test('the public lobby has only the tutorial and race; test tools require the host opt-in',()=>{
+ const {view,state,renderer}=scene();state.phase='LOBBY';state.developerTools=false;recordedText=[];renderer.render(view);
+ assert.ok(recordedText.includes('TUTORIEL'));assert.ok(recordedText.includes('COURSE'));assert.ok(!recordedText.some(/* Détecte un intitulé de développement qui ne doit pas apparaître dans le menu public. */ t=>/ESSAI|CLAVIER|TEST TANGIBLES/.test(t)));
+ state.developerTools=true;recordedText=[];renderer.render(view);assert.ok(recordedText.includes('ESSAI OBJETS'));recordedText=null;
+});
+/** Vérifie que les repères des postes apparaissent à la création et jamais sur l’accueil. */
+test('seat labels appear during circuit creation and never on the home screen',()=>{
+ const {view,state,renderer}=scene();state.phase='LOBBY';recordedText=[];renderer.render(view);
+ assert.equal(recordedText.filter(/* Compte les repères de rôle qui doivent rester absents de l’accueil. */ t=>t==='PILOTE'||t==='COPILOTE').length,0);
+ state.phase='MAP';recordedText=[];renderer.render(view);
+ assert.equal(recordedText.filter(/* Compte les deux postes pilotes visibles pendant la création. */ t=>t==='PILOTE').length,2);assert.equal(recordedText.filter(/* Compte les deux postes copilotes visibles pendant la création. */ t=>t==='COPILOTE').length,2);recordedText=null;
+});
+/** Vérifie la sauvegarde du thème et le repli sûr lorsque le stockage est refusé ou contient une valeur inconnue. */
 test('theme preference survives reload, tolerates invalid values and unavailable storage', () => {
   const values = new Map<string, string>();
-  const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
-  assert.equal(loadTheme(storage), 'neon');for(const theme of THEMES){saveTheme(storage,theme.id);assert.equal(loadTheme(storage),theme.id);}
-  values.set(THEME_STORAGE_KEY, 'unknown'); assert.equal(loadTheme(storage), 'neon');
-  assert.equal(loadTheme({ getItem() { throw Error('denied'); } }), 'neon');
-  assert.doesNotThrow(() => saveTheme({ setItem() { throw Error('denied'); } }, 'scrap'));
+  const storage = { /* Renvoie la préférence simulée ou reproduit un refus d’accès au stockage. */ getItem: (key: string) => values.get(key) ?? null, /* Enregistre la préférence simulée ou reproduit un refus d’écriture du stockage. */ setItem: (key: string, value: string) => { values.set(key, value); } };
+  assert.equal(loadTheme(storage), 'scrap');for(const theme of THEMES){saveTheme(storage,theme.id);assert.equal(loadTheme(storage),theme.id);}
+  values.set(THEME_STORAGE_KEY, 'unknown'); assert.equal(loadTheme(storage), 'scrap');
+  assert.equal(loadTheme({ /* Reproduit un refus du stockage local pour vérifier le comportement de secours. */ getItem() { throw Error('denied'); } }), 'scrap');
+  /** Vérifie qu’un stockage refusé ne fait pas échouer le changement de préférence. */
+  assert.doesNotThrow(() => saveTheme({ /* Reproduit un refus du stockage local pour vérifier le comportement de secours. */ setItem() { throw Error('denied'); } }, 'scrap'));
 });
 console.log(`\n${passed} visual checks passed`);

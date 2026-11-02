@@ -1,5 +1,12 @@
+/**
+ * Suit les poses, retraits et changements d’activation des tangibles pour déclencher leurs animations et
+ * leurs sons.
+ * Liens : server/types.ts, client-table/neon.ts.
+ * Référencé par client-table/Renderer.ts, scripts/test-tangible-anims.ts.
+ */
 import type { GameState, Team, Vec2 } from '../server/types.js';
 import { glow } from './neon.js';
+/** Mémorise l’état visuel précédent d’un mur ou d’un pilier pour reconnaître sa transition. */
 interface TrackedTangibleItem {
   id: string;
   team: Team | null;
@@ -10,6 +17,7 @@ interface TrackedTangibleItem {
   birth: number;
 }
 
+/** Mémorise une liaison électrique afin d’animer sa création et sa disparition. */
 interface TrackedArcItem {
   id: string;
   team: Team | null;
@@ -18,6 +26,7 @@ interface TrackedArcItem {
   birth: number;
 }
 
+/** Conserve le dessin et la durée d’un objet en cours de retrait visuel. */
 interface DissolvingItem {
   kind: 'wall' | 'pylon' | 'arc';
   team: Team | null;
@@ -31,7 +40,7 @@ interface DissolvingItem {
   dur: number;
 }
 
-/** Lifecycle feedback shared by both styles. It never changes an authoritative pose. */
+/** Suit les poses, retraits et changements d’activation des tangibles pour déclencher leurs animations et leurs sons. */
 export class TangibleTransitions {
   trackedWalls = new Map<string, TrackedTangibleItem>();
   trackedPylons = new Map<string, TrackedTangibleItem>();
@@ -40,11 +49,15 @@ export class TangibleTransitions {
   private now = 0;
   private lastCue = -Infinity;
   private pendingCue: string | null = null;
-  constructor(private sound: (kind: string) => void = () => {}) {}
+  /** Conserve le lecteur sonore optionnel utilisé lors des changements de tangibles. */
+  constructor(private sound: (kind: string) => void = /* Laisse le signal sonore optionnel sans effet lorsqu’aucun lecteur n’est fourni. */ () => {}) {}
+  /** Ne conserve que le signal sonore le plus important de la mise à jour des tangibles. */
   private cue(kind: string): void {
+    /** Classe les changements de tangible pour faire ressortir l’arc et les actions les plus perceptibles. */
     const priority = (k: string) => k === 'arcFormed' ? 5 : k === 'arcBroken' ? 4 : k.startsWith('wall') ? 3 : 2;
     if (!this.pendingCue || priority(kind) > priority(this.pendingCue)) this.pendingCue = kind;
   }
+  /** Compare les poses reçues pour reconnaître les apparitions, retraits et activations des objets. */
   update(state: GameState, now: number): void {
     this.now = now;
     this.pendingCue = null;
@@ -202,13 +215,14 @@ export class TangibleTransitions {
     }
 
     // 4 — Cleanup finished dissolving items
-    this.dissolvingItems = this.dissolvingItems.filter(item => now - item.start < item.dur).slice(-64);
+    this.dissolvingItems = this.dissolvingItems.filter(/* Conserve les retraits dont la transition visuelle est encore en cours. */ item => now - item.start < item.dur).slice(-64);
     if (this.pendingCue && this.now-this.lastCue >= 450) {
       this.sound(this.pendingCue); this.lastCue = this.now;
     }
   }
 
 
+  /** Dessine les transitions de présence et les apparitions d’arc encore en cours. */
   draw(ctx: CanvasRenderingContext2D, time: number, reduced: boolean, electric: string): void {
     ctx.save();
     for (const item of [...this.trackedWalls.values(), ...this.trackedPylons.values()]) {
@@ -249,7 +263,7 @@ export class TangibleTransitions {
     }
     ctx.restore();
   }
-  /** A centre-out deployment scan over the intact, already collidable wall. */
+  /** Dessine les variations d’énergie d’un objet qui change d’état sans être déplacé. */
   drawActivation(ctx: CanvasRenderingContext2D, time: number, reduced: boolean, electric: string): void {
     for(const wall of this.trackedWalls.values()){
       const f=(time-wall.birth)/600;if(f<0||f>=1)continue;

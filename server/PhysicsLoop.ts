@@ -1,10 +1,9 @@
 /**
- * PhysicsLoop — authoritative 60 Hz vehicle simulation.
- *
- * Per tick (Δt = 1/physicsHz): housekeeping, vehicle integration, track-edge
- * fall detection, then game rules (pickups, gates, hostile
- * elements, checkpoints, stones, repair, victory). The state is broadcast every
- * `physicsHz / broadcastHz` ticks (30 Hz).
+ * Fait avancer la simulation des voitures et appelle les règles de collision, de réparation et de fin de
+ * course.
+ * Liens : server/GameRules.ts, server/geometry.ts, server/types.ts, server/config.ts,
+ * server/raceSettings.ts.
+ * Référencé notamment par server/GameServer.ts, scripts/acceptance.ts, scripts/autopilot.ts.
  */
 import type { GameState, Team, Car } from './types.js';
 import { config } from './config.js';
@@ -14,10 +13,12 @@ import { GameRules, CAR_RADIUS } from './GameRules.js';
 
 const TEAMS: Team[] = ['A', 'B'];
 
+/** Fait avancer la simulation des voitures et appelle les règles de collision, de réparation et de fin de course. */
 export class PhysicsLoop {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastTime = 0;
 
+  /** Conserve l’état, les règles, l’horloge et la diffusion utilisés par les pas de simulation. */
   constructor(
     private state: GameState,
     private rules: GameRules,
@@ -25,10 +26,11 @@ export class PhysicsLoop {
     private clock: () => number = Date.now,
   ) {}
 
+  /** Démarre la simulation à pas fixe et limite le rattrapage après un blocage de la boucle Node. */
   start(): void {
     if (this.timer) return;
     this.lastTime = this.clock();
-    this.timer = setInterval(() => {
+    this.timer = setInterval(/* Rattrape quelques pas fixes après une attente sans laisser la simulation accumuler un retard illimité. */ () => {
       const now = this.clock();
       // Fixed step; if the event loop stalled, catch up at most 3 steps.
       const dt = 1 / config.physicsHz;
@@ -42,12 +44,13 @@ export class PhysicsLoop {
     }, 1000 / config.physicsHz);
   }
 
+  /** Arrête le minuteur de simulation sans conserver de mise à jour programmée. */
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
   }
 
-  /** One simulation step at simulated time `now` (ms). Exposed for tests. */
+  /** Actualise les échéances, les voitures et les règles puis diffuse un état à la fréquence réseau prévue. */
   step(now: number, dt = 1 / config.physicsHz): void {
     const s = this.state;
     s.tick++;
@@ -78,9 +81,14 @@ export class PhysicsLoop {
     if (s.tick % every === 0) this.broadcast();
   }
 
+  /** Met à jour la vitesse, l’orientation et la position de la voiture à partir des commandes et des effets actifs. */
   private integrate(car: Car, input: { throttle: number; steer: number }, now: number, dt: number): void {
     const stunned = now < car.stunUntil;
-    if (car.disabled || car.respawnUntil>now) {
+    const tutorial = this.state.tutorial;
+    const identifying = tutorial && (['A', 'B'] as const).some(/* Repère une équipe encore à l’identification pour immobiliser les voitures du tutoriel. */ t => tutorial.steps[tutorial.teams[t].step] === 'identify');
+    const lesson = tutorial?.steps[tutorial.teams[car.team].step];
+    const lessonDone = tutorial && (!lesson || lesson === 'depot');
+    if (identifying || lessonDone || car.disabled || car.respawnUntil>now) {
       car.speed = 0;
       car.velocity = { x: 0, y: 0 };
       return;
@@ -113,7 +121,7 @@ export class PhysicsLoop {
     car.velocity = { x: hx * car.speed, y: hy * car.speed };
   }
 
-  /** The drivable area is the band of local half-width around the centerline. */
+  /** Détecte une sortie de chaussée puis laisse GameRules traiter la chute. */
   private checkTrackFall(team: Team, car: Car, now: number): void {
     const track = this.state.track;
     if (!track || car.disabled || car.respawnUntil>now) return;

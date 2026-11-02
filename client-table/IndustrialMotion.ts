@@ -1,8 +1,14 @@
+/**
+ * Fournit les cycles de rotation, de presse et de vapeur utilisés par le décor industriel.
+ * Référencé par client-table/IndustrialMachinery.ts, client-table/IndustrialVapour.ts, scripts/visuals.ts.
+ */
 const TAU = Math.PI * 2;
+/** Ramène une progression entre zéro et un avec un départ et une arrivée adoucis. */
 const smooth = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
+/** Calcule l’avancement d’un cycle d’animation à partir du temps et de son décalage. */
 const cycleAt = (time: number, period: number, phase: number) => Math.max(0, Number.isFinite(time) ? time : 0) / period + phase;
 
-/** Indexing drive: long dwell, one quick stroke, a small damped mechanical recoil. */
+/** Fait avancer la roue par crans tout en conservant un temps d’arrêt entre deux mouvements. */
 export function indexedRotation(time: number, period = 3700, phase = 0): number {
   const cycle = cycleAt(time, period, phase), whole = Math.floor(cycle), f = cycle - whole;
   let progress = smooth((f - .67) / .19);
@@ -10,7 +16,7 @@ export function indexedRotation(time: number, period = 3700, phase = 0): number 
   return (whole + progress) * TAU / 9;
 }
 
-/** Press closes quickly, holds under load, then retracts slowly before the next stroke. */
+/** Calcule la position de la presse pendant sa descente, son maintien et sa remontée. */
 export function pressStroke(time: number, period = 6100, phase = 0): number {
   const cycle = cycleAt(time, period, phase), f = cycle - Math.floor(cycle);
   if (f < .25) return 0;
@@ -19,7 +25,7 @@ export function pressStroke(time: number, period = 6100, phase = 0): number {
   return 1 - smooth((f - .52) / .3);
 }
 
-/** A fixed number of steam sprites can be sampled at any time; no accumulating particles. */
+/** Décrit l’âge, la taille et l’opacité d’une bouffée de vapeur dans son cycle. */
 export function steamSample(time: number, index: number, phase: number): { age: number; alpha: number; scale: number } {
   const cycle = cycleAt(time, 7400, phase + index / 4), age = cycle - Math.floor(cycle);
   return { age, alpha: Math.sin(age * Math.PI) ** 1.4 * .22, scale: .25 + age * 1.4 };

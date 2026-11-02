@@ -1,3 +1,9 @@
+/**
+ * Vérifie les transitions visuelles et sonores associées à la pose, au retrait et à l’activation des
+ * tangibles.
+ * Liens : server/GameRules.ts, client-table/TangibleTransitions.ts, server/types.ts.
+ * Lancé depuis les scripts npm de package.json.
+ */
 import assert from 'node:assert/strict';
 import { TangibleTransitions } from '../client-table/TangibleTransitions.js';
 import { createInitialState } from '../server/GameRules.js';
@@ -6,6 +12,7 @@ import type { GameState, Wall, ArcElectric, Tangible } from '../server/types.js'
 console.log('Testing Tangible animations and tracking in Renderer...');
 
 const renderer = new TangibleTransitions();
+/** Prépare un état minimal de course pour étudier les animations de pose. */
 function makeState(): GameState { const state = createInitialState(); state.phase = 'RACE'; return state; }
 
 const state = makeState();
@@ -66,13 +73,13 @@ state.arcs = [];
 rAny.update(state, 3200);
 assert.equal(rAny.trackedPylons.size, 1);
 assert.equal(rAny.trackedArcs.size, 0);
-const dissolvingArc = rAny.dissolvingItems.find(i => i.kind === 'arc');
+const dissolvingArc = rAny.dissolvingItems.find(/* Retrouve la transition de retrait de l’arc pour vérifier sa durée et son contenu. */ i => i.kind === 'arc');
 assert.ok(dissolvingArc, 'dissolving arc recorded on arc break');
 console.log('✓ Arc break spawns dissolving arc rupture effect');
 
 // Birth cues from a pair have one meaningful sound, including the new arc.
 const cues: string[]=[];
-const audio=new TangibleTransitions(kind=>cues.push(kind)),paired=makeState();
+const audio=new TangibleTransitions(/* Collecte les signaux sonores demandés par les transitions des objets. */ kind=>cues.push(kind)),paired=makeState();
 paired.tangibles[2]={x:.4,y:.5,angle:0,kind:'pylon',team:null,active:true,status:'placed',dockTeam:null};
 paired.tangibles[3]={x:.5,y:.5,angle:0,kind:'pylon',team:null,active:true,status:'placed',dockTeam:null};
 paired.arcs=[{id:'arc-2-3',team:null,pylon1:{x:768,y:540},pylon2:{x:960,y:540},disabledUntil:0}];

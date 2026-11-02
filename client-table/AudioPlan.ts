@@ -1,0 +1,86 @@
+/**
+ * Choisit les signaux sonores liés aux changements d’état et borne leur répétition sans dépendre de Web
+ * Audio.
+ * Liens : server/trackPresentation.ts, server/types.ts.
+ * Référencé par client-table/Sound.ts, scripts/audio.ts.
+ */
+import { presentationFrame, presentationEnd } from '../server/trackPresentation.js';
+import type { GameState, Team } from '../server/types.js';
+/** Regroupe l’activation du son et les volumes séparés des effets, de l’ambiance et de la musique. */
+export interface AudioSettings { enabled:boolean; effects:number; ambience:number; music:number; }
+export const AUDIO_STORAGE_KEY='crashout.audio';
+export const DEFAULT_AUDIO:AudioSettings={enabled:true,effects:.7,ambience:.22,music:.12};
+/** Valide les préférences audio chargées et remet les valeurs incorrectes à leur réglage par défaut. */
+export function audioSettings(value:unknown):AudioSettings {
+  const v=value&&typeof value==='object'?value as Record<string,unknown>:{};
+  /** Ramène le volume enregistré entre zéro et un, avec une valeur de secours si nécessaire. */
+  const volume=(key:'effects'|'ambience'|'music')=>typeof v[key]==='number'&&Number.isFinite(v[key])?Math.max(0,Math.min(1,v[key] as number)):DEFAULT_AUDIO[key];
+  return{enabled:typeof v.enabled==='boolean'?v.enabled:true,effects:volume('effects'),ambience:volume('ambience'),music:volume('music')};
+}
+/** Décrit un signal sonore à jouer avec son équipe ou sa position éventuelles. */
+export interface AudioCue { kind:string; team?:Team; x?:number; }
+/** Mémorise les repères sonores d’une voiture pour ne signaler que leurs changements. */
+interface CarAudio { lap:number; countdown:number|null; repair:number; low:boolean; }
+/** Choisit les signaux sonores liés aux changements d’état et borne leur répétition sans dépendre de Web Audio. */
+export class AudioTimeline {
+  private phase:GameState['phase']|null=null;
+  private countdown:number|null=null;
+  private presentation:{key:number;bucket:number;locked:boolean}|null=null;
+  private cars:Partial<Record<Team,CarAudio>>={};
+  /** Oublie les transitions sonores précédentes pour repartir sur une nouvelle session. */
+  reset():void {this.phase=null;this.countdown=null;this.cars={};this.presentation=null;}
+  /** Compare l’état courant aux repères audio précédents pour émettre seulement les nouveaux signaux utiles. */
+  step(s:GameState,now:number):AudioCue[]{
+    const cues:AudioCue[]=[],emit=/* Ajoute le signal demandé à la liste des sons à jouer sur cette mise à jour. */ (kind:string,team?:Team,x?:number)=>cues.push({kind,team,x});
+    const previous=this.phase,active=s.phase==='RACE';
+    if(previous&&previous!==s.phase){
+      if(s.phase==='PAUSED')emit('pause');
+      else if(previous==='PAUSED'&&active)emit('resume');
+      else if(s.phase==='READY'&&!s.trackPresentation)emit('raceReady');
+      else if(s.phase==='RESULT')emit('raceFinish');
+      else if(s.phase==='MAP')emit('mapBegin');
+    }
+    if(s.phase==='READY'&&s.trackPresentation){
+      const p=s.trackPresentation,f=presentationFrame(p,now),bucket=Math.floor(f.travel*40),prev=this.presentation;
+      if(prev?.key===p.startedAt){
+        if(f.stage==='roulette'&&bucket!==prev.bucket)emit('rouletteTick');
+        if(f.stage==='lock'&&!prev.locked&&now<presentationEnd(p)+250)emit('raceReady');
+      }
+      this.presentation={key:p.startedAt,bucket,locked:f.stage==='lock'};
+    }else this.presentation=null;
+    const identifying = s.tutorial && (['A','B'] as const).some(/* Repère les postes du tutoriel encore en attente pour ne pas jouer les feux trop tôt. */ t=>s.tutorial!.steps[s.tutorial!.teams[t].step]==='identify');
+    if(active&&!identifying){
+      const count=Math.max(0,Math.ceil((s.sessionStartAt-now)/1000));
+      if(count>0&&count<=3&&count!==this.countdown)emit('countdown');
+      if(count===0&&this.countdown!==null&&this.countdown>0)emit('go');
+      this.countdown=count;
+    }else if(s.phase!=='PAUSED')this.countdown=null;
+    for(const team of ['A','B'] as const){
+      const car=s.cars[team],prev=this.cars[team];
+      const count=car.respawnUntil>0?Math.max(0,Math.ceil((car.respawnUntil-(s.phase==='PAUSED'?s.pausedAt:now))/1000)):null;
+      const progress=s.repairProgress[team],quarter=progress>0?Math.min(4,Math.floor(progress*4)+1):0,low=car.hp>0&&car.hp<=30;
+      if(active){
+        if(count!==null&&count>0&&count<=3&&prev?.countdown!==count)emit('countdown',team,car.pos.x);
+        if(count===0&&prev?.countdown&&prev.countdown>0)emit('go',team,car.pos.x);
+        if(prev&&!s.tutorial&&car.lap>prev.lap)emit(car.lap===s.params.lapsToWin-1?'finalLap':'lap',team,car.pos.x);
+        if(prev&&low&&!prev.low)emit('lowHealth',team,car.pos.x);
+        if(quarter>0&&quarter!==prev?.repair)emit(quarter===1?'repairBegin':'repairProgress',team,car.pos.x);
+        if(quarter===0&&prev?.repair&&!(car.respawnUntil>now)&&car.hp< s.params.hpMax)emit('repairInterrupted',team,car.pos.x);
+      }
+      this.cars[team]={lap:car.lap,countdown:count,repair:quarter,low};
+    }
+    this.phase=s.phase;
+    return cues;
+  }
+}
+/** Mémorise les derniers signaux de chaque famille pour limiter leur répétition. */
+export class CueGate {
+  private last=new Map<string,number>();
+  /** Autorise un signal sonore seulement si sa famille a suffisamment attendu depuis le précédent. */
+  accept(family:string,now:number,interval:number):boolean {
+    if(now-(this.last.get(family)??-Infinity)<interval)return false;
+    this.last.set(family,now);return true;
+  }
+  /** Efface les dates des signaux pour réinitialiser leur limitation de répétition. */
+  clear():void{this.last.clear();}
+}

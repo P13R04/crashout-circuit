@@ -1,40 +1,52 @@
-/** Real WebSocket checks: roles, shared state and reconnect snapshots. */
+/**
+ * Vérifie les échanges WebSocket, les limites des rôles et les transitions de session avec un vrai serveur
+ * local.
+ * Liens : server/GameServer.ts, server/trackPresentation.ts, server/types.ts.
+ * Lancé depuis les scripts npm de package.json.
+ */
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
 import { WebSocket, WebSocketServer } from 'ws';
+import {TRACK_PRESENTATION_MS} from '../server/trackPresentation.js';
 import { GameServer } from '../server/GameServer.js';
 import type { GameState, ServerMessage } from '../server/types.js';
 
 const httpServer = http.createServer();
 const wss = new WebSocketServer({ server: httpServer });
-const game = new GameServer(wss);
+const game = new GameServer(wss,{developerTools:true});
 httpServer.listen(0, '127.0.0.1');
 await once(httpServer, 'listening');
 const port = (httpServer.address() as { port: number }).port;
 const clients: WebSocket[] = [];
+/** Ouvre un client WebSocket du rôle étudié et collecte les états reçus. */
 async function client(role: 'table' | 'oz') {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/${role}`);
   clients.push(ws);
   let latest: GameState | null = null;
   const snapshots: GameState[] = [];
+  /** Collecte les snapshots reçus et conserve la dernière géométrie connue du circuit. */
   ws.on('message', data => {
     const msg = JSON.parse(data.toString()) as ServerMessage;
     if (msg.type === 'State') { latest = msg.state; snapshots.push(msg.state); }
   });
   await once(ws, 'open');
+  /** Transmet la commande construite par le scénario au composant étudié. */
   const send = (message: Record<string, unknown>) => ws.send(JSON.stringify({ t: Date.now(), ...message }));
+  /** Attend l’état attendu avec une limite de temps pour détecter une synchronisation manquante. */
   const until = async (predicate: (s: GameState) => boolean) => {
     const deadline = Date.now() + 2000;
     while (!latest || !predicate(latest)) {
       if (Date.now() > deadline) throw new Error('shared state timed out');
-      await new Promise(resolve => setTimeout(resolve, 15));
+      await new Promise(/* Attend le délai nécessaire au traitement asynchrone du scénario. */ resolve => setTimeout(resolve, 15));
     }
     return latest;
   };
   // Ping is a delivery barrier: previous messages on this socket have been handled.
+  /** Envoie un Ping et attend son retour pour laisser passer les commandes déjà envoyées. */
   const flush = async () => {
-    const pong = new Promise<void>(resolve => {
+    const pong = new Promise<void>(/* Installe l’écoute du Pong avant d’envoyer la demande de synchronisation. */ resolve => {
+      /** Termine l’attente lorsque le Pong du serveur a traversé la connexion. */
       const listener = (data: Buffer) => {
         if (JSON.parse(data.toString()).type === 'Pong') { ws.off('message', listener); resolve(); }
       };
@@ -48,60 +60,60 @@ async function client(role: 'table' | 'oz') {
 try {
   const table = await client('table'), oz = await client('oz');
   table.send({ type: 'StartGame', mode: 'table' });
-  await oz.until(s => s.phase === 'MAP');
+  await oz.until(/* Reconnaît l’ouverture de la création dans l’état reçu par Oz. */ s => s.phase === 'MAP');
   game.rules.startRace(undefined, true); // fixture: table track generation is covered by rule tests
-  await table.until(s => s.phase === 'READY');
+  await table.until(/* Reconnaît le circuit prêt à être lancé sur la table. */ s => s.phase === 'READY');
   assert.ok(game.getState().track);
   oz.send({type:'RaceSettings',difficulty:'hard',lapsToWin:5,sessionMaxSeconds:60});await oz.flush();
   assert.equal(game.getState().params.difficulty,'easy','Oz cannot alter race settings');
   table.send({type:'RaceSettings',difficulty:'medium',lapsToWin:5,sessionMaxSeconds:120});
-  await oz.until(s=>s.params.difficulty==='medium'&&s.params.lapsToWin===5&&s.params.sessionMaxSeconds===120);
+  await oz.until(/* Reconnaît la réception des réglages de vitesse, de tours et de chronomètre. */ s=>s.params.difficulty==='medium'&&s.params.lapsToWin===5&&s.params.sessionMaxSeconds===120);
   table.send({type:'RaceSettings',difficulty:'easy',lapsToWin:3,sessionMaxSeconds:0});await table.flush();
 
   // Touch placement splits authority: Oz announces; only table contacts supply the pose.
   table.send({type:'TangiblePlacementMode',mode:'touch'});await table.flush();
   assert.equal(game.getState().tangiblePlacementMode,'manual','table cannot change the Oz input mode');
-  oz.send({type:'TangiblePlacementMode',mode:'touch'});await table.until(s=>s.tangiblePlacementMode==='touch');
+  oz.send({type:'TangiblePlacementMode',mode:'touch'});await table.until(/* Reconnaît l’activation du mode de pose par les doigts sur la table. */ s=>s.tangiblePlacementMode==='touch');
   table.send({type:'TangiblePrepare',id:1});await table.flush();assert.equal(game.getState().tangiblePlacement,null);
-  oz.send({type:'TangiblePrepare',id:1});const waiting=await table.until(s=>s.tangiblePlacement?.id===1);
+  oz.send({type:'TangiblePrepare',id:1});const waiting=await table.until(/* Reconnaît l’annonce du mur dans le prochain état reçu. */ s=>s.tangiblePlacement?.id===1);
   const grant=waiting.tangiblePlacement!;
-  const observer=await client('table');await observer.until(s=>s.tangiblePlacement?.token===grant.token);assert.equal(observer.snapshots[0].tangiblePlacement?.token,grant.token,'new table gets the same single-use grant');observer.ws.terminate();
+  const observer=await client('table');await observer.until(/* Reconnaît le même jeton de pose dans l’état reçu par un autre client. */ s=>s.tangiblePlacement?.token===grant.token);assert.equal(observer.snapshots[0].tangiblePlacement?.token,grant.token,'new table gets the same single-use grant');observer.ws.terminate();
   const placement={type:'TangibleTouchPlaced',id:1,token:grant.token,a:{x:900,y:500},b:{x:900,y:580}};
   oz.send(placement);await oz.flush();assert.equal(game.getState().walls.length,0,'Oz cannot impersonate table contacts');
   table.send({type:'TangiblePlacementCancel'});await table.flush();assert.equal(game.getState().tangiblePlacement?.token,grant.token,'table cannot cancel Oz’s grant');
-  table.send(placement);await oz.until(s=>s.tangibles[1]?.status==='placed');
+  table.send(placement);await oz.until(/* Reconnaît la confirmation du mur posé dans la console. */ s=>s.tangibles[1]?.status==='placed');
   assert.equal(game.getState().tangibles[1].angle,0,'vertical grip produces a horizontal wall');
   assert.equal(game.getState().tangiblePlacement,null);
   table.send({type:'TangibleRemoved',id:1});table.send({type:'TangibleControl',id:1,action:'deactivate'});await table.flush();
   assert.equal(game.getState().tangibles[1].active,true,'only Oz controls removal and activation');
   oz.send({type:'TangibleRemoved',id:1});oz.send({type:'TangiblePlacementMode',mode:'manual'});
-  await table.until(s=>s.tangiblePlacementMode==='manual'&&s.tangibles[1]?.status==='parked');
+  await table.until(/* Reconnaît le retour au placement manuel avec l’objet rangé. */ s=>s.tangiblePlacementMode==='manual'&&s.tangibles[1]?.status==='parked');
 
   // Only Oz can place/reposition objects; no recharge or cooldown stands between poses.
   table.send({type:'TangibleMoved',id:1,x:.5,y:.5,angle:90,active:true});
   await table.flush();assert.equal(game.getState().tangibles[1].status,'parked');
   oz.send({type:'TangibleMoved',id:1,x:.5,y:.5,angle:90,active:true});
-  await table.until(s=>s.walls.length===1&&s.walls[0].angle===90);
+  await table.until(/* Reconnaît la position orientée du mur transmise à la table. */ s=>s.walls.length===1&&s.walls[0].angle===90);
   assert.equal(game.getState().walls[0].team,null);
   assert.ok(game.getState().params.wallWidthPx>50,'physical wall width is shared with clients');
   oz.send({type:'TangibleMoved',id:1,x:.7,y:.5,angle:90,active:true});
   await oz.flush();assert.equal(game.getState().tangibles[1].x,.7,'repositioning needs no charge');
-  oz.send({type:'TangibleRemoved',id:1});await table.until(s=>s.tangibles[1]?.status==='parked');
+  oz.send({type:'TangibleRemoved',id:1});await table.until(/* Reconnaît le retrait du mur et son rangement dans la réserve. */ s=>s.tangibles[1]?.status==='parked');
   assert.equal(game.getState().walls.length,0,'return to depot removes the effect');
-  oz.send({type:'TangibleMoved',id:1,x:.5,y:.5,angle:90,active:true});await table.until(s=>s.tangibles[1]?.status==='placed');
+  oz.send({type:'TangibleMoved',id:1,x:.5,y:.5,angle:90,active:true});await table.until(/* Reconnaît le replacement du mur dans la partie. */ s=>s.tangibles[1]?.status==='placed');
   oz.send({type:'TangibleControl',id:1,action:'configure',team:'B',kind:'pylon'});
   await oz.flush();assert.equal(game.getState().tangibles[1].kind,'wall');
   for (const type of ['BeginRace', 'Pause', 'NewGame', 'Reset', 'StartGame']) oz.send({ type });
   oz.send({ type: 'OzTrigger', kind: 'fallbackTrack', params: {} });
   await oz.flush(); assert.equal(game.getState().phase, 'READY', 'Oz cannot change game phase');
   table.send({ type: 'BeginRace' });
-  await table.until(s => s.phase === 'RACE');
+  await table.until(/* Reconnaît le passage de la piste prête à la course. */ s => s.phase === 'RACE');
 
   // Real pickup rule supplies the bonus, with no operator grant.
   const pickup = game.getState().pickups[0]; pickup.kind = 'boost';
   const car = game.getState().cars.A; car.pos = { ...pickup.pos };
   game.rules.afterMove('A', car.pos, Date.now());
-  await table.until(s => s.cars.A.heldItem === 'boost');
+  await table.until(/* Reconnaît le ramassage d’une accélération dans le stock cyan. */ s => s.cars.A.heldItem === 'boost');
   table.send({ type: 'UseItem', team: 'A' });
   table.send({ type: 'Power', team: 'A', role: 'pilot' });
   oz.send({ type: 'Power', team: 'A', role: 'copilot' });
@@ -118,32 +130,32 @@ try {
   table.send({ type: 'Power', team: 'B', role: 'copilot' });
   await table.flush(); assert.equal(game.getState().cars.A.itemArmed, false, 'enemy POWER cannot arm owner stock');
   table.send({ type: 'Power', team: 'A', role: 'copilot' });
-  await oz.until(s => s.cars.A.itemArmed);
+  await oz.until(/* Reconnaît l’armement du stock dans l’état reçu par Oz. */ s => s.cars.A.itemArmed);
   table.send({ type: 'BoostGate', team: 'B', a: { x: 800, y: 500 }, b: { x: 1000, y: 500 } });
-  await oz.until(s => s.boostGates[0]?.team === 'B' && s.cars.A.heldItem === null);
+  await oz.until(/* Reconnaît l’utilisation du bonus cyan par le geste rose. */ s => s.boostGates[0]?.team === 'B' && s.cars.A.heldItem === null);
 
   const reconnected = await client('oz');
   // Tick snapshots omit the track; inspect the initial full snapshot separately.
-  await reconnected.until(s => s.tangibles[1]?.status === 'placed');
+  await reconnected.until(/* Reconnaît le tangible déjà posé après une reconnexion. */ s => s.tangibles[1]?.status === 'placed');
   assert.ok(reconnected.snapshots[0].track, 'reconnect receives full geometry');
   oz.send({ type: 'TangibleControl', id: 1, action: 'deactivate' });
-  await table.until(s => s.walls.length === 0 && s.tangibles[1]?.active === false);
+  await table.until(/* Reconnaît la disparition de la collision après désactivation du mur. */ s => s.walls.length === 0 && s.tangibles[1]?.active === false);
   const inactive = { ...game.getState().tangibles[1] };
   table.send({ type: 'Power', team: 'A', role: 'copilot' }); await table.flush();
   assert.deepEqual(game.getState().tangibles[1], inactive, 'POWER leaves inactive tangible untouched');
   oz.send({ type: 'TangibleControl', id: 1, action: 'activate' });
-  await table.until(s => s.walls.length === 1);
+  await table.until(/* Reconnaît le retour de la collision après réactivation du mur. */ s => s.walls.length === 1);
   assert.equal(game.getState().walls[0].pos.x, 960, 'table cannot move tangible, reactivation keeps its position');
   oz.send({type:'TangiblePlacementMode',mode:'touch'});oz.send({type:'TangiblePrepare',id:2});
-  await table.until(s=>s.tangiblePlacement?.id===2);
+  await table.until(/* Reconnaît l’annonce du premier pilier. */ s=>s.tangiblePlacement?.id===2);
   oz.ws.terminate(); reconnected.ws.terminate();
-  await table.until(s=>s.tangiblePlacement===null);
+  await table.until(/* Reconnaît la disparition de l’annonce après annulation. */ s=>s.tangiblePlacement===null);
   assert.equal(game.getState().tangibles[2].status,'parked','last Oz disconnect leaves the unplaced object inactive in the depot');
   // Continue pickup + arming with no Oz client connected.
   car.heldItem = null; car.itemArmed = false; pickup.respawnAt = 0;
   game.rules.afterMove('A', car.pos, Date.now());
   table.send({ type: 'Power', team: 'A', role: 'copilot' });
-  await table.until(s => s.cars.A.itemArmed);
+  await table.until(/* Reconnaît que le stock reste armé après l’annulation d’une pose. */ s => s.cars.A.itemArmed);
 
   // The final relaxation must carry its geometry, even though deformations is now empty.
   // Otherwise StateSync clears the previous version and the road disappears.
@@ -152,6 +164,7 @@ try {
   for (const c of Object.values(state.cars)) c.disabled = true;
   const dx = edge.x - center.x, dy = edge.y - center.y, length = Math.hypot(dx, dy);
   game.rules.onBorderPull({ type: 'BorderPull', t: start, team: 'A', x: edge.x, y: edge.y, dx: dx / length * 50, dy: dy / length * 50 });
+  /** Avance les ticks nécessaires pour obtenir un snapshot réseau du serveur. */
   const frame = (now: number) => {
     game.physics.step(now, 0);
     if (state.tick % 2) game.physics.step(now, 0);
@@ -168,7 +181,7 @@ try {
   assert.deepEqual(finalDeck.track.centerline, state.track!.baseCenterline);
 
   table.send({ type: 'NewGame' });
-  await table.until(s => s.phase === 'LOBBY' && Object.keys(s.tangibles).length === 0);
+  await table.until(/* Reconnaît le retour à l’accueil avec les tangibles de la session effacés. */ s => s.phase === 'LOBBY' && Object.keys(s.tangibles).length === 0);
 
   game.physics.start(); // Resume the real broadcasts after the deterministic deformation fixture.
 
@@ -177,41 +190,56 @@ try {
   ozAgain.send({ type: 'StartTutorial', mode: 'table' });
   await ozAgain.flush(); assert.equal(game.getState().phase, 'LOBBY', 'Oz cannot start the tutorial');
   table.send({ type: 'StartTutorial', mode: 'pc' });
-  const started = await ozAgain.until(s => s.phase === 'RACE' && s.tutorial !== null);
+  const started = await ozAgain.until(/* Reconnaît le tutoriel en cours reçu par la console reconnectée. */ s => s.phase === 'RACE' && s.tutorial !== null);
   assert.equal(started.mapMode, 'pc');
-  assert.ok(ozAgain.snapshots.find(s=>s.tutorial&&s.track)?.track?.preset, 'tutorial sends its full preset geometry');
+  assert.ok(ozAgain.snapshots.find(/* Retrouve un snapshot de tutoriel contenant sa géométrie complète. */ s=>s.tutorial&&s.track)?.track?.preset, 'tutorial sends its full preset geometry');
   ozAgain.send({ type: 'TutorialSkip', team: 'A' });
   await ozAgain.flush(); assert.equal(game.getState().tutorial!.teams.A.step, 0, 'Oz cannot skip a lesson');
   table.send({ type: 'TutorialSkip', team: 'A' });
-  await ozAgain.until(s => s.tutorial?.teams.A.step === 1);
+  await ozAgain.until(/* Reconnaît l’avancement de la première leçon de l’équipe cyan. */ s => s.tutorial?.teams.A.step === 1);
   assert.equal(game.getState().tutorial!.teams.B.step, 0, 'lessons are independent per team');
+  table.send({type:'TutorialRace'});await table.flush();assert.equal(game.getState().phase,'RACE','cannot skip unfinished training');
+  for(const team of ['A','B'])for(let i=0;i<20;i++)table.send({type:'TutorialSkip',team});
+  await ozAgain.until(/* Reconnaît la fin des leçons des deux équipes. */ s=>s.tutorial?.finished===true);
+  ozAgain.send({type:'TutorialRace'});await ozAgain.flush();assert.equal(game.getState().phase,'RACE','operator cannot launch the race');
+  table.send({type:'TutorialRace'});await ozAgain.until(/* Reconnaît la création normale ouverte après le tutoriel. */ s=>s.phase==='MAP'&&s.tutorial===null);
   table.send({ type: 'NewGame' });
-  await ozAgain.until(s => s.phase === 'LOBBY' && s.tutorial === null);
+  await ozAgain.until(/* Reconnaît le retour à l’accueil sans progression de tutoriel résiduelle. */ s => s.phase === 'LOBBY' && s.tutorial === null);
+  // Reconnects share one roulette and one authoritative line; early start commands cannot bypass it.
+  game.rules.startRace(undefined,true,{startedAt:Date.now(),originIndex:23});
+  const showing=await table.until(/* Reconnaît une présentation de circuit encore en cours avant le départ. */ s=>s.phase==='READY'&&!!s.trackPresentation);
+  const duringBuild=await client('table');await duringBuild.until(/* Reconnaît la même présentation après une connexion tardive. */ s=>!!s.trackPresentation);
+  assert.deepEqual(duringBuild.snapshots[0].trackPresentation,showing.trackPresentation);
+  assert.deepEqual(duringBuild.snapshots[0].track?.startLine,game.getState().track!.startLine);
+  table.send({type:'BeginRace'});await table.flush();assert.equal(game.getState().phase,'READY');
+  game.getState().trackPresentation!.startedAt=Date.now()-TRACK_PRESENTATION_MS-1;
+  table.send({type:'BeginRace'});await table.until(/* Reconnaît le départ une fois la présentation du circuit terminée. */ s=>s.phase==='RACE'&&s.trackPresentation===null);
+  duringBuild.ws.terminate();table.send({type:'NewGame'});await table.until(/* Reconnaît la remise à zéro de la course avant l’essai autonome. */ s=>s.phase==='LOBBY');
   // Only the table can start the full-physics autonomous session, which survives reconnect.
   ozAgain.send({type:'StartTangibleTest'});await ozAgain.flush();assert.equal(game.getState().phase,'LOBBY');
   table.send({type:'StartTangibleTest'});
-  const automated=await ozAgain.until(s=>s.phase==='READY'&&s.sessionMode==='tangibles-test');
-  assert.ok(ozAgain.snapshots.find(s=>s.phase==='READY'&&s.sessionMode==='tangibles-test'&&s.track)?.track?.preset, 'test sends its full preset geometry');assert.deepEqual(automated.testMode,{invincible:false,allItems:false});
+  const automated=await ozAgain.until(/* Reconnaît le circuit d’essai autonome prêt mais pas encore lancé. */ s=>s.phase==='READY'&&s.sessionMode==='tangibles-test');
+  assert.ok(ozAgain.snapshots.find(/* Retrouve la géométrie complète du circuit de l’essai autonome. */ s=>s.phase==='READY'&&s.sessionMode==='tangibles-test'&&s.track)?.track?.preset, 'test sends its full preset geometry');assert.deepEqual(automated.testMode,{invincible:false,allItems:false});
   const testReconnect=await client('table');
-  await testReconnect.until(s=>s.sessionMode==='tangibles-test');
+  await testReconnect.until(/* Reconnaît la session autonome après une reconnexion. */ s=>s.sessionMode==='tangibles-test');
   assert.ok(testReconnect.snapshots[0].track, 'reconnected test client receives initial geometry');
-  table.send({type:'BeginRace'});await ozAgain.until(s=>s.phase==='RACE');
+  table.send({type:'BeginRace'});await ozAgain.until(/* Reconnaît le lancement de l’essai autonome depuis la table. */ s=>s.phase==='RACE');
   game.rules.damage(game.getState().cars.A,100,Date.now());
   // Finish the countdown in the fixture; repair itself still uses the server physics loop.
   game.getState().sessionStartAt=Date.now()-10_000;
-  await ozAgain.until(s=>s.repairPads['A-pilot'].held&&s.cars.A.disabled);
+  await ozAgain.until(/* Reconnaît la panne avec le pad pilote maintenu automatiquement. */ s=>s.repairPads['A-pilot'].held&&s.cars.A.disabled);
   ozAgain.send({type:'PadHold',team:'A',role:'copilot',on:true});await ozAgain.flush();
   assert.equal(game.getState().repairPads['A-copilot'].held,false,'Oz cannot repair for a player');
   table.send({type:'PadHold',team:'A',role:'copilot',on:true});
-  await ozAgain.until(s=>s.repairProgress.A>.05&&s.repairPads['A-pilot'].held);
+  await ozAgain.until(/* Reconnaît la réparation réellement commencée avec l’appui du copilote. */ s=>s.repairProgress.A>.05&&s.repairPads['A-pilot'].held);
   table.send({type:'PadHold',team:'A',role:'copilot',on:false});
-  await ozAgain.until(s=>s.repairProgress.A===0);
+  await ozAgain.until(/* Reconnaît la remise à zéro de la réparation après un relâchement. */ s=>s.repairProgress.A===0);
   assert.equal(game.getState().cars.A.disabled,true,'partial copilot input is not an automatic repair');
-  table.send({type:'NewGame'});await ozAgain.until(s=>s.phase==='LOBBY'&&s.sessionMode==='race');
+  table.send({type:'NewGame'});await ozAgain.until(/* Reconnaît le retour à une session normale après l’essai autonome. */ s=>s.phase==='LOBBY'&&s.sessionMode==='race');
   console.log('✓ Network: role boundaries, copilot POWER, Oz restricted to tangibles, autonomous pickups, theft, reconnect, reset, tutorial and automatic tangible test');
 } finally {
   game.physics.stop();
   for (const ws of clients) ws.terminate();
-  await new Promise<void>(resolve => wss.close(() => resolve()));
-  await new Promise<void>(resolve => httpServer.close(() => resolve()));
+  await new Promise<void>(/* Attend la fermeture complète des clients WebSocket du scénario. */ resolve => wss.close(/* Termine l’attente lorsque le serveur WebSocket est fermé. */ () => resolve()));
+  await new Promise<void>(/* Attend la fermeture du serveur HTTP local utilisé par le test. */ resolve => httpServer.close(/* Termine le nettoyage lorsque le port HTTP est libéré. */ () => resolve()));
 }

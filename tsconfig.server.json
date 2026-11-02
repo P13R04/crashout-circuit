@@ -1,3 +1,4 @@
+/* Compile les sources server/ pour Node dans dist/server ; utilisé par build:server dans package.json avec les réglages serveur de config.json. */
 {
   "compilerOptions": {
     "target": "ES2020",

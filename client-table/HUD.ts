@@ -1,11 +1,13 @@
 /**
- * HUD — the four corner panels (REQ-6.2), each rotated towards its own table edge.
- * Pilot panel: HP over steering and repair. Copilot: POWER and repair.
- * Armed items remain available without a countdown.
+ * Dessine les commandes des quatre postes, la santé des voitures, les stocks et la progression des
+ * réparations.
+ * Liens : server/layout.ts, server/types.ts, client-table/view.ts, client-table/icons.ts,
+ * client-table/themes.ts et les utilitaires importés ci-dessous.
+ * Référencé par client-table/NeonEffects.ts, client-table/NeonObjects.ts, client-table/Renderer.ts.
  */
 import type { GameState, Team, Car } from '../server/types.js';
 import {
-  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, steerArea,
+  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, ITEM_SLOT_LOCAL, steerArea,
   type PanelLayout,
 } from '../server/layout.js';
 import { TEAM_COLOR, type View } from './view.js';
@@ -14,8 +16,10 @@ import { themeLook, type ThemeId } from './themes.js';
 import { armedPickup } from '../server/armedPickup.js';
 import { glow, NEON } from './neon.js';
 
+/** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
 
+/** Dessine la couronne de progression utilisée par une commande circulaire. */
 function ring(ctx: Ctx, x: number, y: number, r: number, frac: number, color: string, width = 8): void {
   ctx.lineWidth = width;
   ctx.strokeStyle = 'rgba(255,255,255,0.12)';
@@ -30,7 +34,7 @@ function ring(ctx: Ctx, x: number, y: number, r: number, frac: number, color: st
   }
 }
 
-/** Small vector icon for a stocked item. */
+/** Dessine le pictogramme du bonus pour le stock copilote et les retours de ramassage. */
 export function drawItemIcon(ctx: Ctx, kind: 'slingshot' | 'boost', x: number, y: number, r: number, color: string): void {
   ctx.save();
   ctx.translate(x, y);
@@ -60,7 +64,9 @@ export function drawItemIcon(ctx: Ctx, kind: 'slingshot' | 'boost', x: number, y
   ctx.restore();
 }
 
+/** Dessine les commandes des quatre postes, la santé des voitures, les stocks et la progression des réparations. */
 export class HUD {
+  /** Dessine les quatre postes dans leur orientation avec les commandes de chaque rôle. */
   draw(ctx: Ctx, state: GameState, view: View): void {
     const now = state.phase === 'PAUSED' ? state.pausedAt : view.now();
     for (const panel of PANELS) {
@@ -75,6 +81,7 @@ export class HUD {
     }
   }
 
+  /** Dessine le panneau du poste avec les matériaux et les repères de son thème. */
   private drawFrame(ctx: Ctx, panel: PanelLayout, theme: ThemeId, state: GameState): void {
     const PANEL_W = panelWidth(panel.role,state.driveMode[panel.team]);
     const color = TEAM_COLOR[panel.team],look=themeLook(theme);
@@ -113,9 +120,10 @@ export class HUD {
     ctx.textAlign = 'left';
     const left = -PANEL_W / 2 + 18;
     icon(ctx, panel.role === 'pilot' ? 'wheel' : 'power', left + 8, -62, 20, color);
-    ctx.fillText(panel.role === 'pilot' ? 'PILOTE' : 'COPILOTE', left + 28, -57);
+    ctx.fillText(`${panel.team === 'A' ? 'CYAN' : 'ROSE'} · ${panel.role === 'pilot' ? 'PILOTE' : 'COPILOTE'}`, left + 28, -60);
   }
 
+  /** Affiche la santé, les tours, la direction et la pédale éventuelle du pilote. */
   private drawPilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
     const team=panel.team,car=state.cars[team],color=TEAM_COLOR[team],mode=state.driveMode[team],look=themeLook(view.theme);
     const area=steerArea(mode),actual=Math.max(0,car.hp/state.params.hpMax),shown=Math.max(actual,view.hpShown[team]/state.params.hpMax);
@@ -145,14 +153,17 @@ export class HUD {
       const p=PEDAL_LOCAL,active=view.localPedals[team];ctx.fillStyle=active?color+'55':'#ffffff09';ctx.strokeStyle=active?'#fff':color;ctx.lineWidth=active?3:2;
       ctx.beginPath();ctx.roundRect(p.x-p.w/2,p.y-p.h/2,p.w,p.h,12);ctx.fill();ctx.stroke();icon(ctx,'pedal',p.x,p.y,32,active?'#fff':color);
     }
-    icon(ctx,'flag',55,-60,15,color);ctx.fillStyle=look.ink;ctx.font='bold 14px monospace';ctx.textAlign='left';
-    ctx.fillText(state.sessionMode==='tangibles-test'?`${car.lap+1}`:`${Math.min(state.params.lapsToWin,car.lap+1)}/${state.params.lapsToWin}`,68,-55);
+    if(!state.tutorial){
+      icon(ctx,'flag',55,-60,15,color);ctx.fillStyle=look.ink;ctx.font='bold 14px monospace';ctx.textAlign='left';
+      ctx.fillText(state.sessionMode==='tangibles-test'?`${car.lap+1}`:`${Math.min(state.params.lapsToWin,car.lap+1)}/${state.params.lapsToWin}`,68,-55);
+    }
     void now;
   }
 
+  /** Affiche POWER, le stock et l’état d’armement du copilote. */
   private drawCopilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
     const look=themeLook(view.theme),car=state.cars[panel.team],color=TEAM_COLOR[panel.team],armed=car.itemArmed&&!!car.heldItem,b=POWER_BTN_LOCAL;
-    const locked=!!state.tangiblePlacement||!!armedPickup(state)&&!armed;
+    const locked=!!armedPickup(state)&&!armed;
     const ink=armed?NEON.gold:car.heldItem&&!locked?color:'#586078';
     if(car.heldItem)glow(ctx,b.x,b.y,52,ink,armed?.25:.12);
     ctx.fillStyle=armed?'#ffce661f':car.heldItem?color+'24':look.button;
@@ -160,7 +171,7 @@ export class HUD {
     if(view.theme==='toy'){ctx.strokeStyle='#ffffff25';ctx.lineWidth=3;ctx.beginPath();ctx.arc(b.x,b.y-2,b.r-5,Math.PI,Math.PI*1.8);ctx.stroke();}
     ring(ctx,b.x,b.y,b.r,1,ink,armed?4:2);icon(ctx,'power',b.x,b.y,30,ink);
     if(car.heldItem){
-      drawItemIcon(ctx,car.heldItem,b.x,-43,12,ink);
+      drawItemIcon(ctx,car.heldItem,ITEM_SLOT_LOCAL.x,ITEM_SLOT_LOCAL.y,12,ink);
       ctx.strokeStyle=ink;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(b.x,-30);ctx.lineTo(b.x,-25);ctx.stroke();
     }
     if(armed){
@@ -171,7 +182,7 @@ export class HUD {
     void view;void now;
   }
 
-  /** Repair pad (116 px disc) with a ring filling while both partners hold their pad. */
+  /** Dessine la clé de réparation avec l’appui local et la progression partagée. */
   private drawPad(ctx: Ctx, panel: PanelLayout, state: GameState, view: View): void {
     const key = `${panel.team}-${panel.role}`;
     const held = view.localPads[key] || state.repairPads[key]?.held;
