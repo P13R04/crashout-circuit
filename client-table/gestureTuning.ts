@@ -23,7 +23,7 @@ export interface GestureTuning {
 /** Fournit les marges de reconnaissance utilisées avant un réglage de test par URL. */
 export const DEFAULT_TUNING: Readonly<GestureTuning> = {
   settleMs: 180,
-  slingClusterPx: 190,
+  slingClusterPx: 230,
   slingRoleMinPx: 14,
   slingDominance: 1.5,
   boostMaxPx: 400,

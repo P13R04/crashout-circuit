@@ -99,6 +99,8 @@ export class GestureRecognizer {
   private bonusRecent: Contact[] = [];
   private bonusCommitted = false;
   private slingPuller: number | null = null;
+  /** L’équipe est figée à partir des deux premiers appuis : bleu seulement si les deux sont côté bleu. */
+  private slingTeam: Team | null = null;
   /** Mouse stand-in: the press (fork) point and the dragging pointer. */
   private simSling: { id: number; anchor: Vec2 } | null = null;
   /** Ne produit aucun changement d’interface tant qu’aucun lecteur de simulation n’est branché. */
@@ -543,12 +545,9 @@ export class GestureRecognizer {
     if (c.zone === 'simsling') this.releaseSimSling(c);
     if (this.slingContacts?.includes(c)){
       if(this.slingPuller===c.id)this.releaseSling(e.type!=='pointerup');
-      else if(this.slingPuller===null){
-        // Keep a tapped fork long enough for the pouch to arrive. Once pulling,
-        // anchors are latched: accidental lifts/cancels cannot fire the projectile.
-        if(this.slingReleaseTimer)clearTimeout(this.slingReleaseTimer);
-        this.slingReleaseTimer=setTimeout(/* Annule le lance-pierre si aucun doigt mobile n’est revenu après la brève tolérance de perte d’appui. */ ()=>{this.slingReleaseTimer=null;if(this.slingPuller===null)this.releaseSling(true);},TANGIBLE_CONTACT_GRACE_MS);
-      }
+      // Un lance-pierre n’est actif que tant que ses trois doigts sont réellement posés :
+      // lever un appui fixe annule immédiatement la fourche au lieu de laisser un geste bloqué.
+      else this.releaseSling(true);
     }else if(e.type!=='pointerup')this.bonusRecent=this.bonusRecent.filter(/* Retire le contact qui ne doit plus rejoindre une autre prise de bonus. */ v=>v!==c);
     if (c.zone === 'free') this.scheduleEvaluation();
   }
@@ -751,13 +750,28 @@ export class GestureRecognizer {
     if (!state || state.phase !== 'RACE' || this.pendingPlacement || this.expectedBonus?.kind!=='slingshot' || this.borderPull || this.bonusCommitted) { this.cancelSling(); return; }
 
     if (!this.slingIds) {
-      const free = this.bonusRecent.filter(/* Rassemble les doigts encore valables pour former la fourche et la poche du lance-pierre. */ c=>!c.consumed&&(c.releasedAt===undefined||performance.now()-c.releasedAt<=TANGIBLE_CONTACT_GRACE_MS)).slice(0,3);
-      if (free.length !== 3) return;
+      const candidates = this.bonusRecent.filter(c=>!c.consumed&&c.releasedAt===undefined);
+      let free: Contact[] | null = null;
+      // Cherche un vrai groupe local au lieu de laisser trois doigts éloignés (deux joueurs)
+      // bloquer tout le geste.
+      for(let i=0;i<candidates.length&&!free;i++)for(let j=i+1;j<candidates.length&&!free;j++)for(let k=j+1;k<candidates.length;k++){
+        const triple=[candidates[i],candidates[j],candidates[k]];
+        const cx=triple.reduce((n,c)=>n+c.sx,0)/3,cy=triple.reduce((n,c)=>n+c.sy,0)/3;
+        if(Math.max(...triple.map(c=>Math.hypot(c.sx-cx,c.sy-cy)))<=tuning.slingClusterPx){free=triple;break;}
+      }
+      if (!free) return;
       const cx = (free[0].sx + free[1].sx + free[2].sx) / 3;
       const cy = (free[0].sy + free[1].sy + free[2].sy) / 3;
       const spread = Math.max(...free.map(/* Mesure l’écart initial de chaque doigt au centre du groupe pour contrôler son regroupement. */ c => Math.hypot(c.sx - cx, c.sy - cy)));
       if (spread > tuning.slingClusterPx) { this.logOnce('clusterTooWide', { spread, limit: tuning.slingClusterPx }); return; }
-      if (!this.armedTeam('slingshot', { x: cx, y: cy })) return;
+      // Les deux premiers doigts déterminent la couleur ; s’ils ne sont pas tous les deux
+      // dans la moitié cyan, la fourche est rose. On ne laisse donc jamais un groupe lointain voler le geste.
+      const firstTwo={x:(free[0].sx+free[1].sx)/2,y:(free[0].sy+free[1].sy)/2};
+      const armedTeam=this.armedTeam('slingshot', firstTwo);
+      if (!armedTeam) return;
+      // La couleur suit le côté des deux premières poses lorsque ce côté possède l’objet armé;
+      // sinon on garde l’équipe autorisée par le serveur plutôt que de créer un tir invalide.
+      this.slingTeam=nearestStationTeam(firstTwo)==='A'&&nearestStationTeam({x:free[0].sx,y:free[0].sy})==='A'&&nearestStationTeam({x:free[1].sx,y:free[1].sy})==='A'?'A':armedTeam;
       this.log('cluster', { spread, limit: tuning.slingClusterPx });
       this.slingContacts=free;
       this.slingIds = free.map(/* Retient les identifiants des trois contacts du lance-pierre. */ c => c.id);
@@ -782,7 +796,7 @@ export class GestureRecognizer {
     const a: Vec2 = { x: (anchors[0].x + anchors[1].x) / 2, y: (anchors[0].y + anchors[1].y) / 2 };
     const pouch: Vec2 = puller ? { x: puller.x, y: puller.y } : { x: cs[2].x, y: cs[2].y };
     this.view.sling = {
-      team: this.armedTeam('slingshot', a),
+      team: this.slingTeam,
       anchors: [{ x: anchors[0].x, y: anchors[0].y }, { x: anchors[1].x, y: anchors[1].y }],
       pouch,
       idle: !puller,
@@ -805,8 +819,8 @@ export class GestureRecognizer {
     }
     if (cancelled || !state || !sling || sling.idle || !sling.shot.valid) return;
     const anchor = { x: (sling.anchors[0].x + sling.anchors[1].x) / 2, y: (sling.anchors[0].y + sling.anchors[1].y) / 2 };
-    const team = this.armedTeam('slingshot', anchor);
-    if (team){this.bonusCommitted=true;this.controls.gesture('slingshot', team, anchor, { ...sling.pouch });}
+    const team = this.slingTeam;
+    if (team){this.bonusCommitted=!state.tutorial;this.controls.gesture('slingshot', team, anchor, { ...sling.pouch });}
   }
 
   private lastLog = { kind: '', at: 0 };
@@ -828,6 +842,7 @@ export class GestureRecognizer {
     if(this.slingReleaseTimer)clearTimeout(this.slingReleaseTimer);this.slingReleaseTimer=null;this.slingContacts=null;
     this.slingIds = null;
     this.slingPuller = null;
+    this.slingTeam = null;
     if (!this.simSling) this.view.sling = null;
   }
 

@@ -5,7 +5,6 @@
  * server/GameRules.ts.
  */
 import type { GameParams, Tangible, Vec2 } from './types.js';
-import { insidePanel } from './layout.js';
 import { validTangiblePose } from './tangibles.js';
 import type { TangiblePose } from './tangibleGeometry.js';
 
@@ -16,7 +15,9 @@ export const TANGIBLE_CONTACT_GRACE_MS = 1600;
 /** Calcule et valide le centre du tangible et l’orientation du mur à partir des deux contacts. */
 export function tangibleTouchPose(kind: Tangible['kind'], a: Vec2, b: Vec2, p: GameParams): TangiblePose | null {
   if (!a || !b || ![a.x,a.y,b.x,b.y].every(Number.isFinite)) return null;
-  if ([a,b].some(/* Écarte un contact situé hors de la table ou dans un poste de commande. */ v=>v.x<0||v.y<0||v.x>p.logicalWidth||v.y>p.logicalHeight||insidePanel(v))) return null;
+  // Les fenêtres HUD sont dessinées au-dessus de la piste : elles ne doivent pas interdire
+  // une pose physique qui les recouvre partiellement. Seules les limites réelles de la table comptent.
+  if ([a,b].some(v=>v.x<0||v.y<0||v.x>p.logicalWidth||v.y>p.logicalHeight)) return null;
   const pxPerMm=p.pylonBasePx/32, distance=Math.hypot(b.x-a.x,b.y-a.y);
   // Tolerate grips and fingertip sizes, but reject a palm split or two distant players.
   if(distance<10*pxPerMm||distance>180*pxPerMm)return null;

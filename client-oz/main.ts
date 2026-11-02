@@ -20,6 +20,8 @@ const placementMode = document.getElementById('placement-mode') as HTMLSelectEle
 const touchTools = document.getElementById('touch-tools')!;
 const touchCancel = document.getElementById('touch-cancel') as HTMLButtonElement;
 const touchButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-tangible]')];
+const quickUndo=document.getElementById('quick-undo') as HTMLButtonElement;
+const quickDeselect=document.getElementById('quick-deselect') as HTMLButtonElement;
 
 const objectList=document.getElementById('object-list')!;
 const objectCards=new Map<number,{state:HTMLElement;toggle:HTMLButtonElement;remove:HTMLButtonElement}>();
@@ -218,6 +220,9 @@ for(const button of touchButtons)/* Annonce le tangible choisi juste avant les c
 });
 /** Annule l’annonce serveur et les outils de pose encore en cours sur la carte. */
 touchCancel.addEventListener('click',()=>{if(conn?.isOpen())conn.send({type:'TangiblePlacementCancel'});map.cancel();updateToolUI(null,0);});
+quickUndo.addEventListener('click',()=>controller.undo());
+quickDeselect.addEventListener('click',()=>{controller.cancelPreparation();map.cancel();updateToolUI(null,0);});
+for(const button of document.querySelectorAll<HTMLButtonElement>('[data-remove-tangible]'))button.addEventListener('click',()=>{if(conn?.isOpen())conn.send({type:'TangibleRemoved',id:Number(button.dataset.removeTangible)});});
 for(const button of document.querySelectorAll<HTMLButtonElement>('[data-rotate-wall]'))/* Tourne le mur de l’incrément demandé depuis les boutons tactiles. */ button.addEventListener('click',()=>{map.cancel();controller.select(1);controller.rotate(Number(button.dataset.rotateWall));});
 
 /** Bascule l’outil manuel de pose du mur. */
@@ -290,7 +295,7 @@ function refresh(): void {
   }
   placementMode.disabled=!controller.connected||!s;
   placementMode.value=touch?'touch':'manual';
-  touchTools.hidden=!touch;
+  touchTools.hidden=false;
   btnArc.hidden=touch;btnWall.hidden=touch;btnClear.hidden=touch;
   for(const button of touchButtons){
     const id=Number(button.dataset.tangible);
