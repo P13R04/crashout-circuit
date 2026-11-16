@@ -36,6 +36,10 @@ Il n'y a pas de présentation : l'application est testée par des personnes qui 
 5. Dans la console, garder **Pose avec les doigts**. Sur la table, choisir **TUTORIEL** (un clic à la souris lance aussi le parcours tactile). Chaque personne touche la clé de son poste : le départ attend les quatre personnes. Les coéquipiers de même couleur sont en diagonale.
 6. À la fin du tutoriel, ranger les trois tangibles dans la réserve à droite, entre les copilotes. Choisir **CRÉER LE CIRCUIT**, tracer le circuit à deux équipes, puis toucher le bouton de départ. Les tours, dégâts, réparations et paramètres de course redeviennent ceux d’une partie normale.
 
+### Connexion HTTPS pour les capteurs des téléphones
+
+Pour un essai au gyroscope, suivre la [configuration HTTPS](../README.md#https-pour-les-téléphones) et ouvrir l’adresse HTTPS annoncée au démarrage sur chaque téléphone. Une alerte de certificat indique que l’autorité locale doit encore être approuvée sur l’appareil.
+
 ### Consignes réservées à l’opérateur
 
 La table ne signale jamais qu’une sélection attend dans la console. Les participants voient uniquement les contacts de leurs doigts, la pose et les effets de l’objet. Ne pas leur annoncer les sélections internes.

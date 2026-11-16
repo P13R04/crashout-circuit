@@ -18,6 +18,20 @@ npm start
 
 Le serveur doit rester ouvert pendant la séance. Les deux appareils doivent pouvoir communiquer sur le réseau local (un Wi-Fi invité qui isole les appareils ne convient pas). Ce prototype est prévu pour le réseau local de la séance ; il n’implémente pas de compte utilisateur.
 
+### HTTPS pour les téléphones
+
+En HTTP sur le Wi-Fi, Safari iOS ne donne pas accès aux capteurs d’orientation. Le serveur affiche « capteurs iOS indisponibles » si aucune adresse HTTPS n’est configurée. [Documentation du navigateur](https://developer.mozilla.org/fr/docs/Web/API/DeviceOrientationEvent/requestPermission_static)
+
+**Tunnel HTTPS.** Après le build, ouvrir un tunnel avec `cloudflared tunnel --url http://localhost:3000`. Copier l’adresse HTTPS annoncée, puis lancer `CRASHOUT_PUBLIC_URL=https://votre-adresse.trycloudflare.com npm start` dans un autre terminal. Cette adresse peut être ouverte sur les téléphones sans installer de certificat. Les interfaces de la séance sont accessibles aux personnes qui disposent de l’URL du tunnel. [Documentation du tunnel](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
+
+**Certificat sur le réseau local.** Après `mkcert -install`, générer un certificat qui couvre les adresses réellement utilisées, par exemple `mkcert -key-file /chemin/table-key.pem -cert-file /chemin/table-cert.pem localhost 192.168.1.42`. Installer et approuver l’autorité mkcert (`rootCA.pem`, dossier indiqué par `mkcert -CAROOT`) sur chaque téléphone. Sur iOS, activer également la confiance totale pour cette autorité dans les réglages des certificats. [Documentation de mkcert](https://github.com/FiloSottile/mkcert#mobile-devices)
+
+```bash
+CRASHOUT_TLS_KEY=/chemin/table-key.pem CRASHOUT_TLS_CERT=/chemin/table-cert.pem npm start
+```
+
+Ouvrir l’adresse HTTPS annoncée au démarrage. Les deux chemins PEM sont nécessaires pour démarrer avec TLS.
+
 ### Mettre à jour la version de séance
 
 La préparation de séance (identification des quatre postes, tutoriel à quatre, console Oz) est fusionnée dans `main`.

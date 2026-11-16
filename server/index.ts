@@ -4,12 +4,12 @@
  * Liens : client-table/index.html, client-oz/index.html, server/net/GameServer.ts, server/net/audioHttp.ts,
  * server/config.ts.
  */
-import http from 'http';
+import type { RequestListener, ServerResponse } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { readFileSync, statSync } from 'fs';
 import { resolve, dirname, extname } from 'path';
 import { fileURLToPath } from 'url';
-import { networkInterfaces } from 'os';
+import { createSessionHttp, sessionAddresses } from './net/sessionHttp.js';
 import { GameServer } from './net/GameServer.js';
 import { audioByteRange } from './net/audioHttp.js';
 import { config } from './config.js';
@@ -34,7 +34,7 @@ const MIME: Record<string, string> = {
 const CLIENTS_ROOT = resolve(__dirname, '../../dist/clients');
 
 /** Envoie un fichier compilé et prend en charge les plages de lecture des fichiers audio. */
-function serveStatic(res: http.ServerResponse, filePath: string,range?:string): boolean {
+function serveStatic(res: ServerResponse, filePath: string,range?:string): boolean {
   // Only regular files below dist/clients (no directories, no path traversal)
   if (!filePath.startsWith(CLIENTS_ROOT)) return false;
   try { if (!statSync(filePath).isFile()) return false; } catch { return false; }
@@ -56,16 +56,14 @@ function serveStatic(res: http.ServerResponse, filePath: string,range?:string): 
 }
 
 // ── HTTP server ────────────────────────────────────────────────────────────────
-const httpServer = http.createServer(/* Distribue les requêtes entre les API et les fichiers des interfaces compilées. */ (req, res) => {
+/** Distribue les requêtes entre les API et les fichiers des interfaces compilées. */
+const handleRequest: RequestListener = (req, res) => {
   const url = new URL(req.url ?? '/', `http://localhost`);
 
   if (url.pathname === '/api/session') {
     const port = (httpServer.address() as { port: number }).port;
-    const addresses = Object.values(networkInterfaces()).flat()
-      .filter(/* Retient les adresses IPv4 accessibles sur le réseau local. */ iface => iface?.family === 'IPv4' && !iface.internal)
-      .map(/* Construit l’adresse de la console pour chaque interface réseau disponible. */ iface => `http://${iface!.address}:${port}/oz`);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ozUrls: addresses }));
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(sessionAddresses(port, protocol, publicUrl)));
     return;
   }
 
@@ -105,9 +103,17 @@ const httpServer = http.createServer(/* Distribue les requêtes entre les API et
 
   res.writeHead(404);
   res.end('Not found');
-});
+};
 
 // ── WebSocket server ───────────────────────────────────────────────────────────
+let transport: ReturnType<typeof createSessionHttp>;
+try {
+  transport = createSessionHttp(handleRequest);
+} catch (err) {
+  console.error(`[Crashout] ${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+}
+const { server: httpServer, protocol, publicUrl } = transport;
 const wss = new WebSocketServer({ server: httpServer });
 const gameServer = new GameServer(wss,{developerTools:process.env.CRASHOUT_DEV_TOOLS==='1'});
 gameServer.rules.setTangiblePlacementMode('touch');
@@ -118,22 +124,17 @@ export { gameServer };
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
 /** Affiche les adresses de connexion une fois le serveur effectivement lancé. */
-httpServer.listen(PORT, async () => {
-  const os = await import('os');
-  const networkInterfaces = os.networkInterfaces();
-  const localIps = Object.values(networkInterfaces)
-    .flat()
-    .filter(/* Écarte les interfaces internes et les adresses qui ne sont pas IPv4. */ (iface) => iface && iface.family === 'IPv4' && !iface.internal)
-    .map(/* Extrait l’adresse réseau à afficher pour les autres appareils. */ (iface) => iface!.address);
+httpServer.listen(PORT, () => {
+  const { port } = httpServer.address() as { port: number };
+  const { baseUrls, ozUrls, secure } = sessionAddresses(port, protocol, publicUrl);
+  console.log('\n🏎  Crashout Circuit server running');
+  console.log(`   Local:   ${protocol}://localhost:${port}`);
 
-  console.log(`\n🏎  Crashout Circuit server running`);
-  console.log(`   Local:   http://localhost:${PORT}`);
-
-  for (const ip of localIps) {
-    console.log(`   Network: http://${ip}:${PORT}`);
-    console.log(`   Oz:      http://${ip}:${PORT}/oz`);
+  for (const [i, baseUrl] of baseUrls.entries()) {
+    console.log(`   Network: ${baseUrl}`);
+    console.log(`   Oz:      ${ozUrls[i]}`);
   }
-
+  if (!secure) console.log('   HTTP : capteurs iOS indisponibles. Utilisez une adresse HTTPS pour jouer au gyroscope.');
   console.log(`   Outils de test : ${gameServer.getState().developerTools?'activés':'désactivés'}`);
   console.log(`   Config:  lapsToWin=${config.lapsToWin}, physicsHz=${config.physicsHz}\n`);
 });
