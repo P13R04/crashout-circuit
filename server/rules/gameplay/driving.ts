@@ -60,6 +60,8 @@ export function expirePilotInputs(rules: GameRules, now: number): void {
   for (const team of TEAMS) {
     if (now - rules.lastPilotInputAt[team] <= config.pilotInputTimeoutMs) continue;
     rules.inputs[team].steer = 0;
-    if (rules.state.soloTest) rules.inputs[team].throttle = 0;
+    if (rules.state.soloTest || rules.state.seats?.[`${team}-pilot`]?.connected) {
+      rules.inputs[team].throttle = 0;
+    }
   }
 }
