@@ -1,5 +1,6 @@
 /** Met en cache la piste vue du dessus, y compris les croisements et le damier. */
-import type { GameState, TrackGeometry, Vec2 } from '../../server/types.js';
+import type { RaceViewState } from '../../server/protocol/raceView.js';
+import type { TrackGeometry, Vec2 } from '../../server/types.js';
 import { LOGICAL_H, LOGICAL_W } from '../../server/layout.js';
 import { visibleTrackEdges } from '../trackVisibility.js';
 
@@ -12,7 +13,7 @@ export class TrackLayer {
   private colors: MapColors | null = null;
 
   /** Retourne le calque en le redessinant seulement si la géométrie ou le style a changé. */
-  get(state: GameState, colors = MAP_COLORS): HTMLCanvasElement {
+  get(state: RaceViewState, colors = MAP_COLORS): HTMLCanvasElement {
     if (this.version === state.trackVersion && this.colors === colors) return this.layer;
     this.version = state.trackVersion;
     this.colors = colors;

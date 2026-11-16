@@ -92,6 +92,12 @@ const handleRequest: RequestListener = (req, res) => {
     return;
   }
 
+  if (url.pathname === '/watch' || url.pathname === '/watch/') {
+    if (spectators.enabled && serveStatic(res, resolve(CLIENTS_ROOT, 'client-phone/spectator.html'))) return;
+    res.writeHead(404).end();
+    return;
+  }
+
   // Route to the correct client dist folder
   const phone = url.pathname === '/play' || url.pathname.startsWith('/play/');
   const prefix = phone ? '/play' : url.pathname.startsWith('/oz') ? '/oz' : '';

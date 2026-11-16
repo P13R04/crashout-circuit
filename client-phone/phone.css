@@ -60,3 +60,13 @@ body:has(.pilot-screen) main { max-width: 54rem; width: 100%; }
 .pilot-viewport .detail { margin: 0; }
 .pilot-viewport .detail:empty { display: none; }
 .pilot-viewport progress { width: min(100%, 16rem); accent-color: var(--accent); }
+
+main.spectator { width: min(100%, 82rem); padding-top: max(.75rem, env(safe-area-inset-top)); }
+.spectator .pilot-viewport canvas { height: clamp(180px, 72dvh, 820px); }
+.spectator label { display: grid; gap: .3rem; }
+.spectator select, .spectator-link {
+  min-height: 48px; padding: .7rem; border: 1px solid #435569; border-radius: 10px;
+  background: var(--card); color: inherit; font: inherit;
+}
+.spectator-link { display: grid; align-items: center; text-decoration: none; }
+#watch-status:empty { display: none; }

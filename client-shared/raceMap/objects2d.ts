@@ -1,12 +1,13 @@
 /** Dessine les voitures et les objets publics de la course sur le plan. */
-import type { GameState, Team, Vec2 } from '../../server/types.js';
+import type { RaceViewState } from '../../server/protocol/raceView.js';
+import type { Team, Vec2 } from '../../server/types.js';
 import { boostFrame } from '../../server/track/boostGeometry.js';
 
 export const CAR_COLORS: Record<Team, string> = { A: '#69e8fb', B: '#ff80aa' };
 export type CarPose = { pos: Vec2; angle: number };
 
 /** Dessine les éléments mobiles selon l'état de la course et l'horloge partagée. */
-export function drawObjects2d(ctx: CanvasRenderingContext2D, state: GameState,
+export function drawObjects2d(ctx: CanvasRenderingContext2D, state: RaceViewState,
   poses: Record<Team, CarPose>, now: number, own?: Team): void {
   for (const gate of state.boostGates) {
     const { forward, depth } = boostFrame(gate);
@@ -53,7 +54,7 @@ export function drawObjects2d(ctx: CanvasRenderingContext2D, state: GameState,
 }
 
 /** Dessine les bonus disponibles et les zones d'impact des tirs. */
-function drawPickupsAndStones(ctx: CanvasRenderingContext2D, state: GameState, now: number): void {
+function drawPickupsAndStones(ctx: CanvasRenderingContext2D, state: RaceViewState, now: number): void {
   for (const pickup of state.pickups) {
     if (pickup.respawnAt > now) continue;
     ctx.save();

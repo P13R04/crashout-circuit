@@ -147,6 +147,13 @@ function render(): void {
     title.textContent = 'Choisir une équipe';
     screen.replaceChildren(...teams(state.seats, online));
   }
+  if (room && session.canWatch && !seat && !team) {
+    const watch = document.createElement('a');
+    watch.href = '/watch?room=' + room;
+    watch.className = 'spectator-link';
+    watch.textContent = 'Regarder la course';
+    screen.append(watch);
+  }
 }
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden) session.resume(); });

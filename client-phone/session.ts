@@ -29,6 +29,7 @@ export class PhoneSession {
   seat: SeatId | null = null;
   room = '';
   online = false;
+  canWatch = false;
   pending: 'join' | 'leave' | null = null;
   notice = '';
 
@@ -45,12 +46,14 @@ export class PhoneSession {
     }
 
     const generation = ++this.generation;
+    this.canWatch = false;
     this.conn?.close();
     this.notice = 'Connexion à la séance…';
     this.refresh();
     try {
       const info = await readSession();
       if (generation !== this.generation) return;
+      this.canWatch = info.spectators === true;
       if (info.room !== room) {
         this.notice = REJECTION['unknown-room'];
         this.refresh();

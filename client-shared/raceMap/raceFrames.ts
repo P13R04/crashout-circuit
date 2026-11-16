@@ -20,6 +20,7 @@ export function interpolateCar(before: CarPose, after: CarPose, t: number): CarP
 }
 
 export class RaceFrames {
+  constructor(private readonly delay = 50) {}
   private previous: Frame | null = null;
   private current: Frame | null = null;
 
@@ -37,7 +38,7 @@ export class RaceFrames {
     if (!before || frame.state.phase !== 'RACE' || before.state.phase !== 'RACE' || frame.t <= before.t) {
       return frame.state.cars;
     }
-    const ratio = Math.max(0, Math.min(1, (now - 50 - before.t) / (frame.t - before.t)));
+    const ratio = Math.max(0, Math.min(1, (now - this.delay - before.t) / (frame.t - before.t)));
     return {
       A: interpolateCar(before.state.cars.A, frame.state.cars.A, ratio),
       B: interpolateCar(before.state.cars.B, frame.state.cars.B, ratio),
