@@ -25,6 +25,15 @@ try {
   assert.equal(state.phase, 'RACE');
   assert.equal(state.track?.preset, true);
   assert.equal(state.pickups.length, 0);
+  assert.equal(state.driveMode.A, 'auto');
+  assert.equal(game.rules.inputs.A.throttle, 0);
+  pilot.send({ type: 'ToggleDriveMode', team: 'B' });
+  await pilot.flush();
+  assert.equal(state.driveMode.A, 'pedal');
+  assert.equal(state.driveMode.B, 'auto');
+  pilot.send({ type: 'ToggleDriveMode', team: 'B' });
+  await pilot.flush();
+  assert.equal(state.driveMode.A, 'auto');
   assert.deepEqual(Object.values(state.seats).map(s => s.connected), [true, false, false, false]);
 
   const t = Date.now();

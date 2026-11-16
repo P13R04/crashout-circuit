@@ -4,7 +4,7 @@
  */
 import { TEAM_LABEL, playerTeam, roleLabel, SEAT_IDS } from '../client-shared/seatLabels.js';
 import type { Phase, Seat, SeatId, Team } from '../server/types.js';
-import { SoloScreen } from './solo/SoloScreen.js';
+import { PilotScreen } from './pilot/PilotScreen.js';
 import { actionButton as button } from './ui/press.js';
 import { PhoneSession } from './session.js';
 
@@ -24,7 +24,7 @@ const WAITING: Record<Phase, string> = {
 let team: Team | null = null;
 let screenKey = '';
 
-let solo: SoloScreen | null = null;
+let pilot: PilotScreen | null = null;
 
 /** Ajoute un pictogramme et un statut textuel à un choix d'équipe ou de rôle. */
 function choice(label: string, icon: string, detail: string, color: Team, action: () => void, disabled: boolean) {
@@ -106,19 +106,20 @@ function showSeat(seat: SeatId, state: Phase): void {
 function render(): void {
   if (notice.textContent !== session.notice) notice.textContent = session.notice;
   const { state, seat, room, online, pending } = session;
-  if (state?.soloTest && seat) {
-    if (!solo) {
-      solo = new SoloScreen(session);
-      title.textContent = 'Pilote solo';
-      document.body.dataset.team = 'A';
-      screen.replaceChildren(solo.root);
+  if (seat?.endsWith('-pilot') && state && (state.soloTest || state.phase === 'RACE' || state.phase === 'PAUSED')) {
+    if (!pilot) {
+      const team = playerTeam(seat);
+      pilot = new PilotScreen(session, team, state.soloTest);
+      title.textContent = state.soloTest ? 'Pilote solo' : `Pilote · Équipe ${TEAM_LABEL[team]}`;
+      document.body.dataset.team = team;
+      screen.replaceChildren(pilot.root);
     }
-    solo.update(state);
+    pilot.update(state);
     return;
   }
-  if (solo) {
-    solo.close();
-    solo = null;
+  if (pilot) {
+    pilot.close();
+    pilot = null;
     screenKey = '';
   }
   const key = JSON.stringify([room, team, online, seat, pending, state?.soloTest, seat ? state?.phase : state?.seats]);

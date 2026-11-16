@@ -97,7 +97,8 @@ export class PhysicsLoop {
     // Auto mode drives continuously; pedal mode accelerates only while held.
     const automatic = this.state.sessionMode === 'tangibles-test';
     const isPedal = !automatic && this.state.driveMode[car.team] === 'pedal';
-    const throttle = stunned ? 0 : (automatic || isPedal) ? input.throttle : 1;
+    // L'essai solo attend les messages du téléphone même en avance auto.
+    const throttle = stunned ? 0 : (automatic || isPedal || this.state.soloTest) ? input.throttle : 1;
     const steer = stunned ? 0 : input.steer;
 
     const boost = now < car.boostUntil ? 1 + config.boostGain * car.boostK : 1;

@@ -23,12 +23,12 @@ CRASHOUT_SOLO_TEST=1 npm start
 
 Ouvrir la table sur [localhost](http://localhost:3000/). Connecter le téléphone au même réseau, scanner le QR affiché, toucher **Rejoindre comme pilote**, puis **Lancer la course**. Regarder le circuit sur la table. La voiture avance quand le téléphone est au premier plan. Maintenir **Gauche** ou **Droite** pour tourner. **Recommencer** relance le même circuit. Garder le même onglet pour retrouver la place en cas de coupure.
 
-Le lancement ci-dessus utilise HTTP et les commandes tactiles. Le gyroscope sera travaillé avec HTTPS sur la #41. Pour le lancement avec un certificat approuvé, voir la [configuration HTTPS](../README.md#https-pour-les-téléphones).
+Le lancement ci-dessus utilise HTTP et les commandes tactiles. Depuis la #41, configure un certificat approuvé ou un tunnel HTTPS pour activer le volant sur le téléphone. Sur Safari, touche **Activer le volant** et accepte l’accès au capteur. Garde ensuite le téléphone droit pendant la calibration. En course, **Avance auto** bascule vers le mode pédale. Dans ce mode, incline le téléphone vers l’avant ou maintiens **Accélérer**. [Configuration HTTPS](../README.md#https-pour-les-téléphones)
 
 ## Validation restante
 
 - Sur le téléphone physique, vérifier que le Wi-Fi permet d’ouvrir l’adresse du QR, essayer les deux directions, faire une sortie de piste, recommencer et revenir à la page après verrouillage.
-- Pour la recette de la #39, ouvrir une adresse HTTPS de confiance sur Safari iPhone et Chrome Android, puis vérifier la page et la connexion sécurisée du joueur.
+- La recette de la #39 et de la #41 se fait sur Safari iPhone et Chrome Android, via une adresse HTTPS de confiance. Vérifier gauche et droite en portrait et paysage, le recalibrage après rotation, le refus de permission, la pédale et la neutralisation lors du verrouillage de l’écran.
 - Pour valider la #40, démarrer en mode standard et essayer le même QR à quatre, avec choix simultané d’une même place et reprise après une coupure. Le mode solo sert à tester la redirection et la conduite initiale.
 
 ## Prompts à reprendre après validation
