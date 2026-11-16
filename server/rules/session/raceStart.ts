@@ -37,7 +37,7 @@ export function startRace(rules: GameRules, track = generatePreset(), waitForPla
   }
   for (const pad of Object.values(s.repairPads)) { pad.held = false; pad.startedAt = 0; }
   s.walls = []; s.arcs = []; s.boostGates = []; s.stones = [];
-  s.pickups = track.pickupPositions.map(/* Construit chaque ramassable avec une pose sûre et un type adapté au tutoriel ou à la course. */ (pos, i) => ({
+  s.pickups = s.soloTest ? [] : track.pickupPositions.map(/* Construit chaque ramassable avec une pose sûre et un type adapté au tutoriel ou à la course. */ (pos, i) => ({
     id: i, pos: clampToTrackRibbon(pos, track, 25), kind: s.tutorial ? (i%2===0?'slingshot':'boost') : rules.randomItem(), respawnAt: 0,
   }));
   s.winner = null;

@@ -65,6 +65,7 @@ export class PhysicsLoop {
       if (now >= s.sessionStartAt) {
         this.rules.updateAutomaticPilots(now);
         for (const team of TEAMS) {
+          if (s.soloTest && team === 'B') continue;
           const car = s.cars[team];
           const prev = { x: car.pos.x, y: car.pos.y };
           this.integrate(car, this.rules.inputs[team], now, dt);

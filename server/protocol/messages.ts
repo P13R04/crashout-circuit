@@ -4,7 +4,7 @@
  * Réexporté par server/types.ts, qui reste le point d'import unique des types partagés.
  */
 import type { TangibleId } from '../tangibles/tangibles.js';
-import type { Vec2, Team, Phase, ItemKind, Difficulty, TangiblePlacementMode, Tangible, GameState } from './gameState.js';
+import type { Vec2, Team, Phase, ItemKind, Difficulty, TangiblePlacementMode, Tangible, GameState, SeatId } from './gameState.js';
 
 /** Associe un type de commande à son horodatage réseau. */
 export interface BaseMsg {
@@ -197,6 +197,44 @@ export interface PingMsg extends BaseMsg {
   type: 'Ping';
 }
 
+// Séance des joueurs sur téléphone
+/** Demande une place ou reprend une réservation existante. */
+export interface JoinMsg extends BaseMsg {
+  type: 'Join';
+  room: string;
+  seat?: SeatId;
+  token?: string;
+  name?: string;
+}
+
+/** Confirme une place et transmet son jeton à la seule connexion concernée. */
+export interface JoinedMsg extends BaseMsg {
+  type: 'Joined';
+  seat: SeatId;
+  token: string;
+}
+
+/** Explique pourquoi une demande de place a été refusée. */
+export interface JoinRejectedMsg extends BaseMsg {
+  type: 'JoinRejected';
+  reason: 'seat-taken' | 'bad-token' | 'unknown-room' | 'room-full' | 'solo-seat';
+}
+
+/** Lance ou recommence une course du banc de test solo. */
+export interface StartSoloMsg extends BaseMsg {
+  type: 'StartSolo';
+}
+
+/** Demande de libérer son poste avant le départ. */
+export interface LeaveMsg extends BaseMsg {
+  type: 'Leave';
+}
+
+/** Confirme la libération du poste. */
+export interface LeftMsg extends BaseMsg {
+  type: 'Left';
+}
+
 // Server → All (broadcast)
 /** Décrit l’état de partie transmis aux interfaces dans le protocole partagé. */
 export interface StateMsg extends BaseMsg {
@@ -229,6 +267,9 @@ export interface PhaseChangeMsg extends BaseMsg {
 
 /** Réunit les commandes que le serveur peut recevoir des deux interfaces. */
 export type ClientMessage =
+  | JoinMsg
+  | LeaveMsg
+  | StartSoloMsg
   | RaceSettingsMsg
   | StrokeDrawMsg
   | GenerateTrackMsg
@@ -261,4 +302,4 @@ export type ClientMessage =
   | TestToggleMsg;
 
 /** Réunit les états, phases et retours que les interfaces peuvent recevoir du serveur. */
-export type ServerMessage = StateMsg | FeedbackMsg | PhaseChangeMsg | PongMsg;
+export type ServerMessage = StateMsg | FeedbackMsg | PhaseChangeMsg | PongMsg | JoinedMsg | JoinRejectedMsg | LeftMsg;

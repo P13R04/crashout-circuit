@@ -12,10 +12,11 @@ import { themeLook } from '../themes/themes.js';
 import { glow, NEON, plate } from '../themes/neon/neon.js';
 import type { Ctx } from './rendererTypes.js';
 import { START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, RESULT_BUTTON, PAUSE_BUTTON, RACE_START_BUTTON } from './rendererButtons.js';
+import { drawLobbyJoin } from './lobbyJoin.js';
 import type { Renderer } from './Renderer.js';
 
 /** Dessine l’accueil et ses boutons sans révéler les modes de test lors d’une séance publique. */
-export function drawLobby(renderer: Renderer, ctx: Ctx, developerTools=false): void {
+export function drawLobby(renderer: Renderer, ctx: Ctx, developerTools = false, seats?: GameState['seats'], soloTest = false): void {
   ctx.save(); ctx.textAlign = 'center';
   for (const rot of [0, Math.PI]) {
     ctx.save(); ctx.translate(LOGICAL_W / 2, LOGICAL_H / 2); ctx.rotate(rot);
@@ -25,7 +26,13 @@ export function drawLobby(renderer: Renderer, ctx: Ctx, developerTools=false): v
     ctx.fillText('CRASHOUT', 0, -202);
     ctx.fillStyle = '#96bacd'; ctx.font = '500 22px monospace'; ctx.fillText('C I R C U I T', 0, -165); ctx.restore();
   }
-  for (const [button, glyph, label, color] of [
+  if (soloTest) {
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 34px system-ui';
+    ctx.fillText('Essai pilote solo', LOGICAL_W / 2, 488);
+    ctx.font = '500 23px system-ui';
+    ctx.fillText('Scannez le QR pour lancer la course.', LOGICAL_W / 2, 536);
+  } else for (const [button, glyph, label, color] of [
     [START_TUTORIAL_BUTTON, 'draw', 'TUTORIEL', '#ffce66'],
     [START_TABLE_BUTTON, 'flag', 'COURSE', '#00e5ff'],
     ...(developerTools?[[START_PC_BUTTON, 'mouse', 'CLAVIER', '#ff4081'],[START_TANGIBLE_TEST_BUTTON, 'wrench', 'ESSAI OBJETS', '#61f4ba']] as const:[]),
@@ -40,6 +47,7 @@ export function drawLobby(renderer: Renderer, ctx: Ctx, developerTools=false): v
     }
   }
   ctx.restore();
+  if (renderer.lobbyJoin && seats) drawLobbyJoin(ctx, renderer.lobbyJoin, seats, soloTest);
 }
 
 // ─── Overlays ─────────────────────────────────────────────────────────────
@@ -127,7 +135,8 @@ export function drawResult(renderer: Renderer, ctx: Ctx, state: GameState): void
     if (winner === 'draw') {
       ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 22px sans-serif'; ctx.fillText('Égalité', 0, -168);
     }
-    for (const [team, x] of [['A', -140], ['B', 140]] as const) {
+    const standings = state.soloTest ? [['A', 0]] as const : [['A', -140], ['B', 140]] as const;
+    for (const [team, x] of standings) {
       const c = TEAM_COLOR[team];
       ctx.fillStyle = `${c}14`; ctx.strokeStyle = c; ctx.lineWidth = winner === team ? 4 : 1;
       ctx.beginPath(); ctx.roundRect(x - 100, -143, 200, 90, 16); ctx.fill(); ctx.stroke();

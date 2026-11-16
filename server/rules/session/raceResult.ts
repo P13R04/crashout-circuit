@@ -17,7 +17,7 @@ export function checkEnd(rules: GameRules, now: number): void {
   for (const t of TEAMS) if (s.cars[t].lap >= s.params.lapsToWin) { winner = t; break; }
   if (!winner && s.raceDeadline>0 && now >= s.raceDeadline) {
     const a = progress(s.cars.A), b = progress(s.cars.B);
-    winner = a === b ? 'draw' : a > b ? 'A' : 'B';
+    winner = s.soloTest ? 'A' : a === b ? 'draw' : a > b ? 'A' : 'B';
   }
   if (!winner) return;
   s.winner = winner;

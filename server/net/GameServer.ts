@@ -1,14 +1,16 @@
 /**
- * Accepte les connexions table et Oz, filtre leurs commandes par rôle et diffuse l’état et les retours du
+ * Accepte les connexions table, Oz et joueur, filtre leurs commandes par rôle et diffuse l’état et les retours du
  * jeu.
  * Liens : server/rules/GameRules.ts, server/PhysicsLoop.ts, server/types.ts, server/config.ts.
  * Référencé par server/index.ts, scripts/network/network-acceptance.ts, scripts/game/public-session.ts.
  */
 import { WebSocket, WebSocketServer } from 'ws';
-import { IncomingMessage } from 'http';
+import type { IncomingMessage } from 'node:http';
+import { randomInt, randomUUID } from 'node:crypto';
 import type {
   GameState,
-  Team,
+  SeatId,
+  JoinMsg,
   Phase,
   ClientMessage,
   ServerMessage,
@@ -21,36 +23,46 @@ import { config } from '../config.js';
 import { GameRules, createInitialState } from '../rules/GameRules.js';
 import type { RulesHost } from '../rules/GameRules.js';
 import { PhysicsLoop } from '../PhysicsLoop.js';
+import { PlayerSeats, isSeatId } from '../rules/session/playerSeats.js';
+import { handlePlayerCommand, releasePlayerControls } from './playerCommands.js';
+import { handleTableSession, handleTableGameplay, releaseTableSteering } from './tableCommands.js';
+import { handleOzCommand } from './ozCommands.js';
 
 /** Distingue les droits des connexions de table et de console opérateur. */
-export type ClientRole = 'table' | 'oz';
+export type ClientRole = 'table' | 'oz' | 'player';
 
-/** Conserve la connexion, le rôle et la date d’arrivée d’un client du serveur. */
+/** Conserve la connexion, le rôle et l’identité d’un client du serveur. */
 interface ConnectedClient {
   ws: WebSocket;
   role: ClientRole;
-  connectedAt: number;
+  id: symbol;
 }
 
 /** Regroupe les options de démarrage qui autorisent ou masquent les outils de développement. */
 export interface GameServerOptions {
   developerTools?: boolean;
+  soloTest?: boolean;
 }
 
-/** Accepte les connexions table et Oz, filtre leurs commandes par rôle et diffuse l’état et les retours du jeu. */
+/** Accepte les connexions table, Oz et joueur, filtre leurs commandes par rôle et diffuse l’état et les retours du jeu. */
 export class GameServer {
   private wss: WebSocketServer;
   private clients: Set<ConnectedClient> = new Set();
   private state: GameState;
+  private readonly playerSeats: PlayerSeats;
+  private readonly mobilePads = new Set<SeatId>();
   private broadcastTrackVersion = -1;
+  readonly room = makeRoomCode();
   readonly rules: GameRules;
   readonly physics: PhysicsLoop;
 
   /** Crée les règles et la simulation puis branche les nouvelles connexions sur l’état partagé. */
-  constructor(wss: WebSocketServer, private options:GameServerOptions={}) {
+  constructor(wss: WebSocketServer, options: GameServerOptions = {}) {
     this.wss = wss;
     this.state = createInitialState();
-    this.state.developerTools=options.developerTools===true;
+    this.playerSeats = new PlayerSeats(this.state.seats, randomUUID);
+    this.state.developerTools = options.developerTools === true;
+    this.state.soloTest = options.soloTest === true;
     const host: RulesHost = {
       /** Diffuse le retour d’action avec son équipe et le type de bonus lorsqu’il est connu. */
       feedback: (kind, x, y, team, itemKind) =>
@@ -72,7 +84,7 @@ export class GameServer {
     const url = new URL(req.url ?? '/', `http://localhost`);
     const role = this.resolveRole(url);
 
-    const client: ConnectedClient = { ws, role, connectedAt: Date.now() };
+    const client: ConnectedClient = { ws, role, id: Symbol(role) };
     this.clients.add(client);
     console.log(`[GameServer] Client connected: ${role} (total: ${this.clients.size})`);
 
@@ -87,24 +99,13 @@ export class GameServer {
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString()) as ClientMessage;
-        this.handleMessage(client, msg);
+        if (msg && typeof msg.type === 'string') this.handleMessage(client, msg);
       } catch (err) {
         console.warn('[GameServer] Malformed message:', err);
       }
     });
 
-    /** Retire la connexion fermée et relâche les commandes qui n’ont plus de client pour les maintenir. */
-    ws.on('close', () => {
-      this.clients.delete(client);
-      if (![...this.clients].some(/* Vérifie si un autre client du même rôle conserve encore la session opérateur. */ c=>c.role===client.role)) this.rules.cancelTangiblePlacement();
-      console.log(`[GameServer] Client disconnected: ${client.role} (total: ${this.clients.size})`);
-      if (client.role === 'table' && ![...this.clients].some(/* Vérifie si une table connectée peut encore renouveler les appuis des joueurs. */ (c) => c.role === 'table')) {
-        // No table left: nothing may stay pressed
-        this.rules.releaseAllPads();
-        this.rules.inputs.A = { throttle: 0, steer: 0 };
-        this.rules.inputs.B = { throttle: 0, steer: 0 };
-      }
-    });
+    ws.on('close', () => this.onDisconnect(client));
 
     /** Signale l’erreur réseau en précisant le rôle du client concerné. */
     ws.on('error', (err) => {
@@ -112,144 +113,107 @@ export class GameServer {
     });
   }
 
-  /** Déduit le rôle table ou Oz du chemin de connexion WebSocket. */
+  /** Déduit le rôle du chemin WebSocket. */
   private resolveRole(url: URL): ClientRole {
     const path = url.pathname.replace(/^\/ws(?=\/|$)/, '') || '/';
+    if (/^\/player(?:\/|$)/.test(path)) return 'player';
     return path.startsWith('/oz') ? 'oz' : 'table';
   }
 
-  // Commandes acceptées par rôle ; les outils de développement sont filtrés ici.
-  /** Aiguille la commande vers les règles autorisées pour son rôle et son mode de session. */
-  private handleMessage(client: ConnectedClient, msg: ClientMessage): void {
-    const fromTable = client.role === 'table';
-    const fromOz = client.role === 'oz';
-
-    switch (msg.type) {
-      // Renvoie l’horodatage nécessaire à la mesure du délai réseau.
-      case 'Ping':
-        this.sendTo(client.ws, { type: 'Pong', t: Date.now(), clientT: msg.t } satisfies PongMsg);
-        break;
-      // Table → server (the pilot joystick and item button live on the table)
-      // Transmet les réglages de course reçus de la table aux règles du jeu.
-      case 'RaceSettings':
-        if(fromTable)this.rules.updateRaceSettings(msg);
-        break;
-      // Applique les commandes de conduite de l’équipe identifiée par la table.
-      case 'PilotInput':
-        if (fromTable && (msg.team === 'A' || msg.team === 'B')) this.rules.onPilotInput(msg.team, msg);
-        break;
-      // Autorise le copilote à armer le bonus de son équipe.
-      case 'Power':
-        if (fromTable && msg.role === 'copilot' && (msg.team === 'A' || msg.team === 'B')) this.rules.onPower(msg.team, msg);
-        break;
-      // Ouvre la création du circuit depuis l’accueil, en réservant le mode PC aux outils de développement.
-      case 'StartGame':
-        if (fromTable && this.state.phase === 'LOBBY' && (msg.mode===undefined||msg.mode==='table'||msg.mode==='pc'&&this.state.developerTools)) this.rules.enterMap(msg.mode);
-        break;
-      // Démarre l’essai des tangibles seulement si les outils de développement sont activés.
-      case 'StartTangibleTest':
-        if (fromTable && this.state.developerTools) this.rules.startTangibleTest();
-        break;
-      // Lance le tutoriel dans le mode d’entrée autorisé.
-      case 'StartTutorial':
-        if (fromTable && this.state.phase === 'LOBBY' && (msg.mode===undefined||msg.mode==='table'||msg.mode==='pc'&&this.state.developerTools)) this.rules.startTutorial(msg.mode === 'pc' ? 'pc' : 'table');
-        break;
-      // Passe du tutoriel à la préparation de la course normale.
-      case 'TutorialRace':
-        if (fromTable) this.rules.tutorialRace();
-        break;
-      // Permet à la table de passer la leçon courante de l’équipe.
-      case 'TutorialSkip':
-        if (fromTable) this.rules.tutorialSkip(msg.team);
-        break;
-      // Change les aides de test uniquement lorsque le serveur les autorise.
-      case 'TestToggle':
-        if (fromTable && this.state.developerTools) this.rules.onTestToggle(msg);
-        break;
-      // Bascule la pause de la séance depuis la table.
-      case 'Pause':
-        if (fromTable) this.rules.togglePause();
-        break;
-      // Transmet le changement de conduite de l’équipe aux règles.
-      case 'ToggleDriveMode':
-        if (fromTable) this.rules.toggleDriveMode(msg.team);
-        break;
-      // Enregistre le demi-circuit dessiné par une équipe.
-      case 'StrokeDraw':
-        if (fromTable) this.rules.onStrokeDraw(msg);
-        break;
-      // Demande la construction du circuit à partir des tracés reçus.
-      case 'GenerateTrack':
-        if (fromTable) this.rules.onGenerateTrack();
-        break;
-      // Démarre le départ lorsque le circuit est prêt.
-      case 'BeginRace':
-        if (fromTable) this.rules.beginRace();
-        break;
-      // Valide les deux contacts qui séparent les moitiés de dessin.
-      case 'MapDivider':
-        if (fromTable) this.rules.onMapDivider(msg);
-        break;
-      // Transmet le maintien du bouton de réparation.
-      case 'PadHold':
-        if (fromTable) this.rules.onPadHold(msg);
-        break;
-      // Valide et lance le tir reconnu par la table.
-      case 'Slingshot':
-        if (fromTable) this.rules.onSlingshot(msg);
-        break;
-      // Valide la zone de boost reconnue par la table.
-      case 'BoostGate':
-        if (fromTable) this.rules.onBoostGate(msg);
-        break;
-      // Transmet la déformation locale du circuit aux règles.
-      case 'BorderPull':
-        if (fromTable) this.rules.onBorderPull(msg);
-        break;
-      // Ramène la séance à l’accueil sur demande de la table.
-      case 'Reset':
-        if (fromTable) {
-          this.rules.resetToLobby();
-        }
-        break;
-      // Réinitialise la séance pour une nouvelle partie.
-      case 'NewGame':
-        if (fromTable) {
-          this.rules.resetToLobby();
-        }
-        break;
-      // Oz console (or a future TUIO bridge on the table) → server
-      // Choisit depuis la console la pose manuelle ou la pose repérée par les doigts.
-      case 'TangiblePlacementMode':
-        if (fromOz) this.rules.setTangiblePlacementMode(msg.mode);
-        break;
-      // Réserve le prochain geste de pose au tangible choisi dans la console.
-      case 'TangiblePrepare':
-        if (fromOz) this.rules.prepareTangiblePlacement(msg.id);
-        break;
-      // Annule depuis la console l’attente du prochain tangible.
-      case 'TangiblePlacementCancel':
-        if (fromOz) this.rules.cancelTangiblePlacement();
-        break;
-      // Applique la position et l’orientation mesurées par les deux contacts sur la table.
-      case 'TangibleTouchPlaced':
-        if (fromTable) this.rules.onTangibleTouchPlaced(msg);
-        break;
-      // Applique l’activation ou la désactivation demandée par le magicien.
-      case 'TangibleControl':
-        if (fromOz) this.rules.onTangibleControl(msg);
-        break;
-      // Applique le placement manuel reçu de la console.
-      case 'TangibleMoved':
-        if (fromOz) this.rules.onTangibleMoved(msg);
-        break;
-      // Retire de la simulation le tangible enlevé physiquement.
-      case 'TangibleRemoved':
-        if (fromOz) this.rules.onTangibleRemoved(msg);
-        break;
-      default:
-        break;
+  /** Retire la connexion et relâche uniquement les appuis encore associés à son interface. */
+  private onDisconnect(client: ConnectedClient): void {
+    this.clients.delete(client);
+    console.log(`[GameServer] Client disconnected: ${client.role} (total: ${this.clients.size})`);
+    if (client.role === 'player') {
+      const seat = this.playerSeats.disconnect(client.id, this.state.phase, Date.now());
+      if (seat) {
+        this.mobilePads.delete(seat);
+        releasePlayerControls(this.rules, seat);
+        this.broadcastTick();
+      }
+      return;
     }
+    if ([...this.clients].some(c => c.role === client.role)) return;
+    this.rules.cancelTangiblePlacement();
+    if (client.role !== 'table') return;
+    releaseTableSteering(this.rules);
+    for (const [seat, pad] of Object.entries(this.state.repairPads)) {
+      if (isSeatId(seat) && this.mobilePads.has(seat)) continue;
+      pad.held = false;
+      pad.startedAt = 0;
+    }
+  }
+
+  /** Aiguille uniquement les messages autorisés par le rôle de la connexion. */
+  private handleMessage(client: ConnectedClient, msg: ClientMessage): void {
+    if (msg.type === 'Ping') {
+      this.sendTo(client.ws, { type: 'Pong', t: Date.now(), clientT: msg.t } satisfies PongMsg);
+      return;
+    }
+    if (client.role === 'oz') {
+      if (!this.state.soloTest) handleOzCommand(this.rules, msg);
+      return;
+    }
+    if (client.role === 'table') {
+      if (msg.type === 'PadHold') {
+        const seat = `${msg.team}-${msg.role}`;
+        if (isSeatId(seat)) this.mobilePads.delete(seat);
+      }
+      handleTableSession(this.rules, msg);
+      handleTableGameplay(this.rules, msg);
+      return;
+    }
+
+    if (msg.type === 'Join') {
+      this.joinPlayer(client, msg);
+      return;
+    }
+    if (msg.type === 'Leave') {
+      this.leavePlayer(client);
+      return;
+    }
+    const seat = this.playerSeats.seatOf(client.id);
+    if (!seat) return;
+    const held = handlePlayerCommand(this.rules, seat, msg);
+    if (msg.type !== 'PadHold' || typeof msg.on !== 'boolean') return;
+    if (held) this.mobilePads.add(seat);
+    else this.mobilePads.delete(seat);
+  }
+
+  /** Confirme ou refuse la demande d'une place sans diffuser le jeton de réservation. */
+  private joinPlayer(client: ConnectedClient, msg: JoinMsg): void {
+    if (msg.token !== undefined && typeof msg.token !== 'string') return;
+    if (msg.name !== undefined && typeof msg.name !== 'string') return;
+    const now = Date.now();
+    if (msg.room !== this.room) {
+      this.sendTo(client.ws, { type: 'JoinRejected', t: now, reason: 'unknown-room' });
+      return;
+    }
+    if (this.state.soloTest && msg.seat !== undefined && msg.seat !== 'A-pilot') {
+      this.sendTo(client.ws, { type: 'JoinRejected', t: now, reason: 'solo-seat' });
+      return;
+    }
+    const result = this.playerSeats.claim(client.id, msg, now);
+    if ('reason' in result) {
+      this.sendTo(client.ws, { type: 'JoinRejected', t: now, reason: result.reason });
+      return;
+    }
+    this.sendTo(client.ws, { type: 'Joined', t: now, seat: result.seat, token: result.token });
+    if (result.changed) {
+      this.mobilePads.delete(result.seat);
+      releasePlayerControls(this.rules, result.seat);
+      this.broadcastTick();
+    }
+  }
+
+  /** Libère une place à la demande du joueur si la course n'a pas commencé. */
+  private leavePlayer(client: ConnectedClient): void {
+    const seat = this.playerSeats.leave(client.id, this.state.phase);
+    if (!seat) return;
+    this.mobilePads.delete(seat);
+    releasePlayerControls(this.rules, seat);
+    this.sendTo(client.ws, { type: 'Left', t: Date.now() });
+    this.broadcastTick();
   }
 
   /** Change la phase et avertit tous les clients de la transition. */
@@ -267,6 +231,7 @@ export class GameServer {
   /** Diffuse l’état courant en joignant la piste seulement lorsque sa version change. */
   // Synchronisation : snapshots allégés par tick, géométrie complète lors d’un changement.
   private broadcastTick(): void {
+    this.playerSeats.expire(Date.now());
     const changed = this.broadcastTrackVersion !== this.state.trackVersion;
     this.broadcast({
       type: 'State',
@@ -318,4 +283,10 @@ export class GameServer {
       ws.send(JSON.stringify(msg));
     }
   }
+}
+
+/** Tire un code de séance à cinq caractères faciles à dicter. */
+function makeRoomCode(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({ length: 5 }, () => alphabet[randomInt(alphabet.length)]).join('');
 }

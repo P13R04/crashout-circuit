@@ -2,7 +2,7 @@
 
 Prototype de course asymétrique pour une grande table multitouch et un ordinateur « magicien d’Oz » sur le même Wi-Fi. Deux équipes ont chacune un pilote et un copilote. Le serveur partage et valide l’état de jeu ; Oz remplace pour l’instant les capteurs des objets tangibles.
 
-## Lancer et connecter les deux écrans
+## Lancer et connecter les interfaces
 
 Node.js ≥ 20 et Chrome / Edge sont recommandés.
 
@@ -14,9 +14,24 @@ npm start
 
 - **Table** : `http://localhost:3000/` sur l’ordinateur relié à la table, en plein écran.
 - **Magicien d’Oz** : `http://<ip-de-la-table>:3000/oz` sur un ordinateur, une tablette ou un téléphone du même Wi-Fi. Accès direct par cette adresse, sans code ni connexion supplémentaire. L’adresse exacte est affichée au démarrage. `localhost` désigne toujours l’ordinateur sur lequel le navigateur est ouvert.
+- **Téléphones** : scanner le QR de l’accueil, ou ouvrir `/play` sur l’adresse de la séance et saisir le code affiché. Choisir l’équipe puis le rôle.
 - Pour changer le port : `PORT=3100 npm start`.
 
 Le serveur doit rester ouvert pendant la séance. Les deux appareils doivent pouvoir communiquer sur le réseau local (un Wi-Fi invité qui isole les appareils ne convient pas). Ce prototype est prévu pour le réseau local de la séance ; il n’implémente pas de compte utilisateur.
+
+### HTTPS pour les téléphones
+
+En HTTP sur le Wi-Fi, Safari iOS ne donne pas accès aux capteurs d’orientation. Le serveur affiche « capteurs iOS indisponibles » si aucune adresse HTTPS n’est configurée. [Documentation du navigateur](https://developer.mozilla.org/fr/docs/Web/API/DeviceOrientationEvent/requestPermission_static)
+
+**Tunnel HTTPS.** Après le build, ouvrir un tunnel avec `cloudflared tunnel --url http://localhost:3000`. Copier l’adresse HTTPS annoncée, puis lancer `CRASHOUT_PUBLIC_URL=https://votre-adresse.trycloudflare.com npm start` dans un autre terminal. Cette adresse peut être ouverte sur les téléphones sans installer de certificat. Les interfaces de la séance sont accessibles aux personnes qui disposent de l’URL du tunnel. [Documentation du tunnel](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
+
+**Certificat sur le réseau local.** Après `mkcert -install`, générer un certificat qui couvre les adresses réellement utilisées, par exemple `mkcert -key-file /chemin/table-key.pem -cert-file /chemin/table-cert.pem localhost 192.168.1.42`. Installer et approuver l’autorité mkcert (`rootCA.pem`, dossier indiqué par `mkcert -CAROOT`) sur chaque téléphone. Sur iOS, activer également la confiance totale pour cette autorité dans les réglages des certificats. [Documentation de mkcert](https://github.com/FiloSottile/mkcert#mobile-devices)
+
+```bash
+CRASHOUT_TLS_KEY=/chemin/table-key.pem CRASHOUT_TLS_CERT=/chemin/table-cert.pem npm start
+```
+
+Ouvrir l’adresse HTTPS annoncée au démarrage. Les deux chemins PEM sont nécessaires pour démarrer avec TLS.
 
 ### Mettre à jour la version de séance
 
@@ -44,7 +59,7 @@ npm run build:server
 npm run dev
 ```
 
-Ouvrir `http://localhost:5173/client-table/` et `http://localhost:5173/client-oz/`. Vite relaie les échanges et les API vers le serveur du port 3000. Après une modification du serveur, relancer `npm run build:server`.
+Ouvrir `http://localhost:5173/client-table/` , `http://localhost:5173/client-oz/` et `http://localhost:5173/client-phone/`. Vite relaie les échanges et les API vers le serveur du port 3000. Après une modification du serveur, relancer `npm run build:server`.
 
 ## Déroulement
 

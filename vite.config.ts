@@ -14,7 +14,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         table:  resolve(__dirname, 'client-table/index.html'),
-              oz:     resolve(__dirname, 'client-oz/index.html'),
+        oz: resolve(__dirname, 'client-oz/index.html'),
+        phone: resolve(__dirname, 'client-phone/index.html'),
       },
     },
   },
