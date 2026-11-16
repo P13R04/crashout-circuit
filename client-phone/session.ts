@@ -25,9 +25,11 @@ export class PhoneSession {
   private confirmed = false;
   readonly sync = new StateSync();
   state: GameState | null = null;
+  stateTime = 0;
   seat: SeatId | null = null;
   room = '';
   online = false;
+  canWatch = false;
   pending: 'join' | 'leave' | null = null;
   notice = '';
 
@@ -44,12 +46,14 @@ export class PhoneSession {
     }
 
     const generation = ++this.generation;
+    this.canWatch = false;
     this.conn?.close();
     this.notice = 'Connexion à la séance…';
     this.refresh();
     try {
       const info = await readSession();
       if (generation !== this.generation) return;
+      this.canWatch = info.spectators === true;
       if (info.room !== room) {
         this.notice = REJECTION['unknown-room'];
         this.refresh();
@@ -131,6 +135,7 @@ export class PhoneSession {
     switch (msg.type) {
       case 'State':
         this.state = this.sync.apply(msg.state, msg.t);
+        this.stateTime = msg.t;
         if (this.pending === 'leave' && !['LOBBY', 'MAP', 'READY'].includes(msg.state.phase)) {
           this.pending = null;
         }

@@ -4,6 +4,7 @@ export interface SessionInfo {
   baseUrls: string[];
   ozUrls: string[];
   secure: boolean;
+  spectators?: boolean;
 }
 
 /** Renvoie les informations actuelles de la séance. */

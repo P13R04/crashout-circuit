@@ -3,6 +3,7 @@
  * Liens : server/tangibles/tangibles.ts, server/rules/GameRules.ts.
  * Réexporté par server/types.ts, qui reste le point d'import unique des types partagés.
  */
+import type { ThemeId } from './theme.js';
 import type { TangibleId } from '../tangibles/tangibles.js';
 
 /** Représente une position ou un vecteur à deux coordonnées. */
@@ -246,6 +247,7 @@ export interface TrackPresentation {
 /** Regroupe tout l’état de partie validé par le serveur et synchronisé avec les interfaces. */
 export interface GameState {
   phase: Phase;
+  theme: ThemeId;
   /** Test sessions use the same physics with automated pilot controls. */
   sessionMode: 'race' | 'tangibles-test';
   /** Host opt-in only; participants cannot enable test tools with a URL or command. */

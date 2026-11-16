@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Crashout Circuit · Spectateur</title>
+  <link rel="stylesheet" href="./phone.css">
+</head>
+<body>
+  <main class="spectator">
+    <header><p class="brand">CRASHOUT CIRCUIT</p><h1>Spectateur</h1></header>
+    <p id="watch-status" role="status" aria-live="polite">Connexion à la course…</p>
+    <div id="watch-view" class="pilot-viewport">
+      <div id="watch-options" class="view-controls" hidden>
+        <label>Caméra
+          <select id="camera">
+            <option value="overview">Circuit entier</option>
+            <option value="air">Survol</option>
+            <option value="broadcast">Poursuite plongeante</option>
+          </select>
+        </label>
+        <label id="car-choice" hidden>Voiture suivie
+          <select id="watch-team">
+            <option value="A">Cyan</option>
+            <option value="B">Rose</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  </main>
+  <script type="module" src="./spectator/main.ts"></script>
+</body>
+</html>

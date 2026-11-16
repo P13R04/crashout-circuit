@@ -14,6 +14,11 @@ export interface BaseMsg {
 
 // Table → Server
 /** Décrit le réglage de course dans le protocole partagé. */
+export interface SetThemeMsg extends BaseMsg {
+  type: 'SetTheme';
+  theme: import('./theme.js').ThemeId;
+}
+
 export interface RaceSettingsMsg extends BaseMsg {
   type: 'RaceSettings'; difficulty?: Difficulty; lapsToWin?: number; sessionMaxSeconds?: number;
 }
@@ -271,6 +276,7 @@ export type ClientMessage =
   | LeaveMsg
   | StartSoloMsg
   | RaceSettingsMsg
+  | SetThemeMsg
   | StrokeDrawMsg
   | GenerateTrackMsg
   | BeginRaceMsg

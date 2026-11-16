@@ -36,7 +36,14 @@ export function createMessageHandler(app: TableApp, hooks: MessageHooks): (msg: 
         gestures.syncState();
         // L'ambiance est une préférence locale sûre : elle reste disponible pendant les séances publiques.
         document.getElementById('theme-settings')!.hidden=false;
-        if(!prev&&view.state.developerTools){view.debug.on=urlParams.get('debug')==='1';applyTuning(location.search);try{selectTheme(loadTheme(window.localStorage));}catch{/* Keep Ferraille. */}}
+        if (view.theme !== view.state.theme) selectTheme(view.state.theme, false);
+        if (!prev && view.state.developerTools) {
+          view.debug.on = urlParams.get('debug') === '1';
+          applyTuning(location.search);
+          if (!view.state.soloTest) {
+            try { selectTheme(loadTheme(window.localStorage)); } catch { /* Préférence facultative. */ }
+          }
+        }
         if(!view.state.developerTools){view.debug.on=false;simBar.remove();testBar.remove();}
         view.tutorialMode=view.state.developerTools&&urlParams.get('tutorial')==='pc'?'pc':'table';
         syncDriveOptions();

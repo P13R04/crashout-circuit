@@ -8,8 +8,8 @@ import type { TableApp } from './tableApp.js';
 
 /** Construit les aperçus de thème, applique l'ambiance Ferraille et suit la préférence de mouvement du navigateur. */
 export function setupDisplayPreferences(app: TableApp): { selectTheme: (id: ThemeId, persist?: boolean) => void } {
-  const { canvas, view, urlParams } = app;
-  // Themes are a local display setting: switching never sends a command or restarts a race.
+  const { canvas, view, urlParams, conn } = app;
+  // Le changement d’ambiance est partagé et laisse la course en cours.
   const themeOptions = document.getElementById('theme-options')!;
   // Construit les aperçus de thèmes conservés dans les paramètres de développement.
   for (const theme of THEMES) {
@@ -24,7 +24,9 @@ export function setupDisplayPreferences(app: TableApp): { selectTheme: (id: Them
   }
   /** Applique la palette aux couches Canvas et aux paramètres HTML sans redémarrer la partie. */
   function selectTheme(id: ThemeId, persist=true): void {
-    view.theme = id; try { if(persist)saveTheme(window.localStorage, id); } catch { /* Display preference still applies. */ }
+    view.theme = id;
+    if (persist) conn.send({ type: 'SetTheme', theme: id });
+    try { if(persist)saveTheme(window.localStorage, id); } catch { /* Display preference still applies. */ }
     document.body.dataset.theme = id; canvas.dataset.theme = id;
     const look=themeLook(id);
     for(const [key,value] of Object.entries(look))document.body.style.setProperty(`--look-${key}`,typeof value==='number'?`${value}px`:value);

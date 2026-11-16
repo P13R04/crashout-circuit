@@ -16,7 +16,7 @@
     "start": "node dist/server/index.js",
     "typecheck": "tsc --noEmit",
     "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
-    "check": "npm run typecheck && npm run typecheck:server && npm run check:sizes && npm run test:file-sizes && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run test:seats && npm run test:phone-session && npm run test:solo-session && npm run test:gyro && npm run test:audio && npm run test:track-creation && npm run test:public-session && npm run test:pickups && npm run build && npm run test:https",
+    "check": "npm run typecheck && npm run typecheck:server && npm run check:sizes && npm run test:file-sizes && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run test:seats && npm run test:phone-session && npm run test:solo-session && npm run test:gyro && npm run test:phone-views && npm run test:audio && npm run test:track-creation && npm run test:public-session && npm run test:pickups && npm run build && npm run test:https && npm run test:spectator",
     "check:sizes": "tsx scripts/quality/file-sizes.ts",
     "test:file-sizes": "tsx scripts/quality/file-sizes-test.ts",
     "sim:sling": "tsx scripts/game/sling-balance.ts",
@@ -30,7 +30,7 @@
     "test:race-settings": "tsx scripts/game/race-settings.ts",
     "test:boost": "tsx scripts/gestures/boost.ts",
     "test:tangible-touch": "tsx scripts/gestures/tangible-touch.ts",
-    "verify": "npm run typecheck && npm run check:sizes && npm run test:file-sizes && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run test:seats && npm run test:phone-session && npm run test:solo-session && npm run test:gyro && npm run test:visuals && npm run test:tangibles && npm run test:autopilot && npm run test:boost && npm run test:tangible-touch && npm run test:race-settings && npm run test:reservations && npm run test:audio && npm run test:track-creation && npm run test:public-session && npm run test:pickups && npm run build && npm run test:https",
+    "verify": "npm run typecheck && npm run check:sizes && npm run test:file-sizes && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run test:seats && npm run test:phone-session && npm run test:solo-session && npm run test:gyro && npm run test:phone-views && npm run test:visuals && npm run test:tangibles && npm run test:autopilot && npm run test:boost && npm run test:tangible-touch && npm run test:race-settings && npm run test:reservations && npm run test:audio && npm run test:track-creation && npm run test:public-session && npm run test:pickups && npm run build && npm run test:https && npm run test:spectator",
     "test:audio": "tsx scripts/rendering/audio.ts",
     "test:track-creation": "tsx scripts/game/track-creation.ts",
     "test:public-session": "tsx scripts/game/public-session.ts",
@@ -38,16 +38,20 @@
     "test:seats": "tsx scripts/network/seats.ts",
     "test:phone-session": "tsx scripts/network/phone-session.ts",
     "test:solo-session": "tsx scripts/network/solo-session.ts",
+    "test:phone-views": "tsx scripts/phone/phone-views.ts",
     "test:gyro": "tsx scripts/phone/gyro.ts",
+    "test:spectator": "tsx scripts/network/spectator-session.ts",
     "test:https": "tsx scripts/network/https-session.ts"
   },
   "dependencies": {
     "qrcode": "^1.5.4",
+    "three": "0.187.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/qrcode": "^1.5.6",
+    "@types/three": "0.187.0",
     "@types/ws": "^8.5.13",
     "concurrently": "^9.0.0",
     "tsx": "^4.19.0",

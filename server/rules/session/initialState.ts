@@ -37,6 +37,7 @@ export function makeCar(team: Team): Car {
 export function createInitialState(): GameState {
   return {
     phase: 'LOBBY',
+    theme: 'scrap',
     sessionMode: 'race',
     developerTools: false,
     soloTest: false,
