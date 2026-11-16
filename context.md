@@ -1,11 +1,122 @@
 # CRASHOUT — Fiche technique unique
 
-Projet étudiant Polytech Nice Sophia, simulé en startup. Interface et disposition mises à jour au 26 octobre 2026. Les sections de conception historique sont signalées ci-dessous.
+Projet étudiant Polytech Nice Sophia (SI5), simulé en startup. **Fiche consolidée le 16 novembre 2026** : la section « État consolidé » juste en dessous prévaut sur toute section plus bas qui la contredit. Les sections de conception historique sont signalées.
 Soutenance finale: **à confirmer** (le contexte d'origine indique le 28 sept 2026, antérieur à la date du doc).
 
 Fiabilité: **[OK]** vérifié source constructeur/littérature · **[EST]** estimation, valeur par défaut à régler en test · **[?]** non vérifié · **[DÉCISION]** choix arbitré entre sources contradictoires, à valider par l'équipe.
 
 Cette fiche conserve les décisions de conception et leurs identifiants (R-xx, C-xx, E-xx, P-xx). Pour le prototype exécuté, le [README](README.md), les tests et les sources décrivent les commandes effectivement disponibles. Les variantes historiques (mobile, fantôme, destruction, secours Oz) ne sont pas des contrôles de l’interface actuelle.
+
+---
+
+## État consolidé au 16 novembre 2026 (à lire en premier)
+
+Cette section résume tout ce qui a été décidé, construit et dit en conversation jusqu'à `main` @ `91d1312` (2 novembre 2026, 74 commits). Elle réconcilie les sections historiques plus bas. En cas de doute sur une commande ou une règle : **code > README > cette fiche > sections historiques**.
+
+### A. Équipe, dépôt et façon de travailler
+
+- Dépôt GitHub : `P13R04/crashout-circuit`. Branche de référence : `main` (la PR #50 `feat/preparation-tests-utilisateurs` y est fusionnée ; la mention contraire du README sur « main ne contient pas encore… » est périmée).
+- Contributeurs (identités git) : **P13R04** (Pierre Constantin : thèmes, rendu, intégration, audio, tutoriel final, préparation des tests), **QuentinEllPerso** / QuentinELLEON (l'utilisateur de ces conversations : issues #2, #3, #4, #32, #37, #38, #39, #40, tutoriel serveur, CI, docs de test, évaluation), **ba-giacchero** (Baptiste : postes, boost, animations des tangibles, création de circuit, chute), **Marc** / WhiteTiger2309 (contrôles, mode pédale, console Oz).
+- Convention de travail de Quentin : **une branche par issue, nommée comme l'issue** (ex. `32-tutoriel-guide-...`), `add` + `commit` + `push` sous son identité, **sans mention de Claude** dans les commits ni les PR ; lancer `tsc`, les tests d'acceptation et de gestes (idéalement `npm run check`) avant chaque push ; pas de PR avant d'avoir testé sur la table. Commits en français.
+- `AGENTS.md` : ne jamais modifier `prototypes/piste-vivante` (historique de recherche) ; toute nouvelle application se crée à côté.
+- Le dossier projet est passé de `...\SI5\interfaces-tactiles\projet\crashout-circuit` à `...\SI5\S10\IHM-reparties\projet\crashout-circuit` ; les conversations passées pointent sur l'ancien chemin.
+- L'évaluation suit le cours d'IHM d'Anne-Marie Déry (`EvaluationIHMInterfacesTactiles2026.pdf`, évaluation coopérative en plusieurs étapes).
+
+### B. Chronologie
+
+| Date | Jalon |
+|---|---|
+| 5 oct. | Analyse Kiro (`.kiro/specs/`), premier prototype jouable table + mode PC |
+| 12 oct. | Merge des premières branches : contrôles (Q/D, pédale), reset, déformation locale (#9), circuit fidèle au dessin (#3), lance-pierre à élastique (#4) |
+| 13–19 oct. | Chute sans rebond (#10), refonte de la création de circuit (#20, #18) |
+| 22 oct. | Console Oz v1 : tangibles seulement, POWER copilote |
+| 24 oct. | Tutoriel serveur + overlay (#32) |
+| 26 oct. | Intégration #30/#31/#32/#34/#41 ; thèmes Néon/Ferraille ; postes en diagonale |
+| 28 oct. | Intégration de `baptiste`, pose tactile des tangibles, réservation des gestes, réglages de course, 3 thèmes supplémentaires |
+| 29 oct. | `npm run check` + CI (#37), seuils tactiles (#38), équilibrage lance-pierre 50 PV (#39), sessions de test (#40) |
+| 30 oct. | Audio et ambiance Ferraille (CC0 Kenney) |
+| 1–2 nov. | Audit pré-tests, tutoriel à quatre, accès Oz sans code, menu de séance durci ; **premiers essais utilisateurs prévus le lundi 2 novembre** |
+| 2 nov. | Documents d'évaluation (feuilles de notation, questionnaire), guide du code, QCM d'entretien |
+| après le 2 nov. | **Aucun commit.** Résultats des essais non consignés dans le dépôt (tableau de `docs/sessions-de-test.md` §5 toujours « à remplir ») |
+
+### C. Ce qui est vrai aujourd'hui (écarts avec les sections historiques)
+
+| Sujet | Historique (plus bas) | **Actuel** |
+|---|---|---|
+| Pilote | Smartphone / QR code, bouton UseItem | **Sur la table** : bande gauche/droite, vie, réparation ; AUTO (défaut) ou PÉDALE réglé par équipe dans Paramètres. Aucun contrôle mobile implémenté (T-02 sans objet) |
+| Objets ramassés | Armés par le pilote, 5 s | **POWER du copilote propriétaire**, aucune expiration (`armWindowS` = 0), un seul stock armé sur la table, geste neutre et volable |
+| Fantôme / Destruction (C-03, C-04) | Boutons copilote | **Retirés de l'interface** ; règles conservées dans le moteur à titre de référence |
+| Tangibles (§8.2, C-05) | 4 poteaux, 2 par équipe, IDs 1–4 | **3 objets neutres LEGO** : 1 mur 10×4, 2 piliers 4×4 ; sans recharge ; dépôt neutre à droite entre les copilotes ; arc jusqu'à 350 px ; échelle via `tableDiagonalInches` (55) |
+| Console Oz | Secours (obstacle, boost, panne), journal | **Placement/rotation/activation/retrait des tangibles uniquement**, pose tactile à deux doigts, accès direct `/oz` **sans code**, mobile/portrait, journal `/api/oz-log`. Le magicien ne lance pas la partie, n'arme aucun bonus |
+| Pierre | −100 puis −50 | **−50 PV + étourdissement 1,5 s** (équilibrage #39 : 2 pierres = voiture hors d'usage) ; touche toute voiture dans la zone, tireur compris |
+| Fin de course | 3 tours ou 300 s | 3 tours par défaut (réglable 1–99), chrono **désactivé** (`sessionMaxSeconds` = 0) |
+| Réparation | 2 s à deux pads | + **3 feux rouges (3 s)** au point de reprise avant le vert ; pause/physique/dégâts respectent ce délai |
+| Création de circuit | Ancres P1 puis P2, cyan puis rose | + dessin dans les deux sens, **révélation 1,8 s puis roulette du damier** (décélération 3,4 s, fixation 0,45 s), départ tiré parmi les portions peu courbées ; **4 ramassables à positions aléatoires** à chaque circuit humain |
+| Thèmes | Néon seul | 5 thèmes (Néon, Ferraille, Toy Circuit, F1 Classic, Mayhem) ; **la séance impose Ferraille** et cache le choix |
+| Paramètres | — | Engrenage à gauche entre les pilotes : plein écran, Facile/Moyen/Difficile (50/75/100 %), tours, chrono, audio, Accueil. Les outils PC exigent `CRASHOUT_DEV_TOOLS=1` côté serveur |
+| Modes | TABLE/PC | TABLE, PC (dev), **TUTORIEL** (à quatre, circuit prédéfini, sans dégâts), **TEST TANGIBLES** (pilotes automatiques, dev) ; tous passent par `startRace()` |
+| Table | iiyama 65" 4K | Les LEGO sont calibrés pour une **dalle 55"** (`tableDiagonalInches`) ; `docs/seuils-tactiles.md` raisonne en 65" (0,75 mm/px). **À aligner avec la dalle réellement utilisée** |
+
+Phases serveur : `LOBBY → MAP → READY → RACE ⇄ PAUSED → RESULT`. Boucle physique 60 Hz, diffusion 30 Hz, repère logique 1920×1080.
+
+### D. Tutoriel (issue #32)
+
+Vraie course sur circuit prédéfini avec garde-fous ; chaque équipe a sa progression (`state.tutorial.teams[team] = { step, sub }`). Une étape se valide **par un événement réel du jeu** (`Feedback` : `pickup`, `itemArmed`, `stoneWarning`, `boostGate`, `boostHit`, `trackDeformed`, `repairDone`) ou par des appels directs (`onStation`, `onPilotInput`, `onObstacleHit`, `onTangiblePlaced`, `onTangibles`), jamais par minuterie. Étapes table : `identify` (les 4 postes touchent leur clé, puis 3 s de feux), `steer`, `pickup`, `power`, `sling`, `boostPickup`, `boostPower`, `boost`, `boostCross`, `borderPull`, `repair`, `wall`, `pylon`, `arc`, `depot` ; le mode PC retire `identify`, `borderPull`, `depot` et ajoute `pedal`. Retour arrière automatique si le contexte disparaît (objet plus armé, portail expiré, arc disparu). Bouton discret **Passer ›** (noter chaque usage en test). Fin : rangement des trois objets dans la réserve, puis **CRÉER LE CIRCUIT** ouvre une vraie course. Fichiers : `server/Tutorial.ts`, `client-table/TutorialOverlay.ts`, `client-table/TutorialGestures.ts`, branchements dans `GameRules.ts`.
+
+### E. Vérification et intégration continue
+
+- `npm run check` (types client + serveur, acceptation, gestes, réseau, audio, création de circuit, session publique, pickups, build) ; même commande en CI GitHub (`.github/workflows/check.yml`, Node 20, `npm ci`). `npm run verify` ajoute visuels, tangibles, autopilote, boost, pose tactile, réglages de course, réservations.
+- Dernier relevé : 100 scénarios d'acceptation, 41 contrôles de rendu, 17 gestes (audit du 1er nov.). Aucune mesure sur la vraie dalle (latence, 10 contacts, rejet de paume, 4K/60 fps, palm) : voir `measures.md` §2, toujours « à remplir ».
+- Simulation d'équilibrage : `npm run sim:sling`.
+- Journal tactile (dev) : F4 / `?log=1` → CSV ; seuils réglables par URL (`?cluster=`, `?palm=`…).
+
+### F. Séance de test utilisateur (protocole)
+
+Fiche de lancement complète dans `docs/sessions-de-test.md` : 45 min (5 accueil, 15 tutoriel sans aide, 15 course libre avec Oz, 5 questions, 5 journal) ; 4 testeurs + 1 opérateur Oz sur un second appareil ; **ne pas définir `CRASHOUT_DEV_TOOLS`** ; thème Ferraille, Facile, 3 tours, chrono off ; l'opérateur annonce chaque pose (touche 1/2/3) juste avant les contacts et ne sélectionne rien pendant les gestes de bonus. Briefing copilotes : `docs/pose-tactile.md`.
+
+### G. Évaluation coopérative IHM (documents imprimables)
+
+`docs/evaluation/` : `feuilles-notation.pdf/.html` (observation, 2 pages A4 : participants J1–J4, tâches T1–T7 [circuit, conduite, objet+POWER, geste de l'objet, déformation, objet posé, réparation] avec niveau d'aide/durée, modèle conceptuel, image de l'interface, coopération/table, 4 problèmes gravité 1–3) et `questionnaire-fin.pdf/.html` (anonyme, 5–7 min, un par joueur). Imprimer A4, 100 %, noir et blanc. Régénération PDF avec `msedge --headless=new --no-pdf-header-footer --print-to-pdf=...` (détails dans `docs/evaluation/README.md`).
+
+### H. Outils d'apprentissage et de passation
+
+- `docs/guide-du-code.md` (+ `archi.png`, `partage.png`) : guide fichier par fichier et ordre de lecture ; rédigé à l'état du 29 oct. (avant #46–#49 maintenant fusionnés).
+- `docs/qcm-entretien.html` : QCM autonome, 10 questions tirées parmi 33 (architecture, gestes/POWER, tangibles, réparation, tutoriel, modes, « où se trouve… dans le code »), réponses mélangées, mode « refaire mes erreurs ». Pour préparer l'entretien individuel.
+- Notes de passation `issue-3-contexte.md` (circuit) et `issue-4-contexte.md` (lance-pierre) : **historiques** (état du 12 oct.) ; le lance-pierre a depuis changé (voir C).
+
+### I. Journal de décisions issu des conversations
+
+- **Circuit fidèle au dessin** (#3) : le filtre 1€ et la relaxation rétrécissaient le tracé → remplacés par lissage gaussien sans retard (σ = 7 px), fillets locaux (rayon min 50 px) et étirement minimal ; ~99 % des dessins suivis, écart moyen ≈ 1 px hors des deux pointes. Un message « circuit prédéfini utilisé » et l'expiration d'un contact isolé de P1 restaient non faits.
+- **Lance-pierre** (#4) : projectile balistique visible 0,8 s, départ de la poche, tir au relâchement du doigt qui tire, traction 40–260 px → portée 220–900 px. Question ouverte d'origine (guidé ou balistique) tranchée en balistique.
+- **Tutoriel** (#32) : fantôme/destruction retirés, ordre imposé avec bouton passer, armement jamais périmé, pickups réapparaissent en 3 s en tutoriel, bascule AUTO/PÉDALE partagée (l'autre équipe la subit pendant l'étape `pedal`).
+- **Équilibrage** (#39) : cadence limitée par les pickups, pas par le geste ; 50 PV + 1,5 s ; chiffres de simulation, à confirmer en vraies parties.
+- **« Magicien d'Oz »** (#34) : technique de simulation des capteurs, pas un habillage de conte.
+- **Faux tangibles bois** (#33) remplacés par des **LEGO** (photos du mur LEGO ayant guidé le thème Ferraille).
+- Accès Oz par code **retiré à la demande de l'équipe** ; console jamais visible des joueurs.
+
+### J. Points ouverts
+
+1. **Essais du 2 novembre** : aucun résultat consigné ; remplir le tableau de `docs/sessions-de-test.md` §5, ouvrir une issue par problème (labels `lot A·ergonomie`, `B·clarté`, `D·tutoriel`, `E·tangibles`, `F·circuit et objets`, `H·fiabilité`).
+2. **Validations sur dalle** (aucune faite) : #38 (9/10 sur lance-pierre), 10 contacts, rejet de paume, latence <50 ms, 4K 60 fps, échelle LEGO 55" vs dalle réelle, lisibilité depuis chaque bord.
+3. **Issues GitHub encore ouvertes (état du 1er nov.)** : #8, #20, #23, #26, #27, #28, #29, #32, #34, #35, #36, #37, #38, #39, #40, #41 ; plusieurs sont déjà implémentées et attendent retours/mesures (audit : `docs/audit-pretests-2026-11-01.md`).
+4. Soutenance : date à confirmer ; revendication IHM = couplage spatial entre tangibles et gestes multitouch collaboratifs (voir §2) ; limite assumée : latence de l'opérateur Oz (R-16) à mesurer et déclarer.
+5. Documentation à resynchroniser : README (phrase sur `main`), `docs/audit-pretests` (cite `server/slingshot.ts` qui n'existe pas, la logique est dans `server/geometry.ts`), `docs/guide-du-code.md` (ajouter `gestureTuning.ts`, `GestureLog.ts`, `AudioAssets/AudioPlan`, `check`).
+6. Fichiers non suivis par git (à commiter ou jeter) : `docs/archi.png`, `docs/partage.png`, `docs/guide-du-code.md`, `docs/evaluation/`, `docs/qcm-entretien.html`.
+7. Pistes de recherche à garder pour la soutenance : occlusion par les bras, tangible translucide, surface de contact analogique (§16).
+
+### K. Pièges connus
+
+- Windows : un `node` fantôme garde le port 3000 → `taskkill /F /IM node.exe` (PowerShell) ou `taskkill //F //IM node.exe` (Git Bash), puis `npm start`. Page blanche après mise à jour : Ctrl+F5.
+- `npm start` / `dev:server` exécutent `dist/server/` : toujours `npm run build` (ou `build:server`) après avoir récupéré des sources.
+- `localhost` désigne la machine du navigateur ; Oz se joint par l'IP de la table affichée au démarrage (pas de Wi-Fi invité isolant).
+- Les modes de test (clavier, simulations, voitures auto, F3/F4) sont **refusés par le serveur** sans `CRASHOUT_DEV_TOOLS=1` : ne jamais l'activer pendant une séance.
+- Les modes sont des `if` sur des drapeaux (`state.tutorial`, `sessionMode`) : une nouvelle règle de dégâts ou de fin doit penser au tutoriel et au test tangibles.
+- Un tangible annoncé par Oz réserve tous les nouveaux contacts sur la carte (20 s, Échap/A annule) : l'opérateur ne doit rien sélectionner pendant les gestes de bonus.
+- JSON stricts (`config.json`, `package.json`) sans commentaires ; `tsconfig*.json` en JSONC.
+
+### L. Agents Claude du dépôt
+
+Définis dans `.claude/agents/` : `rules-engineer` (serveur et règles), `gesture-tuner` (reconnaissance tactile), `render-themes` (rendu, thèmes, audio), `oz-console` (console opérateur), `verify-runner` (check/verify/CI), `doc-keeper` (cohérence de cette fiche, du README et des docs), `playtest-analyst` (observations et journaux de séance). Chacun lit d'abord cette fiche et `AGENTS.md`.
 
 ---
 
@@ -223,7 +334,7 @@ Pourquoi la table: le dessin seul marcherait sur tablette. Ce qui change ici, c'
 
 **R-11** 4 pickups apparaissent à des points fixes de la piste (marqués à la génération, §5.2 étape 9). Ils réapparaissent 15 s après ramassage [EST].
 **R-12** Le Pilote qui roule dessus le **ramasse**. Un seul objet en stock; type tiré au hasard entre **lance-pierre** et **boost**.
-**R-13** Pour utiliser l'objet: le Pilote appuie sur **UseItem** → l'objet est **armé** pendant 5 s [EST] (halo sur le panneau Copilote de son équipe). Le Copilote doit exécuter le geste correspondant dans cette fenêtre. Sinon l'objet est perdu.
+**R-13** *(historique, remplacé : voir « État consolidé » C — POWER copilote, sans expiration)* Pour utiliser l'objet: le Pilote appuie sur **UseItem** → l'objet est **armé** pendant 5 s [EST] (halo sur le panneau Copilote de son équipe). Le Copilote doit exécuter le geste correspondant dans cette fenêtre. Sinon l'objet est perdu.
 **R-14** Il n'y a pas de pickup pour Fantôme, Destruction de mur et Poteaux.
 
 ### 7.3 Détail des actions
@@ -428,7 +539,7 @@ Les états de réparation sont représentés par les deux contacts et un anneau 
 | T-02 | Un Pilote conduit via QR code sans installation; latence < 80 ms |
 | T-03 | Un mur adverse retire 10 HP, avec 1 s d'invulnérabilité |
 | T-04 | Deux poteaux alliés génèrent un arc électrique; la voiture adverse perd 10 HP et ralentit |
-| T-05 | Un objet armé sans geste du Copilote dans les 5 s est perdu |
+| T-05 | *(obsolète)* Un objet armé reste armé jusqu'au geste valide : aucune péremption |
 | T-06 | Le lance-pierre (2 appuis + 1 doigt tiré) lance une pierre visible ; l'avertissement est affiché 0,8 s avant l'impact et la portée croît avec la traction |
 | T-07 | Le portail de boost est plus fort quand ses extrémités sont plus écartées |
 | T-08 | Le Fantôme permet de traverser murs et arcs adverses 3 s, puis recharge de 20 s |
@@ -443,14 +554,14 @@ Les états de réparation sont représentés par les deux contacts et un anneau 
 | Clé | Valeur par défaut |
 |---|---|
 | `lapsToWin` | 3 |
-| `sessionMaxSeconds` | 300 |
+| `sessionMaxSeconds` | 0 (chrono désactivé ; 300 était la valeur historique) |
 | `hpMax` | 100 |
 | `dmgWall` / `dmgArc` / `dmgStone` | 10 / 10 / 50 |
 | `invulnAfterHitS` | 1 |
 | `stunStoneS` | 1,5 |
 | `arcSlowFactor` / `arcSlowS` | 0,5 / 1,5 |
 | `repairHoldS` / `repairHpRestore` | 2 / 60 |
-| `pickupRespawnS` / `armWindowS` | 15 / 5 |
+| `pickupRespawnS` / `armWindowS` | 15 / 0 (aucune expiration d'armement ; 5 était la valeur historique) |
 | `stoneTelegraphS` / `stoneRadiusPx` | 0,8 / 60 |
 | `boostLenMinPx` / `boostLenMaxPx` | 0 / 400 (empreinte minimale 110 px) |
 | `boostGateLifeS` / `boostDurationS` / `boostGain` | 8 / 2 / 0,8 |
