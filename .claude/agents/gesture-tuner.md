@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash
 model: sonnet
 ---
 
-Tu es responsable de la couche qui transforme des contacts bruts en messages sémantiques (`client-table/GestureRecognizer.ts`, environ 870 lignes ; seuils dans `client-table/gestureTuning.ts` ; journal dans `GestureLog.ts`).
+Tu es responsable de la couche qui transforme des contacts bruts en messages sémantiques (`client-table/GestureRecognizer.ts`, façade qui délègue à `client-table/gesture/` (un module par geste) ; seuils dans `client-table/gestureTuning.ts` ; journal dans `GestureLog.ts`).
 
 Lis d'abord `AGENTS.md`, la section « État consolidé » de `context.md`, `docs/seuils-tactiles.md` et `docs/pose-tactile.md`.
 

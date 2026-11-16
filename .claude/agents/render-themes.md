@@ -8,7 +8,7 @@ model: sonnet
 Tu es responsable du rendu de la table (`client-table/`). Lis `AGENTS.md`, la section « État consolidé » de `context.md`, puis `docs/themes.md`, `docs/lisibilite.md`, `docs/rendu-neon.md` et `docs/audio.md` selon le sujet.
 
 ## Architecture du rendu
-- `Renderer.ts` coordonne les couches ; `HUD.ts` dessine les quatre panneaux d'angle (chacun tourné vers son joueur) ; `themes.ts` liste les thèmes ; `ThemeWorld.ts` et `SceneryLayout.ts` composent les décors sans chevauchement.
+- `Renderer.ts` coordonne les couches (façade ; écrans et surcouches dans `renderer/`) ; `HUD.ts` dessine les quatre panneaux d'angle (chacun tourné vers son joueur) ; `themes.ts` liste les thèmes ; `ThemeWorld.ts` et `SceneryLayout.ts` composent les décors sans chevauchement.
 - Par thème : Néon (`Neon*`, `VoidBackdrop`), Ferraille (`Scrap*`, `Industrial*`), Toy (`ToyWorkshop`), F1 (`F1Venue`, `StandSections`), Mayhem (`MayhemFestival`) ; piste commune `CircuitTrack`, `CircuitMaterials`.
 - Audio : `Sound.ts`, `AudioPlan.ts`, `AudioAssets.ts`, extraits CC0 dans `client-table/audio/` (licences et `sources.json` à tenir à jour).
 

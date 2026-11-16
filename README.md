@@ -18,16 +18,16 @@ npm start
 
 Le serveur doit rester ouvert pendant la séance. Les deux appareils doivent pouvoir communiquer sur le réseau local (un Wi-Fi invité qui isole les appareils ne convient pas). Ce prototype est prévu pour le réseau local de la séance ; il n’implémente pas de compte utilisateur.
 
-### Récupérer la version des tests utilisateurs
+### Mettre à jour la version de séance
 
-La préparation de séance se trouve sur **`feat/preparation-tests-utilisateurs`**. `main` ne contient pas encore l’identification initiale des quatre postes ni les dernières adaptations du tutoriel et de la console.
+La préparation de séance (identification des quatre postes, tutoriel à quatre, console Oz) est fusionnée dans `main`.
 
 Arrêter l’ancien serveur, puis, depuis le dossier du projet :
 
 ```bash
 git fetch origin
-git switch feat/preparation-tests-utilisateurs
-git pull --ff-only origin feat/preparation-tests-utilisateurs
+git switch main
+git pull --ff-only origin main
 npm ci
 npm run build
 npm start
@@ -102,7 +102,7 @@ Les cinq thèmes gardent leurs matériaux et leurs bordures ; le cache du revêt
 
 L’annonce d’un tangible réserve tous les nouveaux contacts sur la carte jusqu’à sa pose ou son annulation (**A / Échap** dans Oz). Le bonus déjà armé reste en stock mais son geste est suspendu. Sans tangible attendu, un seul bonus peut être armé : la table affiche son symbole et reconnaît ce type de geste. Un troisième doigt parasite ne transforme pas un boost en lance-pierre. L’autre copilote peut utiliser ce bonus tout en gardant le sien, puis armer son propre stock après consommation du premier.
 
-Les deux contacts du boost ou de la fourche du lance-pierre peuvent arriver avec jusqu’à 1,6 s d’écart. Les contacts peuvent être simultanés, maintenus ou brièvement tapés. La fourche reste mémorisée si un appui se lève ; seul le relâchement du doigt qui tire déclenche le projectile. Une correction de position sur un seul doigt ne bloque plus un boost attendu. La déformation reste disponible sur le bord : une traction cohérente à deux doigts prend le pas sur des appuis immobiles, même avec un bonus armé. La prise utilise les bords effectivement dessinés, notamment dans l’intérieur des coudes.
+Les deux contacts du boost peuvent arriver avec jusqu’à 1,6 s d’écart ; ils peuvent être simultanés, maintenus ou brièvement tapés. Les trois doigts du lance-pierre doivent être posés : une pose décalée (environ une seconde entre les deux premiers appuis) est acceptée, mais un appui tapé puis levé avant la traction ne compte pas dans la fourche. Après une traction valide, lever l’un des trois doigts (la poche ou un appui) tire une seule fois, car les navigateurs ne garantissent pas l’ordre des levées ; une annulation du système ne tire jamais. Une correction de position sur un seul doigt ne bloque plus un boost attendu. La déformation reste disponible sur le bord : une traction cohérente à deux doigts prend le pas sur des appuis immobiles, même avec un bonus armé. La prise utilise les bords effectivement dessinés, notamment dans l’intérieur des coudes.
 
 Une voiture réparée attend **3 secondes** au point de reprise : trois feux rouges au-dessus du modèle, puis vert et départ. Les dégâts et mouvements ne reprennent pas pendant cette attente ; la pause fige aussi ces feux.
 
@@ -195,7 +195,7 @@ La branche `baptiste` est maintenant intégrée : dessin possible dans les deux 
 
 ## Commandes et extensions futures
 
-Le jeu reçoit des **actions de jeu**, indépendantes des périphériques. `client-shared/controls.ts` est l’interface commune aux adaptateurs clavier et tactile : direction, POWER et gestes. Les types de messages sont dans `server/types.ts` ; les objets fixes et la validation partagée sont dans `server/tangibles.ts` ; les règles et la consommation des stocks restent validées dans `server/GameRules.ts`.
+Le jeu reçoit des **actions de jeu**, indépendantes des périphériques. `client-shared/controls.ts` est l’interface commune aux adaptateurs clavier et tactile : direction, POWER et gestes. Les types de messages sont dans `server/types.ts` ; les objets fixes et la validation partagée sont dans `server/tangibles.ts` ; les règles et la consommation des stocks restent validées dans `server/GameRules.ts` (logique dans `server/rules/`).
 
 Un futur adaptateur mobile pourra convertir un gyroscope en direction normalisée `[-1, 1]` et utiliser la même interface, sans modifier la physique. Aucun contrôle mobile, appairage ni accès aux capteurs n’est implémenté à ce stade. Un futur lecteur de tangibles pourra envoyer les mêmes actions de présence, déplacement et retrait qu’Oz, après ajout de son rôle de connexion.
 
@@ -214,12 +214,13 @@ Deux doigts proches saisissant le même bord de piste déplacent sa section tant
 
 ## Vérification
 
-**Avant de fusionner une branche, lancer `npm run check`.** Cette commande vérifie les types des clients et du serveur, puis lance les tests d’acceptation, de gestes et de réseau, et enfin le build. La même commande tourne sur GitHub pour chaque pull request et chaque push sur `main` (`.github/workflows/check.yml`) ; une compilation ou un test cassé est signalé avant la fusion.
+**Avant de fusionner une branche, lancer `npm run check`.** Cette commande vérifie les types des clients et du serveur, la taille des fichiers (`npm run check:sizes`), puis lance les tests d’acceptation, de gestes, de réseau, d’audio, de création de circuit, de session publique et de ramassables, et enfin le build. La même commande tourne sur GitHub pour chaque pull request et chaque push sur `main` (`.github/workflows/check.yml`) ; une compilation ou un test cassé est signalé avant la fusion.
 
 `npm run verify` exécute tous les contrôles ci-dessous et compile les deux applications.
 
 ```bash
 npm run typecheck
+npm run check:sizes
 npm run test:acceptance
 npm run test:gestures
 npm run test:network
@@ -245,6 +246,23 @@ client-shared/   interface d’actions, connexion et synchronisation
 scripts/         tests des règles et du protocole réseau
 prototypes/      laboratoire historique, conservé sans modification
 ```
+
+### Taille des fichiers et organisation du code
+
+Aucun fichier `.ts` (hors `prototypes/`) ne dépasse 500 lignes, avec une cible de 300 : `npm run check:sizes` le contrôle dans `check` et `verify` (liste de base dans `scripts/file-sizes.baseline.json`, aujourd’hui vide). Les gros fichiers d’origine sont des **façades** qui délèguent à des modules par responsabilité ; leurs noms et leurs chemins d’import n’ont pas changé.
+
+| Façade | Modules |
+|---|---|
+| `server/GameRules.ts` | `server/rules/` |
+| `server/MapGenerator.ts` | `server/trackGeneration/` |
+| `server/types.ts` | `server/protocol/` (état de partie, messages réseau) |
+| `client-table/GestureRecognizer.ts` | `client-table/gesture/` |
+| `client-table/Renderer.ts` | `client-table/renderer/` |
+| `client-table/main.ts` | `client-table/app/` |
+| `client-oz/OzMap.ts` | `client-oz/map/` |
+| `scripts/acceptance.ts` | `scripts/acceptance/` |
+
+Les règles de contribution et les skills IA du dépôt (`limiter-taille-fichiers`, `clean-architecture`) sont dans `AGENTS.md` et `.claude/skills/`. Le [guide du code](docs/guide-du-code.md) décrit chaque fichier.
 
 Les anciennes règles expérimentales fantôme / destruction restent dans le moteur pour référence, mais ne sont plus exposées comme boutons ou commandes de la table. Les spécifications historiques de `.kiro/` et le laboratoire ne décrivent donc pas toujours les commandes actuelles ; ce README décrit le prototype fonctionnel.
 

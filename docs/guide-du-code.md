@@ -77,6 +77,7 @@ Le tutoriel est donc la vraie course avec des garde-fous et des étapes par-dess
 | `mapCreation.ts` | Règles des ancres P1/P2, partagées entre le dessin, la détection de touche et la validation serveur. |
 | `tangibles.ts`, `tangibleGeometry.ts`, `tangibleTouch.ts` | Les trois tangibles fixes (un mur et deux piliers), la validation de leur pose, la géométrie de collision du mur et les contrôles de la pose tactile à deux contacts. |
 | `boostGeometry.ts` | Placement et orientation du portail de boost à partir de deux contacts, y compris aux carrefours. |
+| `trackPresentation.ts`, `audioHttp.ts` | Horloge commune de la révélation du circuit et de la roulette du départ ; service HTTP des fichiers audio. |
 | `armedPickup.ts`, `raceSettings.ts` | Deux petits fichiers : la règle de réservation unique des objets armés, et l'échelle de vitesse de chaque difficulté. |
 
 ### `client-table/` (la table, en Canvas 2D)
@@ -85,9 +86,11 @@ Le tutoriel est donc la vraie course avec des garde-fous et des étapes par-dess
   - `main.ts` : point d'entrée. Il ouvre la WebSocket, crée le moteur de rendu et le recognizer de gestes, puis appelle les modules de `app/` (taille du canvas, thèmes, réglages de course, outils de développement, audio, clavier, plein écran, messages du serveur, boucle de rendu).
   - `view.ts` : état local du client (effets, lance-pierre en cours de tir).
   - `GestureRecognizer.ts` : le cerveau multitouch, resté façade. Il suit jusqu'à 10 contacts ; chaque geste vit dans `gesture/` : lance-pierre (3 doigts, `slingGesture`), portail de boost (`bonusEvaluation`), déformation de la piste (`borderPullGesture`), dessin de la carte (`mapDrawing`), pose des tangibles (`placementTouch`), pilotage et réparation (`pilotControls`), aiguillage des contacts (`contactDown`, `contactRelease`).
+  - `gestureTuning.ts` et `GestureLog.ts` : seuils tactiles réglables par l'URL (en développement) et journal des décisions du recognizer (F4, CSV).
+  - `TutorialGestures.ts` : démonstrations animées des gestes du tutoriel.
   - `HUD.ts` : les quatre panneaux d'angle, chacun tourné vers son bord de table. Les pilotes ont la direction, les PV et la réparation ; les copilotes ont POWER et la réparation.
   - `TutorialOverlay.ts` : bandeaux du tutoriel pour chaque équipe.
-  - `Sound.ts` : retours sonores synthétisés, sans fichier audio.
+  - `Sound.ts`, `AudioPlan.ts`, `AudioAssets.ts` : sons de la table (signaux synthétisés, extraits CC0 déclarés dans `audio/sources.json`), plan d'ambiance et de musique par thème.
   - `icons.ts` : pictogrammes canvas partagés.
 - **Rendu**
   - `Renderer.ts` : moteur de rendu principal, resté façade (couches par thème et composition des écrans). Les écrans et surcouches sont dans `renderer/` (`screenOverlays`, `raceOverlays`, `mapCreationScreen`).
@@ -121,18 +124,20 @@ Le tutoriel est donc la vraie course avec des garde-fous et des étapes par-dess
 
 ### `scripts/` (tests, lancés avec `tsx`)
 
+- `sling-balance.ts` : simulation d'équilibrage du lance-pierre (`npm run sim:sling`).
+- `file-sizes.ts` : garde-fou de taille des fichiers (`npm run check:sizes`), avec `file-sizes.baseline.json` et son test.
 - `acceptance.ts` : lance la grande suite de tests des règles serveur avec une horloge simulée, sans réseau. Les scénarios sont rangés par domaine dans `scripts/acceptance/` (`harness.ts` pour le banc commun, `scenarioActions.ts` pour les gestes de test partagés).
 - `network-acceptance.ts` : tests WebSocket réels.
 - `gestures.ts`, `gesture-reservations.ts`, `boost.ts`, `tangible-touch.ts`, `race-settings.ts`, `autopilot.ts` : un sujet chacun.
 - `visuals.ts` : vérifications du rendu et de la disposition.
 - `test-tangible-anims.ts` : vérifications des animations des tangibles.
-- `npm run verify` les lance tous, plus la vérification des types et le build.
+- `npm run check` (types, taille des fichiers, acceptation, gestes, réseau, audio, création, session publique, pickups, build) est la commande de la CI. `npm run verify` lance tous les tests, plus la vérification des types et le build.
 
 ### Fichiers racine, documentation et prototype
 
 - **Configuration :** `config.json` (toutes les valeurs réglables), `vite.config.ts` (deux pages, `/ws` et `/api` relayés vers le port 3000), `tsconfig.json` (clients et scripts), `tsconfig.server.json` (serveur), `package.json`.
 - **`index.html` :** redirige vers `/client-table/`.
-- **Documentation :** `README.md` est la meilleure description côté utilisateur. `context.md` est le registre de conception (identifiants R-xx, C-xx, etc.). `measures.md` sépare ce qui est testé automatiquement de ce qui doit encore être mesuré sur la vraie table. `docs/` couvre la direction artistique, les thèmes, le rendu néon, la lisibilité, la pose tactile et l'intégration de l'équipe. `issue-3-contexte.md` et `issue-4-contexte.md` sont des notes de passation pour des issues précises.
+- **Documentation :** `README.md` est la meilleure description côté utilisateur. `context.md` est le registre de conception (identifiants R-xx, C-xx, etc.). `measures.md` sépare ce qui est testé automatiquement de ce qui doit encore être mesuré sur la vraie table. `docs/` couvre la direction artistique, les thèmes, le rendu néon, la lisibilité, la pose tactile et l'intégration de l'équipe. 
 - **`.kiro/specs/` :** exigences, conception et liste de tâches d'origine.
 - **`prototypes/piste-vivante/` :** l'ancien prototype de recherche en Next.js. `AGENTS.md` demande de le conserver comme historique et de ne jamais construire dedans.
 
@@ -160,6 +165,5 @@ npm run build && npm start
 npm run verify
 ```
 
-> Écrit d'après l'état de `main` au 29 octobre 2026, avant les pull requests #46 à #49. Celles-ci ajoutent `client-table/gestureTuning.ts`, `client-table/GestureLog.ts`, `scripts/sling-balance.ts` et le script `npm run check`.
 
-> Mise à jour du 16 novembre 2026 : les fichiers de plus de 500 lignes ont été découpés (issue #66). Les chemins d'import d'origine sont conservés : le fichier d'origine réexporte ou délègue. La règle de taille (cible 300 lignes, plafond 500) est contrôlée par `npm run check:sizes`.
+> Écrit d'après l'état de `main` au 29 octobre 2026, puis mis à jour le 16 novembre 2026 : les fichiers de plus de 500 lignes ont été découpés (issue #66). Les chemins d'import d'origine sont conservés : le fichier d'origine réexporte ou délègue. La règle de taille (cible 300 lignes, plafond 500) est contrôlée par `npm run check:sizes`.
