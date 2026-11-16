@@ -4,7 +4,7 @@ Issue [#54](https://github.com/QuentinELLEON/crashout-circuit/issues/54) (numér
 
 ## Ce qui a été livré pour trancher
 
-Un essai fonctionnel de la piste A (WebHID), à côté du front téléphone, sans changement côté serveur.
+Un essai fonctionnel de la piste A (WebHID), à côté du front téléphone. Les règles de jeu et le protocole ne changent pas ; le serveur gagne seulement une route `/wiimote` et la possibilité de lancer le solo sans variable d’environnement (voir plus bas).
 
 | Élément | Où |
 |---|---|
@@ -21,7 +21,11 @@ Un essai fonctionnel de la piste A (WebHID), à côté du front téléphone, san
 
 **Le téléphone n’est pas modifié dans son comportement.** `gyro.ts` réexporte la courbe et la cadence qui vivaient chez lui ; `scripts/phone/gyro.ts` passe sans changement. Le front Wii n’importe ni `gyro.ts`, ni `wheelSensor.ts`, et ne demande aucune autorisation `DeviceOrientation`.
 
-**Le serveur n’est pas modifié.** Le front Wii envoie les mêmes messages que le téléphone : `Join` (place), `PilotInput` (`team`, `throttle`, `steer` normalisé entre −1 et 1, le serveur applique `steerGain` = 1,12), `PadHold` (réparation), `ToggleDriveMode`, et `StartSolo` pour le banc d’essai. Un seul besoin serveur apparaît pour la production : **une route `/wiimote`** dans `server/index.ts`, qui ne sert aujourd’hui que la table, `/oz` et `/play`. Pour l’essai, la page se sert par Vite (`npm run dev:clients`, `http://localhost:5173/client-wiimote/index.html`), qui relaie `/api` et `/ws`. Cette route est reportée dans l’issue d’implémentation plus bas.
+**Le protocole ne change pas.** Le front Wii envoie les mêmes messages que le téléphone : `Join` (place), `PilotInput` (`team`, `throttle`, `steer` normalisé entre −1 et 1, le serveur applique `steerGain` = 1,12), `PadHold` (réparation), `ToggleDriveMode` et `StartSolo`. Le serveur a reçu **trois petites modifications**, demandées après l'essai :
+
+- **Route `/wiimote`** dans `server/index.ts`, comme `/play`, qui sert `client-wiimote` (construit par Vite). La page reste aussi disponible par `npm run dev:clients` (`http://localhost:5173/client-wiimote/index.html`).
+- **Solo sans variable d'environnement.** `StartSolo`, envoyé par le pilote A, active le mode solo **seulement à l'accueil, si aucune autre place n'est prise** et sans tutoriel ; il est ignoré sinon. `resetToLobby` (retour à l'accueil depuis la table) revient au réglage du serveur : sans `CRASHOUT_SOLO_TEST=1`, le mode normal revient et le pilote garde sa place. Les téléphones ne sont pas touchés : ils n'envoient `StartSolo` qu'en mode solo.
+- **Bouton « MANETTE WII » sur l'accueil de la table** (`client-table`), qui ouvre `/wiimote` dans une autre fenêtre à la levée du doigt, sans quitter la table.
 
 ### Correspondance des boutons (écart avec la proposition initiale)
 
@@ -81,7 +85,7 @@ Le code PIN demandé par Windows n’est pas saisissable pour une Wiimote : il f
 Raisons :
 
 - Elle répond aux deux notes de la séance : le pilote lève les yeux vers la table, et la manette peut vibrer quand la voiture est en panne.
-- Le coût d’intégration est déjà faible : même protocole, même courbe de direction, aucun changement du serveur, pas de dépendance d’exécution. La seule pièce manquante est une route de service en production.
+- Le coût d’intégration est déjà faible : même protocole, même courbe de direction, aucun nouveau message, pas de dépendance d’exécution ; le serveur n’a reçu qu’une route et le démarrage du solo à la demande.
 - Le téléphone reste nécessaire : seul à offrir les vues #42, #43, #49 et un appairage sans manipulation Windows.
 - La manette a des limites réelles : pas de gyroscope utilisé, accéléromètre de 8 bits (pas d’environ 2 à 3°, calculé), secousses qui faussent l’angle, WebHID limité à Chrome et Edge de bureau, appairage manuel et fragile, une machine Bluetooth par pilote ou une fenêtre de plus sur la table.
 
@@ -103,7 +107,7 @@ Critères pour passer de « ajouter » à une recommandation ferme (seuils propo
 
 **À faire**
 
-- Servir la page : route `/wiimote` dans `server/index.ts` (comme `/play`), entrée de build déjà présente dans `vite.config.ts`.
+- Valider sur la table le bouton « MANETTE WII » (placement, ouverture de la fenêtre, popup autorisée) et la bascule en solo à l'accueil.
 - Documenter dans le README : navigateurs (Chrome, Edge de bureau), contexte sécurisé, appairage Windows, lancement de deux fenêtres pour deux pilotes.
 - Ajouter le lien et le QR « manette » à l’accueil de la table, si l’équipe le souhaite.
 - Reprendre les valeurs mesurées pendant l’essai : axes et signe par défaut (`grip`, `flip`), échelle de l’accéléromètre (calibration d’usine en mémoire 0xA20016 si 25 unités/g est inexact), mode de rapports (par changement ou continu).
@@ -130,4 +134,4 @@ Critères pour passer de « ajouter » à une recommandation ferme (seuils propo
 
 - Aucune manette réelle n’a encore été branchée : axes, signe, échelle de l’accéléromètre, latence, appairage, vibration et LED ne sont validés que contre le code et des tests à octets fixes.
 - Les tests simulent la manette (faux périphérique HID) ; un essai de bout en bout a été fait dans le navigateur intégré avec un faux périphérique, contre le serveur en mode solo : place prise, direction envoyée avec la courbe attendue, perte puis reconnexion.
-- La route de production `/wiimote` n’existe pas encore.
+- La route `/wiimote`, le solo sans variable d’environnement et le bouton de l’accueil ont été vérifiés dans le navigateur intégré (clic réel sur le bouton, page servie par le serveur de production, partie lancée), mais pas sur la dalle tactile ni avec une vraie manette.

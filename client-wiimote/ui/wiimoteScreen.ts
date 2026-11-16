@@ -51,6 +51,7 @@ export class WiimoteScreen {
   private readonly seatButtons = new Map<SeatId, HTMLButtonElement>();
   private readonly leaveButton: HTMLButtonElement;
   private readonly start: HTMLButtonElement;
+  private readonly startHint = element('p', 'detail');
   private readonly join: HTMLButtonElement;
   private readonly notice = element('p', 'notice');
   private readonly sessionText = element('p', 'hint');
@@ -66,14 +67,14 @@ export class WiimoteScreen {
     this.connect = button('Connecter la manette', actions.connectController, 'primary');
     this.recalibrate = button('Recalibrer le neutre (Home)', actions.recalibrate);
     this.leaveButton = button('Libérer la place', actions.leave);
-    this.start = button('Lancer la course', actions.startSolo, 'primary');
+    this.start = button('Lancer une partie solo', actions.startSolo, 'primary');
     this.join = button('Rejoindre', () => actions.openRoom(this.roomInput.value));
     this.roomInput.value = initialRoom;
     this.roomInput.maxLength = 5;
     this.roomInput.autocomplete = 'off';
     this.roomInput.spellcheck = false;
     this.roomInput.setAttribute('aria-label', 'Code de séance');
-    root.append(this.controllerSection(), this.sessionSection(), this.drivingSection(), this.settingsSection(grip, flip));
+    root.append(this.controllerSection(), this.gameSection(), this.sessionSection(), this.drivingSection(), this.settingsSection(grip, flip));
   }
 
   /** Affiche l'état courant ; ne touche au DOM que pour ce qui a changé. */
@@ -95,6 +96,13 @@ export class WiimoteScreen {
     return section;
   }
 
+  /** Bloc du lancement d'une partie solo, actif seulement quand la manette est connectée. */
+  private gameSection(): HTMLElement {
+    const section = element('section');
+    section.append(element('h2', '', 'Partie'), this.start, this.startHint);
+    return section;
+  }
+
   /** Bloc du code de séance et du choix de place. */
   private sessionSection(): HTMLElement {
     const section = element('section');
@@ -110,7 +118,7 @@ export class WiimoteScreen {
       this.seatButtons.set(seat, choice);
       seats.append(choice);
     }
-    section.append(element('h2', '', 'Séance'), form, seats, this.leaveButton, this.start, this.notice, this.sessionText);
+    section.append(element('h2', '', 'Séance'), form, seats, this.leaveButton, this.notice, this.sessionText);
     return section;
   }
 
@@ -158,9 +166,12 @@ export class WiimoteScreen {
     this.leaveButton.disabled = !preRace || view.pending;
     this.join.disabled = view.pending || view.seat !== null;
     this.roomInput.disabled = view.seat !== null;
-    this.start.hidden = !view.solo || view.seat === null;
-    setText(this.start, view.phase === 'LOBBY' ? 'Lancer la course' : 'Recommencer');
-    this.start.disabled = !view.online || view.controller !== 'connected';
+    const restart = view.seat !== null && view.phase !== null && view.phase !== 'LOBBY';
+    setText(this.start, restart ? 'Recommencer la partie solo' : 'Lancer une partie solo');
+    this.start.disabled = view.controller !== 'connected' || view.launching;
+    setText(this.startHint, view.controller === 'connected'
+      ? 'Prend la place de pilote cyan et lance le circuit prédéfini à un seul joueur, comme avec le QR code du téléphone.'
+      : 'Connecte la manette pour pouvoir lancer la partie.');
   }
 
   /** Met à jour la jauge et les mesures brutes utiles à la validation des axes. */

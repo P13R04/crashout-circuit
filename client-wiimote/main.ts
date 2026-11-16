@@ -9,6 +9,8 @@ import { CADENCE } from '../client-shared/pilot/inputCadence.js';
 import { PilotLink } from '../client-shared/pilot/pilotLink.js';
 import { playerTeam, SEAT_IDS } from '../client-shared/seatLabels.js';
 import type { SeatId } from '../server/types.js';
+import { readSession } from '../client-shared/sessionInfo.js';
+import { launchSolo, SOLO_LAUNCH_NOTICE } from './launch/soloLaunch.js';
 import { WiimoteCommandSource } from './control/wiimoteCommandSource.js';
 import { browserHid } from './device/hidTypes.js';
 import { WebHidWiimote } from './device/webHidWiimote.js';
@@ -26,6 +28,7 @@ let link: PilotLink | null = null;
 let controller: ControllerState = 'idle';
 let deviceName = '';
 let lastRefresh = 0;
+let launching = false;
 
 const hid = new WebHidWiimote(browserHid(), {
   onReport(report, now) {
@@ -57,12 +60,28 @@ const screen = new WiimoteScreen(document.querySelector<HTMLElement>('#screen')!
   openRoom: code => { void session.open(code); },
   join: seat => session.join(seat),
   leave: () => session.leave(),
-  startSolo: () => session.send({ type: 'StartSolo' }),
+  startSolo: () => { void startSolo(); },
   setGrip: (grip: TiltGrip) => source.steering.configure({ ...source.steering.tilt, grip }),
   setFlip: flip => source.steering.configure({ ...source.steering.tilt, flip }),
 }, params.get('room') ?? '', settings.grip, settings.flip);
 
 if (!hid.supported) controller = 'unsupported';
+
+/** Vérifie la manette puis lance la partie solo, et affiche la raison si elle ne peut pas démarrer. */
+async function startSolo(): Promise<void> {
+  if (launching) return;
+  launching = true;
+  session.notice = '';
+  render();
+  const result = await launchSolo({
+    session,
+    controllerConnected: () => controller === 'connected' && hid.connected && source.isConnected,
+    readRoom: async () => (await readSession()).room,
+  });
+  launching = false;
+  session.notice = SOLO_LAUNCH_NOTICE[result];
+  render();
+}
 
 /** Numéro de joueur affiché par la LED de la manette : 1 pour l'équipe cyan, 2 pour la rose. */
 function playerNumber(seat: SeatId | null): number | null {
@@ -117,6 +136,7 @@ function buildView(): WiimoteView {
     driving: link?.isDriving ?? false,
     carDisabled: team && state ? state.cars[team].disabled : false,
     solo: state?.soloTest ?? false,
+    launching,
   };
 }
 

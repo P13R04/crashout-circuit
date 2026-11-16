@@ -39,7 +39,7 @@
     "test:phone-session": "tsx scripts/network/phone-session.ts",
     "test:solo-session": "tsx scripts/network/solo-session.ts",
     "test:gyro": "tsx scripts/phone/gyro.ts",
-    "test:wiimote": "tsx scripts/wiimote/decoding.ts && tsx scripts/wiimote/steering.ts && tsx scripts/wiimote/pilot-link.ts && tsx scripts/wiimote/webhid.ts",
+    "test:wiimote": "tsx scripts/wiimote/decoding.ts && tsx scripts/wiimote/steering.ts && tsx scripts/wiimote/pilot-link.ts && tsx scripts/wiimote/webhid.ts && tsx scripts/wiimote/solo-launch.ts",
     "test:https": "tsx scripts/network/https-session.ts"
   },
   "dependencies": {

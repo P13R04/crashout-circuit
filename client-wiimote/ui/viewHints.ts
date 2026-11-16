@@ -31,8 +31,10 @@ export interface WiimoteView {
   driveMode: DriveMode | null;
   driving: boolean;
   carDisabled: boolean;
-  /** Banc d'essai à un seul pilote : la page peut lancer la course elle-même. */
+  /** Séance en mode solo (un seul pilote, serveur lancé avec CRASHOUT_SOLO_TEST=1). */
   solo: boolean;
+  /** Un lancement de partie solo est en cours. */
+  launching: boolean;
 }
 
 /** Explique l'état de la manette et ce que le joueur doit faire. */
@@ -54,10 +56,10 @@ export function controllerHint(view: Pick<WiimoteView, 'controller' | 'steeringS
 
 /** Explique où en est la séance pour ce pilote. */
 export function sessionHint(view: Pick<WiimoteView, 'room' | 'online' | 'seat' | 'phase' | 'driving' | 'carDisabled' | 'driveMode' | 'solo'>): string {
-  if (!view.room) return 'Saisis le code de séance affiché sur la table.';
+  if (!view.room) return 'Lance une partie solo, ou saisis le code de séance affiché sur la table.';
   if (!view.online) return 'Serveur injoignable. Reconnexion en cours…';
   if (!view.seat) return 'Choisis ta place de pilote.';
-  if (view.solo && view.phase !== 'RACE') return 'Banc d’essai solo : appuie sur « Lancer la course ».';
+  if (view.phase === 'LOBBY' || view.solo && view.phase !== 'RACE') return 'Appuie sur « Lancer une partie solo », ou attends le départ sur la table.';
   if (view.phase === 'RACE' && view.carDisabled) return 'Voiture en panne : maintiens A avec ton copilote pour réparer.';
   if (view.driving) return view.driveMode === 'pedal' ? 'Course : tiens B pour accélérer.' : 'Course : la voiture avance seule.';
   if (view.phase === 'PAUSED') return 'Course en pause sur la table.';

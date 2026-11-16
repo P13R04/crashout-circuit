@@ -5,23 +5,18 @@
 ## 1. Préparer
 
 1. Appairer la manette sous Windows (voir « Appairage sous Windows » dans la décision). Noter chaque obstacle dans le tableau 6.
-2. Construire et lancer le serveur en banc solo, qui accepte un seul pilote sur `A-pilot` et lance le circuit prédéfini :
+2. Construire et lancer le serveur normalement (aucune variable d'environnement : le solo se lance depuis la page Wii) :
 
 ```bash
 npm run build
 ```
 
 ```bash
-CRASHOUT_SOLO_TEST=1 npm start
+npm start
 ```
 
-3. Dans un second terminal, servir les clients (la page Wii n’est pas encore servie par `npm start` seul) :
-
-```bash
-npm run dev:clients
-```
-
-4. Relever le code de séance de cinq caractères affiché dans le terminal du serveur (ou `http://localhost:3000/api/session`), puis ouvrir `http://localhost:5173/client-wiimote/index.html?room=CODE` dans Chrome ou Edge. Sur une autre machine que celle du serveur, WebHID exige HTTPS : utiliser la configuration de #39.
+3. Sur la machine du serveur, dans Chrome ou Edge, ouvrir la table `http://localhost:3000/` et cliquer sur **MANETTE WII** (ouvre `http://localhost:3000/wiimote` dans une autre fenêtre), ou ouvrir directement `http://localhost:3000/wiimote`. Sans build, `npm run dev:clients` sert aussi la page sur `http://localhost:5173/client-wiimote/index.html`.
+4. Cliquer sur **Connecter la manette**, puis sur **Lancer une partie solo** : la page vérifie que la manette est connectée, relève le code de séance sur le serveur, prend la place `A-pilot` et envoie `StartSolo`, comme après le scan du QR code avec le téléphone. Le bouton est grisé tant que la manette n'est pas connectée. Le serveur n'accepte le solo qu'**à l'accueil, sans autre joueur assis** ; sinon la page affiche « Le serveur a refusé le lancement ». Un retour à l'accueil depuis la table (bouton Accueil des paramètres, ou résultat → nouvelle partie) termine le solo. Sur une autre machine que celle du serveur, WebHID exige HTTPS : utiliser la configuration de #39.
 
 Réglages d’essai par l’adresse : `grip=face` (par défaut, face tournée vers le joueur comme un volant) ou `grip=flat` (à plat, face vers le haut) ; `flip=1` pour inverser le sens ; `continuous=1` pour demander des rapports en continu. Le panneau **Réglages d’essai** de la page fait la même chose en direct.
 
@@ -81,7 +76,7 @@ Comparer l’écart au seuil de la décision (**0,15 proposé, non validé**).
 | Manette (bouton 1) | | | | |
 | Téléphone (bouton Avance auto) | | | | |
 
-**Latence ressentie en course.** Sur le banc solo : lancer la course, faire trois tours avec la manette, puis trois tours avec le téléphone. Noter pour chaque entrée :
+**Latence ressentie en course.** Sur le banc solo : lancer la partie solo, faire trois tours avec la manette, puis trois tours avec le téléphone. Noter pour chaque entrée :
 
 | Entrée | Sorties de piste | Tours finis | Note de précision (1 à 5) | Note de réactivité (1 à 5) | Fatigue du poignet | Remarques |
 |---|---|---|---|---|---|---|
@@ -105,9 +100,9 @@ Questions à poser à la personne : « La voiture suit-elle ta main ou arrive-t-
 | Laisser la manette dormir, puis appuyer sur un bouton | Reconnexion comme ci-dessus |  |
 | Recharger la page | La manette se rouvre sans nouvelle fenêtre de choix |  |
 | Masquer l’onglet pendant la course | Direction neutre aussitôt (par prudence : le navigateur ralentit un onglet masqué) |  |
-| Deux pilotes (hors banc solo, serveur sans `CRASHOUT_SOLO_TEST`) | Deux fenêtres côte à côte (pas deux onglets d’une même fenêtre), chacune sa manette et sa place ; pas de commandes croisées |  |
+| Deux pilotes (hors banc solo, serveur à l'accueil, sans solo en cours) | Deux fenêtres côte à côte (pas deux onglets d’une même fenêtre), chacune sa manette et sa place ; pas de commandes croisées |  |
 
-Pour deux pilotes : démarrer le serveur sans `CRASHOUT_SOLO_TEST`, ouvrir la table `http://localhost:3000/`, ouvrir `client-wiimote` dans deux fenêtres de navigateur (ou deux navigateurs), choisir **Pilote Cyan** dans l’une et **Pilote Rose** dans l’autre. Chaque pilote a besoin de son copilote pour réparer (A seul ne suffit pas).
+Pour deux pilotes : démarrer le serveur à l'accueil, sans solo en cours, ouvrir la table `http://localhost:3000/`, ouvrir `client-wiimote` dans deux fenêtres de navigateur (ou deux navigateurs), choisir **Pilote Cyan** dans l’une et **Pilote Rose** dans l’autre. Chaque pilote a besoin de son copilote pour réparer (A seul ne suffit pas).
 
 ## 6. Appairage et fiabilité (Windows)
 
