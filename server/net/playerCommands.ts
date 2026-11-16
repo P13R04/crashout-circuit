@@ -17,6 +17,10 @@ export function isPilotSeat(seat: SeatId): boolean {
 
 /** Applique une commande mobile autorisée et signale un éventuel appui de réparation. */
 export function handlePlayerCommand(rules: GameRules, seat: SeatId, msg: ClientMessage): boolean {
+  if (rules.state.soloTest && msg.type !== 'PilotInput') {
+    if (seat === 'A-pilot' && msg.type === 'StartSolo') rules.startSolo();
+    return false;
+  }
   const team = seatTeam(seat);
   const pilot = isPilotSeat(seat);
   switch (msg.type) {

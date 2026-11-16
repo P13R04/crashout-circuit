@@ -12,6 +12,7 @@ const REJECTION: Record<JoinRejectedMsg['reason'], string> = {
   'seat-taken': 'Cette place est déjà prise. Choisissez une autre place.',
   'bad-token': 'Votre réservation a expiré. Choisissez de nouveau une place.',
   'unknown-room': 'Ce code de séance est inconnu.',
+  'solo-seat': 'Cet essai est réservé à un seul pilote.',
   'room-full': 'Les quatre places de cette séance sont prises.',
 };
 
@@ -21,6 +22,7 @@ export class PhoneSession {
   private conn: Connection | null = null;
   private reservation: Reservation | null = null;
   private generation = 0;
+  private confirmed = false;
   readonly sync = new StateSync();
   state: GameState | null = null;
   seat: SeatId | null = null;
@@ -68,6 +70,14 @@ export class PhoneSession {
     this.connect(generation);
   }
 
+  /** Vérifie que le serveur a confirmé le poste sur la connexion en cours. */
+  get canPlay(): boolean { return this.online && this.confirmed; }
+
+  /** Envoie les commandes héritées du poste authentifié. */
+  send(message: { type: string } & Record<string, unknown>): void {
+    if (this.canPlay) this.conn?.send(message);
+  }
+
   /** Envoie la demande de place après le choix de l'équipe et du rôle. */
   join(seat: SeatId): void {
     if (!this.online || this.pending) return;
@@ -105,6 +115,7 @@ export class PhoneSession {
       onClose: () => {
         if (generation !== this.generation) return;
         this.online = false;
+        this.confirmed = false;
         this.pending = null;
         this.notice = 'Serveur injoignable. Reconnexion en cours…';
         this.refresh();
@@ -125,12 +136,14 @@ export class PhoneSession {
         }
         break;
       case 'Joined':
+        this.confirmed = true;
         this.pending = null;
         this.seat = msg.seat;
         this.notice = '';
         this.saveReservation({ room: this.room, seat: msg.seat, token: msg.token });
         break;
       case 'Left':
+        this.confirmed = false;
         this.pending = null;
         this.seat = null;
         this.saveReservation(null);
@@ -139,6 +152,7 @@ export class PhoneSession {
         this.pending = null;
         this.notice = REJECTION[msg.reason];
         if (msg.reason === 'bad-token' || msg.reason === 'unknown-room') {
+          this.confirmed = false;
           this.seat = null;
           this.saveReservation(null);
         }

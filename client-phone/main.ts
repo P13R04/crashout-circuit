@@ -4,6 +4,8 @@
  */
 import { TEAM_LABEL, playerTeam, roleLabel, SEAT_IDS } from '../client-shared/seatLabels.js';
 import type { Phase, Seat, SeatId, Team } from '../server/types.js';
+import { SoloScreen } from './solo/SoloScreen.js';
+import { actionButton as button } from './ui/press.js';
 import { PhoneSession } from './session.js';
 
 const title = document.querySelector<HTMLHeadingElement>('#title')!;
@@ -22,15 +24,7 @@ const WAITING: Record<Phase, string> = {
 let team: Team | null = null;
 let screenKey = '';
 
-/** Prépare un bouton tactile avec une action et un libellé. */
-function button(label: string, action: () => void, className = ''): HTMLButtonElement {
-  const el = document.createElement('button');
-  el.type = 'button';
-  el.className = className;
-  el.textContent = label;
-  el.addEventListener('click', action);
-  return el;
-}
+let solo: SoloScreen | null = null;
 
 /** Ajoute un pictogramme et un statut textuel à un choix d'équipe ou de rôle. */
 function choice(label: string, icon: string, detail: string, color: Team, action: () => void, disabled: boolean) {
@@ -112,7 +106,22 @@ function showSeat(seat: SeatId, state: Phase): void {
 function render(): void {
   if (notice.textContent !== session.notice) notice.textContent = session.notice;
   const { state, seat, room, online, pending } = session;
-  const key = JSON.stringify([room, team, online, seat, pending, seat ? state?.phase : state?.seats]);
+  if (state?.soloTest && seat) {
+    if (!solo) {
+      solo = new SoloScreen(session);
+      title.textContent = 'Pilote solo';
+      document.body.dataset.team = 'A';
+      screen.replaceChildren(solo.root);
+    }
+    solo.update(state);
+    return;
+  }
+  if (solo) {
+    solo.close();
+    solo = null;
+    screenKey = '';
+  }
+  const key = JSON.stringify([room, team, online, seat, pending, state?.soloTest, seat ? state?.phase : state?.seats]);
   if (key === screenKey) return;
   screenKey = key;
   delete document.body.dataset.team;
@@ -124,6 +133,11 @@ function render(): void {
     screen.replaceChildren();
   } else if (seat) {
     showSeat(seat, state.phase);
+  } else if (state.soloTest) {
+    title.textContent = 'Essai pilote solo';
+    const taken = state.seats['A-pilot'].taken;
+    screen.replaceChildren(choice('Rejoindre comme pilote', '◈', taken ? 'Réservé' : 'Libre', 'A',
+      () => session.join('A-pilot'), taken || !online || pending !== null));
   } else if (team) {
     document.body.dataset.team = team;
     title.textContent = `Choisir un rôle · ${TEAM_LABEL[team]}`;

@@ -27,7 +27,7 @@ export async function loadLobbyJoin(): Promise<LobbyJoin | null> {
 }
 
 /** Dessine un QR à fort contraste, le code de secours et l'occupation des quatre places. */
-export function drawLobbyJoin(ctx: Ctx, invite: LobbyJoin, seats: GameState['seats']): void {
+export function drawLobbyJoin(ctx: Ctx, invite: LobbyJoin, seats: GameState['seats'], soloTest = false): void {
   const x = 1520, y = 485, side = 340;
   ctx.save();
   ctx.translate(x, y);
@@ -47,10 +47,11 @@ export function drawLobbyJoin(ctx: Ctx, invite: LobbyJoin, seats: GameState['sea
   const url = new URL(invite.url);
   ctx.fillText(`${url.origin}/play`, 0, 225, 451);
 
-  for (const [index, seat] of SEAT_IDS.entries()) {
+  const ids = soloTest ? ['A-pilot'] as const : SEAT_IDS;
+  for (const [index, seat] of ids.entries()) {
     const team = playerTeam(seat);
     const slot = seats[seat];
-    const dx = index < 2 ? -121 : 121;
+    const dx = soloTest ? 0 : index < 2 ? -121 : 121;
     const dy = index % 2 === 0 ? 263 : 297;
     const symbol = slot.connected ? '●' : slot.taken ? '◐' : '○';
     const status = slot.connected ? 'Connecté' : slot.taken ? 'Absent' : 'Libre';

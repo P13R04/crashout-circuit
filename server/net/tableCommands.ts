@@ -7,7 +7,8 @@ import type { GameRules } from '../rules/GameRules.js';
 
 /** Applique les commandes de préparation, de départ et de fin de séance. */
 export function handleTableSession(rules: GameRules, msg: ClientMessage): void {
-  const { phase, developerTools } = rules.state;
+  const { phase, developerTools, soloTest } = rules.state;
+  if (soloTest && msg.type !== 'Pause' && msg.type !== 'Reset' && msg.type !== 'NewGame') return;
   switch (msg.type) {
     case 'RaceSettings':
       rules.updateRaceSettings(msg);
@@ -58,6 +59,7 @@ export function handleTableSession(rules: GameRules, msg: ClientMessage): void {
 
 /** Applique la conduite, les gestes et les appuis permis depuis la table. */
 export function handleTableGameplay(rules: GameRules, msg: ClientMessage): void {
+  if (rules.state.soloTest) return;
   switch (msg.type) {
     case 'PilotInput':
       if ((msg.team === 'A' || msg.team === 'B') && !rules.state.seats[`${msg.team}-pilot`].connected) {

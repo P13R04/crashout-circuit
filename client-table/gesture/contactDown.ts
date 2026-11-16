@@ -36,6 +36,7 @@ export function onDown(recognizer: GestureRecognizer, e: PointerEvent): void {
 
   // 0 — lobby: start button
   if (state.phase === 'LOBBY') {
+    if (state.soloTest) { c.zone = 'rejected'; return; }
     if (hit(START_TABLE_BUTTON) || state.developerTools && hit(START_PC_BUTTON)) {
       c.zone = 'result';
       recognizer.send({ type: 'StartGame', mode: hit(START_PC_BUTTON) ? 'pc' : 'table' });

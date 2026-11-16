@@ -217,7 +217,12 @@ export interface JoinedMsg extends BaseMsg {
 /** Explique pourquoi une demande de place a été refusée. */
 export interface JoinRejectedMsg extends BaseMsg {
   type: 'JoinRejected';
-  reason: 'seat-taken' | 'bad-token' | 'unknown-room' | 'room-full';
+  reason: 'seat-taken' | 'bad-token' | 'unknown-room' | 'room-full' | 'solo-seat';
+}
+
+/** Lance ou recommence une course du banc de test solo. */
+export interface StartSoloMsg extends BaseMsg {
+  type: 'StartSolo';
 }
 
 /** Demande de libérer son poste avant le départ. */
@@ -264,6 +269,7 @@ export interface PhaseChangeMsg extends BaseMsg {
 export type ClientMessage =
   | JoinMsg
   | LeaveMsg
+  | StartSoloMsg
   | RaceSettingsMsg
   | StrokeDrawMsg
   | GenerateTrackMsg

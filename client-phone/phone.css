@@ -40,3 +40,10 @@ button.choice small { margin-inline-start: auto; color: var(--muted); text-align
 [data-team="A"] { --accent: #71e9f4; }
 [data-team="B"] { --accent: #ff88b3; }
 .team-icon { color: var(--accent); font-size: 1.35rem; }
+
+[hidden] { display: none !important; }
+.solo-screen, .solo-steering { display: grid; gap: .75rem; }
+.solo-steering { grid-template-columns: 1fr 1fr; }
+.solo-steering button { min-height: 120px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.solo-steering button.held { background: var(--accent); color: #102026; }
+#notice:empty { display: none; }

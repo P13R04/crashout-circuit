@@ -109,7 +109,10 @@ try {
 }
 const { server: httpServer, protocol, publicUrl } = transport;
 const wss = new WebSocketServer({ server: httpServer });
-const gameServer = new GameServer(wss,{developerTools:process.env.CRASHOUT_DEV_TOOLS==='1'});
+const gameServer = new GameServer(wss, {
+  developerTools: process.env.CRASHOUT_DEV_TOOLS === '1',
+  soloTest: process.env.CRASHOUT_SOLO_TEST === '1',
+});
 gameServer.rules.setTangiblePlacementMode('touch');
 
 // Export for use by PhysicsLoop and other modules (added in later tasks)
@@ -129,6 +132,7 @@ httpServer.listen(PORT, () => {
     console.log(`   Oz:      ${ozUrls[i]}`);
     console.log(`   Joueurs: ${baseUrl}/play?room=${gameServer.room}`);
   }
+  if (gameServer.getState().soloTest) console.log('   Essai pilote solo : scannez le QR sur la table.');
   if (!secure) console.log('   HTTP : capteurs iOS indisponibles. Utilisez une adresse HTTPS pour jouer au gyroscope.');
   console.log(`   Outils de test : ${gameServer.getState().developerTools?'activés':'désactivés'}`);
   console.log(`   Config:  lapsToWin=${config.lapsToWin}, physicsHz=${config.physicsHz}\n`);

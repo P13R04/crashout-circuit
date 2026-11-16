@@ -58,6 +58,8 @@ export function toggleDriveMode(rules: GameRules, team?: Team): void {
 export function expirePilotInputs(rules: GameRules, now: number): void {
   if (rules.state.sessionMode === 'tangibles-test') return;
   for (const team of TEAMS) {
-    if (now - rules.lastPilotInputAt[team] > config.pilotInputTimeoutMs) rules.inputs[team].steer = 0;
+    if (now - rules.lastPilotInputAt[team] <= config.pilotInputTimeoutMs) continue;
+    rules.inputs[team].steer = 0;
+    if (rules.state.soloTest) rules.inputs[team].throttle = 0;
   }
 }

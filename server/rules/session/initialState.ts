@@ -39,6 +39,7 @@ export function createInitialState(): GameState {
     phase: 'LOBBY',
     sessionMode: 'race',
     developerTools: false,
+    soloTest: false,
     driveMode: { A: 'auto', B: 'auto' },
     seats: {
       'A-pilot': { taken: false, connected: false },

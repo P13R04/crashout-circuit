@@ -100,6 +100,23 @@ try {
   } finally {
     oz.terminate();
   }
+  const playerPage = await readHttps(`${url}/play?room=${session.room}`);
+  assert.equal(playerPage.status, 200);
+  assert.match(playerPage.body, /Rejoindre la partie/);
+  const player = new WebSocket(`${url.replace('https:', 'wss:')}/ws/player`, { ca: fixtureCert });
+  try {
+    await once(player, 'message', { signal: AbortSignal.timeout(2000) });
+    const confirmation = once(player, 'joined-seat', { signal: AbortSignal.timeout(2000) });
+    player.on('message', bytes => {
+      const message = JSON.parse(bytes.toString());
+      if (message.type === 'Joined') player.emit('joined-seat', message.seat);
+    });
+    player.send(JSON.stringify({ type: 'Join', t: Date.now(), room: session.room, seat: 'A-pilot' }));
+    const [seat] = await confirmation;
+    assert.equal(seat, 'A-pilot');
+  } finally {
+    player.terminate();
+  }
 } finally {
   tls.stop();
   await tls.exit;
@@ -118,4 +135,4 @@ for (const [env, error] of [
     invalid.stop();
   }
 }
-console.log('✓ HTTPS : page table, WSS Oz, URL publique, comportement HTTP et erreurs de certificats');
+console.log('✓ HTTPS : pages table et téléphone, WSS Oz et joueur, URL publique, comportement HTTP et erreurs de certificats');

@@ -6,6 +6,7 @@
  * Référencé notamment par server/net/GameServer.ts, server/PhysicsLoop.ts, scripts/acceptance.ts.
  * Façade : l'état de la partie et les points d'entrée restent ici ; la logique est découpée par responsabilité dans server/rules/ (chaque méthode délègue à une fonction du même nom).
  */
+import { startSoloRace } from './session/soloRace.js';
 import type { GameState, Team, Vec2, ItemKind, Car, Wall, TrackGeometry, Tangible, StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg, PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg, TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg, TrackPresentation } from '../types.js';
 import { AutomaticPilot } from '../modes/AutomaticPilot.js';
 import { Tutorial } from '../modes/Tutorial.js';
@@ -95,6 +96,9 @@ export class GameRules {
   startRace(track?: TrackGeometry, waitForPlayers?: boolean, presentation?: TrackPresentation | null): void { raceStart.startRace(this, track, waitForPlayers, presentation); }
   /** Lance les feux de départ lorsque la piste est prête et sa présentation terminée. */
   beginRace(): void { raceStart.beginRace(this); }
+  /** Lance ou relance le circuit prédéfini de l'essai solo. */
+  startSolo(): void { startSoloRace(this); }
+
   /** Prépare le circuit et les voitures autonomes du mode d’essai réservé au développement. */
   startTangibleTest(): void { raceStart.startTangibleTest(this); }
   /** Remplace les entrées pilotes par les commandes de suivi du centre dans le mode d’essai. */

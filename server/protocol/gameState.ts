@@ -250,6 +250,8 @@ export interface GameState {
   sessionMode: 'race' | 'tangibles-test';
   /** Host opt-in only; participants cannot enable test tools with a URL or command. */
   developerTools: boolean;
+  /** Active une séance locale réservée à un seul pilote téléphone. */
+  soloTest: boolean;
   /** Driving scheme selected independently by each pilot. */
   driveMode: Record<Team, DriveMode>;
   seats: Record<SeatId, Seat>;

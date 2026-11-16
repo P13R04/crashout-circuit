@@ -41,6 +41,7 @@ interface ConnectedClient {
 /** Regroupe les options de démarrage qui autorisent ou masquent les outils de développement. */
 export interface GameServerOptions {
   developerTools?: boolean;
+  soloTest?: boolean;
 }
 
 /** Accepte les connexions table, Oz et joueur, filtre leurs commandes par rôle et diffuse l’état et les retours du jeu. */
@@ -60,7 +61,8 @@ export class GameServer {
     this.wss = wss;
     this.state = createInitialState();
     this.playerSeats = new PlayerSeats(this.state.seats, randomUUID);
-    this.state.developerTools=options.developerTools===true;
+    this.state.developerTools = options.developerTools === true;
+    this.state.soloTest = options.soloTest === true;
     const host: RulesHost = {
       /** Diffuse le retour d’action avec son équipe et le type de bonus lorsqu’il est connu. */
       feedback: (kind, x, y, team, itemKind) =>
@@ -149,7 +151,7 @@ export class GameServer {
       return;
     }
     if (client.role === 'oz') {
-      handleOzCommand(this.rules, msg);
+      if (!this.state.soloTest) handleOzCommand(this.rules, msg);
       return;
     }
     if (client.role === 'table') {
@@ -185,6 +187,10 @@ export class GameServer {
     const now = Date.now();
     if (msg.room !== this.room) {
       this.sendTo(client.ws, { type: 'JoinRejected', t: now, reason: 'unknown-room' });
+      return;
+    }
+    if (this.state.soloTest && msg.seat !== undefined && msg.seat !== 'A-pilot') {
+      this.sendTo(client.ws, { type: 'JoinRejected', t: now, reason: 'solo-seat' });
       return;
     }
     const result = this.playerSeats.claim(client.id, msg, now);
