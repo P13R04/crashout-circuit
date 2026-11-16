@@ -66,11 +66,11 @@ Le tutoriel est donc la vraie course avec des garde-fous et des étapes par-dess
 | `index.ts` | Point d'entrée HTTP et WebSocket. Il sert `dist/clients`, `/api/session` (adresses Oz) et `/api/oz-log`. |
 | `GameServer.ts` | Registre des connexions, attribution des rôles (table ou oz) selon l'URL, distribution des messages et diffusion de l'état. |
 | `PhysicsLoop.ts` | Simulation à pas fixe de 60 Hz : déplacement des véhicules, sorties de piste, puis appel des règles. |
-| `GameRules.ts` | Le plus gros fichier (environ 1 270 lignes) et le cœur du jeu. Il gère les tracés de la carte, les pickups, l'armement par POWER, le lance-pierre, les portails de boost, les tangibles, la réparation, la déformation de la piste, la victoire et les interrupteurs de test PC. |
-| `MapGenerator.ts` | Transforme les deux tracés à main levée des joueurs en circuit fermé valide (`TrackGeometry`). |
+| `GameRules.ts` | Le cœur du jeu, resté **façade** (une classe qui garde l'état et délègue). La logique vit dans `server/rules/`, un module par responsabilité : `trackCreation` (tracés de la carte), `raceStart` et `tutorialFlow` (départ, tutoriel), `sessionControl` (pause, retour à l'accueil, interrupteurs de test PC), `driving`, `armedItems` (POWER, lance-pierre, portails de boost), `repairDamage`, `tangiblesRules`, `trackDeformation`, `effectsExpiry`, `raceResult`. Chaque méthode de `GameRules` appelle la fonction du même nom du module. |
+| `MapGenerator.ts` | Façade de la génération : transforme les deux tracés à main levée des joueurs en circuit fermé valide (`TrackGeometry`). Les étapes (nettoyage du tracé, fusion, géométrie, placement des éléments, validation, stratégies et secours) sont dans `server/trackGeneration/`. |
 | `Tutorial.ts` | Tutoriel guidé, avec une progression indépendante par équipe, validée par de vrais événements de jeu. |
 | `AutomaticPilot.ts` | Suiveur de ligne centrale utilisé par le mode « TEST TANGIBLES ». |
-| `types.ts` | **Tous les types partagés** : `GameState`, `Phase`, `ClientMessage` et `ServerMessage`. Les clients l'importent aussi. |
+| `types.ts` | **Tous les types partagés** : `GameState`, `Phase`, `ClientMessage` et `ServerMessage`. Les clients l'importent aussi. Il réexporte `server/protocol/gameState.ts` (état) et `server/protocol/messages.ts` (protocole). |
 | `config.ts` | Charge `config.json` (dégâts, vitesses, déformation, taille de la table) avec des valeurs par défaut. |
 | `layout.ts` | Disposition de la table partagée avec le client : 4 panneaux d'angle, bouton des paramètres, dépôt neutre. |
 | `geometry.ts` | Aides géométriques 2D : intersection de segments, point le plus proche de la ligne centrale, tir du lance-pierre. |
@@ -82,15 +82,15 @@ Le tutoriel est donc la vraie course avec des garde-fous et des étapes par-dess
 ### `client-table/` (la table, en Canvas 2D)
 
 - **Cœur**
-  - `main.ts` : point d'entrée. Il ouvre la WebSocket, crée le moteur de rendu, le HUD et le recognizer de gestes, et lance la boucle de rendu.
+  - `main.ts` : point d'entrée. Il ouvre la WebSocket, crée le moteur de rendu et le recognizer de gestes, puis appelle les modules de `app/` (taille du canvas, thèmes, réglages de course, outils de développement, audio, clavier, plein écran, messages du serveur, boucle de rendu).
   - `view.ts` : état local du client (effets, lance-pierre en cours de tir).
-  - `GestureRecognizer.ts` : le cerveau multitouch (environ 870 lignes). Il suit jusqu'à 10 contacts et reconnaît le lance-pierre (3 doigts), le portail de boost (2 contacts), la déformation de la piste, le dessin de la carte et la pose des tangibles.
+  - `GestureRecognizer.ts` : le cerveau multitouch, resté façade. Il suit jusqu'à 10 contacts ; chaque geste vit dans `gesture/` : lance-pierre (3 doigts, `slingGesture`), portail de boost (`bonusEvaluation`), déformation de la piste (`borderPullGesture`), dessin de la carte (`mapDrawing`), pose des tangibles (`placementTouch`), pilotage et réparation (`pilotControls`), aiguillage des contacts (`contactDown`, `contactRelease`).
   - `HUD.ts` : les quatre panneaux d'angle, chacun tourné vers son bord de table. Les pilotes ont la direction, les PV et la réparation ; les copilotes ont POWER et la réparation.
   - `TutorialOverlay.ts` : bandeaux du tutoriel pour chaque équipe.
   - `Sound.ts` : retours sonores synthétisés, sans fichier audio.
   - `icons.ts` : pictogrammes canvas partagés.
 - **Rendu**
-  - `Renderer.ts` : moteur de rendu principal (environ 590 lignes) qui coordonne les couches.
+  - `Renderer.ts` : moteur de rendu principal, resté façade (couches par thème et composition des écrans). Les écrans et surcouches sont dans `renderer/` (`screenOverlays`, `raceOverlays`, `mapCreationScreen`).
   - `themes.ts` : liste des thèmes et préférence locale. Les cinq thèmes sont Néon, Ferraille, Toy Circuit, F1 Classic et Mayhem.
   - `neon.ts`, `VisualMotion.ts` : petites aides partagées pour les textures, le bruit et l'historique de mouvement.
 - **Décors propres à chaque thème**
@@ -109,7 +109,7 @@ Le tutoriel est donc la vraie course avec des garde-fous et des étapes par-dess
 
 - `main.ts` : point d'entrée et câblage de la barre d'outils.
 - `OzController.ts` : commandes de l'opérateur, avec état optimiste et annulation, indépendantes du DOM.
-- `OzMap.ts` : la carte (environ 940 lignes), avec le placement manuel, le glisser et la rotation du mur.
+- `OzMap.ts` : la carte, restée façade, avec le placement manuel, le glisser et la rotation du mur. Le pointeur (`map/ozPointer.ts`) et le dessin (`map/ozDraw*.ts`) sont découpés dans `map/`.
 - `OzLog.ts` : journal horodaté des événements, qui peut être rejoué.
 - `ozView.ts` est un très petit fichier. `index.html` est la page de la console.
 
@@ -161,3 +161,5 @@ npm run verify
 ```
 
 > Écrit d'après l'état de `main` au 29 octobre 2026, avant les pull requests #46 à #49. Celles-ci ajoutent `client-table/gestureTuning.ts`, `client-table/GestureLog.ts`, `scripts/sling-balance.ts` et le script `npm run check`.
+
+> Mise à jour du 16 novembre 2026 : les fichiers de plus de 500 lignes ont été découpés (issue #66). Les chemins d'import d'origine sont conservés : le fichier d'origine réexporte ou délègue. La règle de taille (cible 300 lignes, plafond 500) est contrôlée par `npm run check:sizes`.
