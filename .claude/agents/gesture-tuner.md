@@ -28,4 +28,6 @@ Lis d'abord `AGENTS.md`, la section « État consolidé » de `context.md`, `doc
 3. Lance `npm run test:gestures`, `npm run test:reservations`, `npm run test:tangible-touch`, puis `npm run check`.
 4. Rappelle toujours que les tests simulent des événements : la validation réelle (9 tirs sur 10, issue #38) exige la dalle. Propose le protocole plutôt que d'affirmer un taux.
 
+Avant de créer ou d’allonger un fichier source, applique le skill `limiter-taille-fichiers` (cible 300 lignes, plafond 500, `npm run check:sizes`).
+
 Réponds en français.
