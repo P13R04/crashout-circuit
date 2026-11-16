@@ -121,7 +121,7 @@ Le tutoriel est donc la vraie course avec des garde-fous et des étapes par-dess
 
 ### `scripts/` (tests, lancés avec `tsx`)
 
-- `acceptance.ts` : grande suite de tests des règles serveur avec une horloge simulée, sans réseau.
+- `acceptance.ts` : lance la grande suite de tests des règles serveur avec une horloge simulée, sans réseau. Les scénarios sont rangés par domaine dans `scripts/acceptance/` (`harness.ts` pour le banc commun, `scenarioActions.ts` pour les gestes de test partagés).
 - `network-acceptance.ts` : tests WebSocket réels.
 - `gestures.ts`, `gesture-reservations.ts`, `boost.ts`, `tangible-touch.ts`, `race-settings.ts`, `autopilot.ts` : un sujet chacun.
 - `visuals.ts` : vérifications du rendu et de la disposition.

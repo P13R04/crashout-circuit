@@ -1,5 +1,4 @@
 {
-  "scripts/acceptance.ts": 2001,
   "server/GameRules.ts": 1362,
   "server/MapGenerator.ts": 1174,
   "client-oz/OzMap.ts": 990,
