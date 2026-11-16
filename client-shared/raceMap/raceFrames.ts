@@ -1,8 +1,9 @@
 /** Interpole les voitures entre les deux derniers états synchronisés. */
-import type { GameState, Team } from '../../../server/types.js';
-import type { CarPose } from '../../../client-shared/raceMap/objects2d.js';
+import type { RaceViewState } from '../../server/protocol/raceView.js';
+import type { Team } from '../../server/types.js';
+import type { CarPose } from './objects2d.js';
 
-type Frame = { state: GameState; t: number };
+type Frame = { state: RaceViewState; t: number };
 
 /** Interpole le cap par le chemin le plus court. */
 export function shorterAngle(start: number, target: number): number {
@@ -23,7 +24,7 @@ export class RaceFrames {
   private current: Frame | null = null;
 
   /** Enregistre un nouvel état serveur et garde le précédent pour l'interpolation. */
-  update(state: GameState, t: number): void {
+  update(state: RaceViewState, t: number): void {
     if (this.current?.state === state) return;
     this.previous = this.current;
     this.current = { state, t };

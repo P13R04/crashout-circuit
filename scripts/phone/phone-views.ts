@@ -1,8 +1,9 @@
 /** Vérifie le cadrage de la carte, l'interpolation et l'invalidation du cache de piste. */
 import assert from 'node:assert/strict';
+import { COCKPIT_FOG, shotFor } from '../../client-shared/race3d/cameras.js';
 import { toScreen, toWorld } from '../../client-shared/raceMap/camera2d.js';
 import { TrackLayer } from '../../client-shared/raceMap/TrackLayer.js';
-import { interpolateCar } from '../../client-phone/pilot/views/raceFrames.js';
+import { interpolateCar } from '../../client-shared/raceMap/raceFrames.js';
 import { createInitialState } from '../../server/rules/GameRules.js';
 import { generatePreset } from '../../server/track/MapGenerator.js';
 
@@ -31,3 +32,14 @@ assert.equal(builds, 1);
 layer.get({ ...state, trackVersion: 1 });
 assert.equal(builds, 2);
 console.log('✓ Vue périphérique : cadrage, conversion, interpolation et cache de géométrie');
+
+const bounds = { center: { x: 960, y: 540 }, span: 1920 };
+const cockpit = shotFor('cockpit', { x: 100, y: 200 }, 0, bounds);
+assert.deepEqual(cockpit.eye, [104, 19, 200]);
+assert.ok(cockpit.target[0] > cockpit.eye[0]);
+assert.ok(COCKPIT_FOG.near < COCKPIT_FOG.far && COCKPIT_FOG.far <= cockpit.far);
+assert.ok(cockpit.far < shotFor('broadcast', car.pos, 0, bounds).far);
+const chase = shotFor('chase', car.pos, 0, bounds);
+assert.ok(chase.eye[0] < car.pos.x && chase.eye[1] > cockpit.eye[1]);
+assert.deepEqual(shotFor('overview', car.pos, 0, bounds).target, [960, 0, 540]);
+console.log('✓ Caméras 3D : cockpit, visibilité limitée, poursuite et vue globale');

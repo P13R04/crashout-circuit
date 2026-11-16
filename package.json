@@ -44,11 +44,13 @@
   },
   "dependencies": {
     "qrcode": "^1.5.4",
+    "three": "0.187.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/qrcode": "^1.5.6",
+    "@types/three": "0.187.0",
     "@types/ws": "^8.5.13",
     "concurrently": "^9.0.0",
     "tsx": "^4.19.0",

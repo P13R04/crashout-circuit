@@ -48,7 +48,7 @@ export class PilotScreen {
 
   constructor(private readonly session: PhoneSession, private readonly team: Team, private readonly solo: boolean) {
     this.root.className = 'pilot-screen';
-    this.viewport = new PilotViewport(team, () => session.sync.now());
+    this.viewport = new PilotViewport(team, () => session.sync.now(), solo);
     this.steer = createControls(msg => this.session.send(msg)).steer;
     this.sensor = actionButton('Activer le volant', this.activate, 'primary');
     this.fullscreen = actionButton('Paysage plein écran', () => { void this.lockLandscape(true); });
