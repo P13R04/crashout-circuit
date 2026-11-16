@@ -2,7 +2,7 @@
 
 Prototype de course asymétrique pour une grande table multitouch et un ordinateur « magicien d’Oz » sur le même Wi-Fi. Deux équipes ont chacune un pilote et un copilote. Le serveur partage et valide l’état de jeu ; Oz remplace pour l’instant les capteurs des objets tangibles.
 
-## Lancer et connecter les deux écrans
+## Lancer et connecter les interfaces
 
 Node.js ≥ 20 et Chrome / Edge sont recommandés.
 
@@ -14,6 +14,7 @@ npm start
 
 - **Table** : `http://localhost:3000/` sur l’ordinateur relié à la table, en plein écran.
 - **Magicien d’Oz** : `http://<ip-de-la-table>:3000/oz` sur un ordinateur, une tablette ou un téléphone du même Wi-Fi. Accès direct par cette adresse, sans code ni connexion supplémentaire. L’adresse exacte est affichée au démarrage. `localhost` désigne toujours l’ordinateur sur lequel le navigateur est ouvert.
+- **Téléphones** : scanner le QR de l’accueil, ou ouvrir `/play` sur l’adresse de la séance et saisir le code affiché. Choisir l’équipe puis le rôle.
 - Pour changer le port : `PORT=3100 npm start`.
 
 Le serveur doit rester ouvert pendant la séance. Les deux appareils doivent pouvoir communiquer sur le réseau local (un Wi-Fi invité qui isole les appareils ne convient pas). Ce prototype est prévu pour le réseau local de la séance ; il n’implémente pas de compte utilisateur.
@@ -58,7 +59,7 @@ npm run build:server
 npm run dev
 ```
 
-Ouvrir `http://localhost:5173/client-table/` et `http://localhost:5173/client-oz/`. Vite relaie les échanges et les API vers le serveur du port 3000. Après une modification du serveur, relancer `npm run build:server`.
+Ouvrir `http://localhost:5173/client-table/` , `http://localhost:5173/client-oz/` et `http://localhost:5173/client-phone/`. Vite relaie les échanges et les API vers le serveur du port 3000. Après une modification du serveur, relancer `npm run build:server`.
 
 ## Déroulement
 

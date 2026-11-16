@@ -12,10 +12,11 @@ import { themeLook } from '../themes/themes.js';
 import { glow, NEON, plate } from '../themes/neon/neon.js';
 import type { Ctx } from './rendererTypes.js';
 import { START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, RESULT_BUTTON, PAUSE_BUTTON, RACE_START_BUTTON } from './rendererButtons.js';
+import { drawLobbyJoin } from './lobbyJoin.js';
 import type { Renderer } from './Renderer.js';
 
 /** Dessine l’accueil et ses boutons sans révéler les modes de test lors d’une séance publique. */
-export function drawLobby(renderer: Renderer, ctx: Ctx, developerTools=false): void {
+export function drawLobby(renderer: Renderer, ctx: Ctx, developerTools = false, seats?: GameState['seats']): void {
   ctx.save(); ctx.textAlign = 'center';
   for (const rot of [0, Math.PI]) {
     ctx.save(); ctx.translate(LOGICAL_W / 2, LOGICAL_H / 2); ctx.rotate(rot);
@@ -40,6 +41,7 @@ export function drawLobby(renderer: Renderer, ctx: Ctx, developerTools=false): v
     }
   }
   ctx.restore();
+  if (renderer.lobbyJoin && seats) drawLobbyJoin(ctx, renderer.lobbyJoin, seats);
 }
 
 // ─── Overlays ─────────────────────────────────────────────────────────────

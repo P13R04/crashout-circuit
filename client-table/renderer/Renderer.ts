@@ -29,6 +29,7 @@ import { drawTangibleTouchPreview } from '../ui/TangibleTouchPreview.js';
 import type { Ctx } from './rendererTypes.js';
 import { DRIVE_MODE_BUTTONS } from './rendererButtons.js';
 import * as raceOverlays from './raceOverlays.js';
+import type { LobbyJoin } from './lobbyJoin.js';
 import * as screenOverlays from './screenOverlays.js';
 import * as mapCreationScreen from './mapCreationScreen.js';
 
@@ -40,6 +41,8 @@ export { START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGI
 
 export class Renderer {
   hud = new HUD();
+
+  lobbyJoin: LobbyJoin | null = null;
 
   creation = new TrackCreation();
 
@@ -109,7 +112,7 @@ export class Renderer {
     else (industrial?this.scrapBackdrop:this.backdrop).draw(ctx,this.time,view.reducedMotion,state?.phase==='MAP');
     if (!state) return;
 
-    if (state.phase === 'LOBBY') { vehicles.clear(); objects.clearPickups(); this.drawLobby(ctx,state.developerTools); return; }
+    if (state.phase === 'LOBBY') { vehicles.clear(); objects.clearPickups(); this.drawLobby(ctx, state.developerTools, state.seats); return; }
     if (state.phase === 'MAP') { vehicles.clear(); objects.clearPickups(); this.drawMap(ctx, state, view);  return; }
     if (state.phase !== 'READY' && state.phase !== 'RACE' && state.phase !== 'PAUSED' && state.phase !== 'RESULT') return;
     const now = state.phase === 'PAUSED' ? state.pausedAt : view.now();
@@ -164,7 +167,9 @@ export class Renderer {
   /** Indique la panne au poste de la voiture concernée avec une lecture orientée vers ses joueurs. */
   drawDisabledAlerts(ctx: Ctx, state: GameState): void { raceOverlays.drawDisabledAlerts(this, ctx, state); }
   /** Dessine l’accueil et ses boutons sans révéler les modes de test lors d’une séance publique. */
-  drawLobby(ctx: Ctx, developerTools?: boolean): void { screenOverlays.drawLobby(this, ctx, developerTools); }
+  drawLobby(ctx: Ctx, developerTools?: boolean, seats?: GameState['seats']): void {
+    screenOverlays.drawLobby(this, ctx, developerTools, seats);
+  }
   /** Affiche les feux de départ une fois les postes du tutoriel prêts. */
   drawCountdown(ctx: Ctx, state: GameState, now: number): void { screenOverlays.drawCountdown(this, ctx, state, now); }
   /** Dessine le bouton commun de pause ou de reprise. */

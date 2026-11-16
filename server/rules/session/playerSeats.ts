@@ -25,7 +25,7 @@ export class PlayerSeats {
   }
 
   /** Réattribue une réservation par jeton, ou crée une réservation pour une place libre. */
-  claim(owner: symbol, join: JoinMsg, now: number): Claim {
+  claim(owner: symbol, join: Pick<JoinMsg, 'seat' | 'token' | 'name'>, now: number): Claim {
     this.expire(now);
     const current = this.seatOf(owner);
     for (const [seat, reservation] of this.reservations) {
@@ -38,6 +38,7 @@ export class PlayerSeats {
     }
 
     if (current || !isSeatId(join.seat)) return { reason: 'bad-token' };
+    if (this.reservations.size === 4) return { reason: 'room-full' };
     if (this.reservations.has(join.seat)) return { reason: 'seat-taken' };
 
     const token = this.newToken();
@@ -59,12 +60,26 @@ export class PlayerSeats {
     return seat;
   }
 
+  /** Libère immédiatement la place de la connexion avant le départ de la course. */
+  leave(owner: symbol, phase: Phase): SeatId | undefined {
+    if (phase !== 'LOBBY' && phase !== 'MAP' && phase !== 'READY') return;
+    const seat = this.seatOf(owner);
+    if (!seat) return;
+    this.free(seat);
+    return seat;
+  }
+
   /** Libère les réservations expirées et retire leurs noms de l'état public. */
   expire(now: number): void {
     for (const [seat, reservation] of this.reservations) {
       if (reservation.owner || reservation.expiresAt > now) continue;
-      this.reservations.delete(seat);
-      this.seats[seat] = { taken: false, connected: false };
+      this.free(seat);
     }
+  }
+
+  /** Retire la réservation privée et met à jour l'occupation publique. */
+  private free(seat: SeatId): void {
+    this.reservations.delete(seat);
+    this.seats[seat] = { taken: false, connected: false };
   }
 }

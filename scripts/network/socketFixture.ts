@@ -36,7 +36,7 @@ export async function socketFixture(options?: GameServerOptions) {
     const messages: ServerMessage[] = [];
     ws.on('message', data => messages.push(JSON.parse(data.toString())));
     await once(ws, 'open');
-    const send = (msg: Record<string, unknown>) => ws.send(JSON.stringify({ t: Date.now(), ...msg }));
+    const send = (msg: Record<string, unknown>) => ws.send(JSON.stringify({ t: Date.now(), room: game.room, ...msg }));
     const receive = <T extends ServerMessage['type']>(type: T, since = 0) =>
       until(() => messages.slice(since).find(
         (msg): msg is Extract<ServerMessage, { type: T }> => msg.type === type,

@@ -63,7 +63,7 @@ const handleRequest: RequestListener = (req, res) => {
   if (url.pathname === '/api/session') {
     const port = (httpServer.address() as { port: number }).port;
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    res.end(JSON.stringify(sessionAddresses(port, protocol, publicUrl)));
+    res.end(JSON.stringify({ ...sessionAddresses(port, protocol, publicUrl), room: gameServer.room }));
     return;
   }
 
@@ -83,16 +83,10 @@ const handleRequest: RequestListener = (req, res) => {
   }
 
   // Route to the correct client dist folder
-  let clientDir: string;
-  if (url.pathname.startsWith('/oz')) {
-    clientDir = resolve(__dirname, '../../dist/clients/client-oz');
-  } else {
-    clientDir = resolve(__dirname, '../../dist/clients/client-table');
-  }
-
-  // Strip route prefix to get the file path within the client folder
-  let filePath = url.pathname;
-  if (url.pathname.startsWith('/oz'))    filePath = filePath.slice('/oz'.length) || '/';
+  const phone = url.pathname === '/play' || url.pathname.startsWith('/play/');
+  const prefix = phone ? '/play' : url.pathname.startsWith('/oz') ? '/oz' : '';
+  const clientDir = resolve(CLIENTS_ROOT, phone ? 'client-phone' : prefix ? 'client-oz' : 'client-table');
+  const filePath = url.pathname.slice(prefix.length) || '/';
 
   // Serve the file or fall back to index.html (SPA behaviour)
   const candidate = resolve(clientDir, filePath === '/' ? 'index.html' : filePath.slice(1));
@@ -133,6 +127,7 @@ httpServer.listen(PORT, () => {
   for (const [i, baseUrl] of baseUrls.entries()) {
     console.log(`   Network: ${baseUrl}`);
     console.log(`   Oz:      ${ozUrls[i]}`);
+    console.log(`   Joueurs: ${baseUrl}/play?room=${gameServer.room}`);
   }
   if (!secure) console.log('   HTTP : capteurs iOS indisponibles. Utilisez une adresse HTTPS pour jouer au gyroscope.');
   console.log(`   Outils de test : ${gameServer.getState().developerTools?'activés':'désactivés'}`);

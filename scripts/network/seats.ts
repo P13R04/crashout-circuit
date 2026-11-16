@@ -16,14 +16,14 @@ function checkExpiration() {
   for (const [phase, delay] of [['LOBBY', 60_000], ['MAP', 60_000], ['READY', 60_000],
     ['RACE', 300_000], ['PAUSED', 300_000], ['RESULT', 300_000]] as const) {
     const seat = 'A-pilot';
-    const join = reservations.claim(owner, { type: 'Join', t: 0, seat, name: 'Camille' }, 0);
+    const join = reservations.claim(owner, { seat, name: 'Camille' }, 0);
     assert.ok('token' in join);
     reservations.disconnect(owner, phase, 1000);
     reservations.expire(1000 + delay - 1);
     assert.deepEqual(seats[seat], { taken: true, connected: false, name: 'Camille' });
     reservations.expire(1000 + delay);
     assert.deepEqual(seats[seat], { taken: false, connected: false });
-    assert.deepEqual(reservations.claim(owner, { type: 'Join', t: 0, token: join.token }, 1000 + delay),
+    assert.deepEqual(reservations.claim(owner, { token: join.token }, 1000 + delay),
       { reason: 'bad-token' });
   }
 }

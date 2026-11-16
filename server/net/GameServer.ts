@@ -6,7 +6,7 @@
  */
 import { WebSocket, WebSocketServer } from 'ws';
 import type { IncomingMessage } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import type {
   GameState,
   SeatId,
@@ -51,6 +51,7 @@ export class GameServer {
   private readonly playerSeats: PlayerSeats;
   private readonly mobilePads = new Set<SeatId>();
   private broadcastTrackVersion = -1;
+  readonly room = makeRoomCode();
   readonly rules: GameRules;
   readonly physics: PhysicsLoop;
 
@@ -165,6 +166,10 @@ export class GameServer {
       this.joinPlayer(client, msg);
       return;
     }
+    if (msg.type === 'Leave') {
+      this.leavePlayer(client);
+      return;
+    }
     const seat = this.playerSeats.seatOf(client.id);
     if (!seat) return;
     const held = handlePlayerCommand(this.rules, seat, msg);
@@ -178,6 +183,10 @@ export class GameServer {
     if (msg.token !== undefined && typeof msg.token !== 'string') return;
     if (msg.name !== undefined && typeof msg.name !== 'string') return;
     const now = Date.now();
+    if (msg.room !== this.room) {
+      this.sendTo(client.ws, { type: 'JoinRejected', t: now, reason: 'unknown-room' });
+      return;
+    }
     const result = this.playerSeats.claim(client.id, msg, now);
     if ('reason' in result) {
       this.sendTo(client.ws, { type: 'JoinRejected', t: now, reason: result.reason });
@@ -189,6 +198,16 @@ export class GameServer {
       releasePlayerControls(this.rules, result.seat);
       this.broadcastTick();
     }
+  }
+
+  /** Libère une place à la demande du joueur si la course n'a pas commencé. */
+  private leavePlayer(client: ConnectedClient): void {
+    const seat = this.playerSeats.leave(client.id, this.state.phase);
+    if (!seat) return;
+    this.mobilePads.delete(seat);
+    releasePlayerControls(this.rules, seat);
+    this.sendTo(client.ws, { type: 'Left', t: Date.now() });
+    this.broadcastTick();
   }
 
   /** Change la phase et avertit tous les clients de la transition. */
@@ -258,4 +277,10 @@ export class GameServer {
       ws.send(JSON.stringify(msg));
     }
   }
+}
+
+/** Tire un code de séance à cinq caractères faciles à dicter. */
+function makeRoomCode(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({ length: 5 }, () => alphabet[randomInt(alphabet.length)]).join('');
 }

@@ -19,6 +19,7 @@ import { setupAudioSettings } from './app/audioSettings.js';
 import { setupKeyboardControls } from './app/keyboardControls.js';
 import { setupFullscreenControls } from './app/fullscreenControls.js';
 import { createMessageHandler } from './app/serverMessages.js';
+import { loadLobbyJoin } from './renderer/lobbyJoin.js';
 import { startRenderLoop } from './app/renderLoop.js';
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -38,7 +39,11 @@ view.tutorialMode='table';
 let handleServerMessage: (msg: ServerMessage) => void = () => {};
 const conn = connectWs('/ws', {
   /** Masque le statut de coupure et autorise à nouveau l’audio après connexion. */
-  onOpen: () => { statusEl.hidden = true; tableAudio.connection(true); },
+  onOpen: () => {
+    statusEl.hidden = true;
+    tableAudio.connection(true);
+    void loadLobbyJoin().then(invite => { renderer.lobbyJoin = invite; }).catch(() => { renderer.lobbyJoin = null; });
+  },
   /** Affiche la reconnexion, relâche les contacts et arrête les sons de la connexion perdue. */
   onClose: () => { tableAudio.connection(false); statusEl.textContent = 'Connexion perdue · Reconnexion…'; statusEl.hidden = false; gestures.releaseAll(); },
   onMessage: (msg) => handleServerMessage(msg),

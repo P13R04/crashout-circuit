@@ -58,6 +58,10 @@ const http = launch({ CRASHOUT_PUBLIC_URL: 'https://session.example.test/' });
 try {
   const url = await http.origin();
   const session = await (await fetch(`${url}/api/session`)).json();
+  assert.match(session.room, /^[A-HJ-NP-Z2-9]{5}$/);
+  const phone = await fetch(`${url}/play?room=${session.room}`);
+  assert.equal(phone.status, 200);
+  assert.match(await phone.text(), /Rejoindre la partie/);
   assert.equal(session.baseUrls[0], 'https://session.example.test');
   assert.equal(session.ozUrls[0], 'https://session.example.test/oz');
   assert.equal(session.secure, true);

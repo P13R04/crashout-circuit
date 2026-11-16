@@ -201,6 +201,7 @@ export interface PingMsg extends BaseMsg {
 /** Demande une place ou reprend une réservation existante. */
 export interface JoinMsg extends BaseMsg {
   type: 'Join';
+  room: string;
   seat?: SeatId;
   token?: string;
   name?: string;
@@ -216,7 +217,17 @@ export interface JoinedMsg extends BaseMsg {
 /** Explique pourquoi une demande de place a été refusée. */
 export interface JoinRejectedMsg extends BaseMsg {
   type: 'JoinRejected';
-  reason: 'seat-taken' | 'bad-token';
+  reason: 'seat-taken' | 'bad-token' | 'unknown-room' | 'room-full';
+}
+
+/** Demande de libérer son poste avant le départ. */
+export interface LeaveMsg extends BaseMsg {
+  type: 'Leave';
+}
+
+/** Confirme la libération du poste. */
+export interface LeftMsg extends BaseMsg {
+  type: 'Left';
 }
 
 // Server → All (broadcast)
@@ -252,6 +263,7 @@ export interface PhaseChangeMsg extends BaseMsg {
 /** Réunit les commandes que le serveur peut recevoir des deux interfaces. */
 export type ClientMessage =
   | JoinMsg
+  | LeaveMsg
   | RaceSettingsMsg
   | StrokeDrawMsg
   | GenerateTrackMsg
@@ -284,4 +296,4 @@ export type ClientMessage =
   | TestToggleMsg;
 
 /** Réunit les états, phases et retours que les interfaces peuvent recevoir du serveur. */
-export type ServerMessage = StateMsg | FeedbackMsg | PhaseChangeMsg | PongMsg | JoinedMsg | JoinRejectedMsg;
+export type ServerMessage = StateMsg | FeedbackMsg | PhaseChangeMsg | PongMsg | JoinedMsg | JoinRejectedMsg | LeftMsg;
