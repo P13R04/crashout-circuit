@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feuille d’observation — Crashout Circuit</title><style>
+/* Styles communs aux documents d'évaluation. Pensés pour une impression A4 en noir et blanc,
+   à remplir au stylo : cases et cercles larges, lignes à 7 mm, aucune information portée par la seule couleur. */
+
+@page { size: A4; margin: 0; }
+
+:root {
+  --ink: #111;
+  --mute: #555;
+  --rule: #8a8a8a;
+  --soft: #ececec;
+  --lh: 7.2mm;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+body {
+  margin: 0;
+  background: #d9d9d9;
+  color: var(--ink);
+  font: 9.6pt/1.3 "Segoe UI", Arial, Helvetica, sans-serif;
+}
+
+/* ---------- Page ---------- */
+.page {
+  position: relative;
+  width: 210mm;
+  height: 297mm;
+  margin: 6mm auto;
+  padding: 10mm 12mm 14mm;
+  background: #fff;
+  overflow: hidden;
+  break-after: page;
+  page-break-after: always;
+}
+.page:last-child { break-after: auto; page-break-after: auto; }
+
+@media print {
+  body { background: #fff; }
+  .page { margin: 0; }
+}
+
+.foot {
+  position: absolute;
+  left: 12mm; right: 12mm; bottom: 6mm;
+  display: flex; justify-content: space-between;
+  font-size: 7.5pt; color: var(--mute);
+  border-top: .2mm solid var(--rule);
+  padding-top: 1mm;
+}
+
+/* ---------- En-tête de page ---------- */
+.hd {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 6mm;
+  border-bottom: .7mm solid var(--ink);
+  padding-bottom: 1.6mm; margin-bottom: 3mm;
+}
+.hd h1 { margin: 0; font-size: 15pt; line-height: 1.1; letter-spacing: .01em; }
+.hd .sub { font-size: 8.5pt; color: var(--mute); margin-top: .6mm; }
+.hd .ids { display: flex; gap: 4mm; font-size: 8.5pt; white-space: nowrap; }
+
+h2 {
+  margin: 3mm 0 1.6mm;
+  font-size: 11pt;
+  display: flex; align-items: baseline; gap: 2.2mm;
+}
+h2 .n {
+  display: inline-block; min-width: 6.5mm; padding: .4mm 1.4mm;
+  background: var(--ink); color: #fff; text-align: center; font-size: 9.5pt;
+}
+h3 { margin: 0; font-size: 10.5pt; }
+p { margin: 0 0 1.6mm; }
+.small { font-size: 8.3pt; color: var(--mute); }
+.tiny { font-size: 7.5pt; color: var(--mute); }
+.hint { font-size: 8.3pt; color: var(--mute); font-style: italic; }
+
+/* ---------- Champs à compléter ---------- */
+.fill {
+  display: inline-block; vertical-align: baseline;
+  border-bottom: .25mm solid var(--ink);
+  min-width: 16mm; height: 1.15em;
+}
+.fill.s { min-width: 9mm; }
+.fill.m { min-width: 28mm; }
+.fill.l { min-width: 55mm; }
+.fill.xl { min-width: 90mm; }
+
+.field { display: flex; align-items: baseline; gap: 1.6mm; white-space: nowrap; }
+.field .fill { flex: 1; }
+
+/* Lignes à écrire : un bloc par ligne (les dégradés se rastérisent mal en PDF) */
+.lines i { display: block; height: var(--lh); border-bottom: .25mm solid var(--rule); }
+
+/* Case ouverte encadrée, à remplir librement */
+.free {
+  border: .3mm solid var(--ink);
+  min-height: 20mm;
+  padding: 1mm 1.6mm;
+}
+.free > .cap { font-size: 8pt; font-weight: 700; }
+
+/* ---------- Cases à cocher et échelles ---------- */
+.cb {
+  display: inline-block; vertical-align: -.9mm;
+  width: 4.4mm; height: 4.4mm;
+  border: .35mm solid var(--ink); background: #fff;
+  margin-right: 1.2mm;
+}
+.opt { display: inline-flex; align-items: center; margin-right: 4mm; white-space: nowrap; }
+.opt .cb { vertical-align: baseline; margin-right: 1.3mm; flex: none; }
+.opts { display: flex; flex-wrap: wrap; row-gap: 1.2mm; }
+
+.sc { display: inline-flex; gap: 1.5mm; vertical-align: middle; }
+.sc i {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 6.4mm; height: 6.4mm; border-radius: 50%;
+  border: .35mm solid var(--ink);
+  font-style: normal; font-size: 7.5pt; color: var(--mute);
+}
+.sc.c i { width: 5.6mm; height: 5.6mm; }
+
+/* ---------- Tableaux ---------- */
+table { border-collapse: collapse; width: 100%; }
+th, td {
+  border: .3mm solid var(--ink);
+  padding: 1mm 1.5mm;
+  vertical-align: middle;
+  text-align: left;
+}
+th { background: var(--soft); font-size: 8.3pt; font-weight: 700; }
+td.c, th.c { text-align: center; }
+td.nw { white-space: nowrap; }
+tr.tall td { height: 10.5mm; }
+tr.tall2 td { height: 12mm; }
+.rot { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; padding: 1mm .6mm; }
+
+/* ---------- Encadrés ---------- */
+.note {
+  border: .3mm solid var(--ink);
+  background: var(--soft);
+  padding: 1.6mm 2.4mm;
+  font-size: 8.8pt;
+}
+.rule { border-left: 1.2mm solid var(--ink); padding: .4mm 0 .4mm 2.4mm; }
+
+.cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; }
+.cols3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3mm; }
+.stack > * + * { margin-top: 2mm; }
+
+/* ---------- Bloc de tâche (feuille d'observation) ---------- */
+.task { border: .5mm solid var(--ink); margin-bottom: 4mm; }
+.task-h {
+  display: flex; align-items: center; gap: 2.4mm;
+  background: var(--ink); color: #fff; padding: 1.1mm 2.4mm;
+}
+.task-h .tid { font-weight: 800; font-size: 11pt; }
+.task-h h3 { flex: 1; font-size: 10.5pt; }
+.task-h .who { font-size: 8pt; display: flex; gap: 2.4mm; }
+.task-h .cb { border-color: #fff; background: transparent; width: 3.8mm; height: 3.8mm; margin-right: .8mm; }
+.task-b { padding: 1.6mm 2.4mm 2mm; }
+.consigne { font-size: 9.2pt; margin-bottom: 1.4mm; }
+.consigne b { font-variant: small-caps; letter-spacing: .02em; }
+.watch { display: grid; grid-template-columns: 1fr 1fr; gap: .8mm 4mm; margin: 1mm 0 1.6mm; font-size: 8.8pt; }
+.watch .opt { white-space: normal; align-items: flex-start; margin: 0; }
+.watch .cb { margin-top: .5mm; }
+.res {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 1.2mm 4mm;
+  border-top: .25mm solid var(--rule); border-bottom: .25mm solid var(--rule);
+  padding: 1.1mm 0; margin-bottom: 1.2mm; font-size: 8.8pt;
+}
+.res b { font-size: 8.3pt; }
+.lbl { font-size: 8.2pt; font-weight: 700; margin: .6mm 0 0; }
+.lbl span { font-weight: 400; color: var(--mute); }
+.ex { font-weight: 400; color: var(--mute); }
+</style></head><body>
+<section class="page">
+
+<header class="hd"><div><h1>Feuille d’observation</h1><div class="sub">Crashout Circuit · évaluation coopérative · le système est évalué, pas les joueurs</div></div><div class="ids"><span class="field">Session n°<i class="fill s"></i></span><span class="field">Observateur<i class="fill m"></i></span><span class="field">Date<i class="fill s"></i></span></div></header>
+
+<div class="cols2" style="row-gap:2mm">
+  <span class="field">Directeur<i class="fill m"></i></span><span class="field">Opérateur Oz<i class="fill m"></i></span>
+  <span class="field">Mode / ambiance<i class="fill m"></i></span><span class="field">Version du jeu<i class="fill m"></i></span>
+</div>
+
+<h2><span class="n">1</span>Participants</h2>
+<table>
+  <tr><th style="width:12mm">Code</th><th>Place</th><th>Rôle</th><th>Équipe</th><th>Remarque (expérience, gaucher…)</th></tr>
+  <tr style="height:8.4mm"><td><b>J1</b></td><td>Bas-gauche</td><td>Pilote</td><td>Cyan</td><td></td></tr><tr style="height:8.4mm"><td><b>J2</b></td><td>Haut-droite</td><td>Copilote</td><td>Cyan</td><td></td></tr><tr style="height:8.4mm"><td><b>J3</b></td><td>Haut-gauche</td><td>Pilote</td><td>Rose</td><td></td></tr><tr style="height:8.4mm"><td><b>J4</b></td><td>Bas-droite</td><td>Copilote</td><td>Rose</td><td></td></tr>
+</table>
+
+<h2><span class="n">2</span>Tâches <span class="small" style="font-weight:400">(une consigne orale par tâche, sans dire comment faire)</span></h2>
+<table>
+  <tr><th style="width:9mm">N°</th><th>Tâche</th><th class="c" style="width:12mm">Seul</th><th class="c" style="width:12mm">Indice</th><th class="c" style="width:12mm">Aide</th><th class="c" style="width:12mm">Échec</th><th style="width:15mm">Durée</th><th>Observations (erreurs, hésitations, paroles)</th></tr>
+  <tr style="height:16mm"><td><b>T1</b></td><td style="font-size:8.8pt">Créer le circuit à deux équipes</td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td></td><td></td></tr><tr style="height:16mm"><td><b>T2</b></td><td style="font-size:8.8pt">Piloter : faire un tour</td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td></td><td></td></tr><tr style="height:16mm"><td><b>T3</b></td><td style="font-size:8.8pt">Ramasser et préparer un objet (POWER)</td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td></td><td></td></tr><tr style="height:16mm"><td><b>T4</b></td><td style="font-size:8.8pt">Utiliser l’objet (lance-pierre / boost)</td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td></td><td></td></tr><tr style="height:16mm"><td><b>T5</b></td><td style="font-size:8.8pt">Déformer la piste</td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td></td><td></td></tr><tr style="height:16mm"><td><b>T6</b></td><td style="font-size:8.8pt">Poser un objet physique (mur / pilier)</td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td></td><td></td></tr><tr style="height:16mm"><td><b>T7</b></td><td style="font-size:8.8pt">Réparer la voiture à deux</td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td></td><td></td></tr>
+</table>
+<p class="tiny" style="margin-top:1mm"><b>Indice</b> = question ouverte (« Que cherchez-vous ? »). <b>Aide</b> = montrer ou expliquer. Durée en minutes.</p>
+
+<h2><span class="n">3</span>Course libre</h2>
+<div class="res" style="border-top:0"><b>Fin</b> <span class="opt"><i class="cb"></i>tours</span><span class="opt"><i class="cb"></i>chrono</span><span class="opt"><i class="cb"></i>abandon</span><b style="margin-left:3mm">Gagnant</b> <span class="opt"><i class="cb"></i>Cyan</span><span class="opt"><i class="cb"></i>Rose</span></div>
+<div class="lbl">Moments marquants <span>(heure, joueur, citation)</span></div>
+<div class="lines"><i></i><i></i><i></i><i></i></div>
+<div class="foot"><span>Crashout Circuit · Feuille d’observation · évaluation coopérative</span><span>1 / 2</span></div></section>
+<section class="page">
+
+<header class="hd"><div><h1>Feuille d’observation</h1><div class="sub">Modèle conceptuel, image de l’interface, coopération, problèmes</div></div><div class="ids"><span class="field">Session n°<i class="fill s"></i></span><span class="field">Observateur<i class="fill m"></i></span><span class="field">Date<i class="fill s"></i></span></div></header>
+
+<h2><span class="n">4</span>Modèle conceptuel <span class="small" style="font-weight:400">ce que les joueurs croient comprendre du jeu</span></h2>
+<div class="opts small" style="margin-bottom:1mm">Rôles pilote / copilote : <span class="opt"><i class="cb"></i>clairs</span><span class="opt"><i class="cb"></i>flous</span><span class="opt"><i class="cb"></i>faux</span><span style="margin-left:4mm"></span>POWER et objets : <span class="opt"><i class="cb"></i>clairs</span><span class="opt"><i class="cb"></i>flous</span><span class="opt"><i class="cb"></i>faux</span></div>
+<div class="opts small" style="margin-bottom:1mm">Réparation à deux : <span class="opt"><i class="cb"></i>claire</span><span class="opt"><i class="cb"></i>floue</span><span class="opt"><i class="cb"></i>fausse</span><span style="margin-left:4mm"></span>Objets posés : <span class="opt"><i class="cb"></i>clairs</span><span class="opt"><i class="cb"></i>flous</span><span class="opt"><i class="cb"></i>faux</span></div>
+<div class="lbl">Idées fausses, mots employés, comparaisons <span>(qui ? J1 à J4)</span></div>
+<div class="lines"><i></i><i></i><i></i></div>
+
+<h2><span class="n">5</span>Image de l’interface <span class="small" style="font-weight:400">ce qui est vu et compris à l’écran</span></h2>
+<table>
+  <tr><th>Élément</th><th class="c" style="width:17mm">Non vu</th><th class="c" style="width:17mm">Ambigu</th><th class="c" style="width:17mm">Gênant</th><th style="width:72mm">Remarque</th></tr>
+  <tr style="height:9mm"><td style="font-size:8.8pt">Panneaux de coin (direction, vie, POWER)</td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td></td></tr><tr style="height:9mm"><td style="font-size:8.8pt">Avertissements (pierre, panne, réparation)</td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td></td></tr><tr style="height:9mm"><td style="font-size:8.8pt">Objets posés (mur, pilier, arc)</td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td></td></tr><tr style="height:9mm"><td style="font-size:8.8pt">Textes orientés selon le bord</td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td class="c"><i class="cb" style="margin:0"></i></td><td></td></tr>
+</table>
+
+<h2><span class="n">6</span>Coopération et table <span class="small" style="font-weight:400">(entourer 1 à 5)</span></h2>
+<table>
+  <tr style="height:8.8mm"><td>Les coéquipiers se parlent</td><td class="c small" style="width:16mm">jamais</td><td class="c" style="width:48mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td><td class="c small" style="width:22mm">tout le temps</td></tr><tr style="height:8.8mm"><td>Les bras masquent l’écran ou gênent</td><td class="c small" style="width:16mm">jamais</td><td class="c" style="width:48mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td><td class="c small" style="width:22mm">souvent</td></tr><tr style="height:8.8mm"><td>La table réagit mal aux doigts (T)</td><td class="c small" style="width:16mm">jamais</td><td class="c" style="width:48mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td><td class="c small" style="width:22mm">souvent</td></tr>
+</table>
+<div class="lbl" style="margin-top:1mm">Déplacements, postures, conflits d’espace entre équipes</div>
+<div class="lines"><i></i></div>
+
+<h2><span class="n">7</span>Problèmes principaux <span class="small" style="font-weight:400">(à compléter juste après la séance)</span></h2>
+<table>
+  <tr><th style="width:8mm">N°</th><th>Problème observé</th><th class="c" style="width:14mm">Tâche</th><th class="c" style="width:33mm">Gravité</th><th style="width:45mm">Piste d’amélioration</th></tr>
+  <tr style="height:10.8mm"><td class="c">1</td><td></td><td></td><td class="c nw" style="font-size:8.5pt"><span class="opt" style="margin-right:2mm"><i class="cb"></i>1</span><span class="opt" style="margin-right:2mm"><i class="cb"></i>2</span><span class="opt" style="margin-right:0"><i class="cb"></i>3</span></td><td></td></tr><tr style="height:10.8mm"><td class="c">2</td><td></td><td></td><td class="c nw" style="font-size:8.5pt"><span class="opt" style="margin-right:2mm"><i class="cb"></i>1</span><span class="opt" style="margin-right:2mm"><i class="cb"></i>2</span><span class="opt" style="margin-right:0"><i class="cb"></i>3</span></td><td></td></tr><tr style="height:10.8mm"><td class="c">3</td><td></td><td></td><td class="c nw" style="font-size:8.5pt"><span class="opt" style="margin-right:2mm"><i class="cb"></i>1</span><span class="opt" style="margin-right:2mm"><i class="cb"></i>2</span><span class="opt" style="margin-right:0"><i class="cb"></i>3</span></td><td></td></tr><tr style="height:10.8mm"><td class="c">4</td><td></td><td></td><td class="c nw" style="font-size:8.5pt"><span class="opt" style="margin-right:2mm"><i class="cb"></i>1</span><span class="opt" style="margin-right:2mm"><i class="cb"></i>2</span><span class="opt" style="margin-right:0"><i class="cb"></i>3</span></td><td></td></tr>
+</table>
+<p class="tiny" style="margin-top:1mm"><b>Gravité</b> : 1 = gêne légère · 2 = fait hésiter ou ralentit · 3 = bloque.</p>
+
+<h2><span class="n">8</span>Séance</h2>
+<div class="watch" style="grid-template-columns:1fr 1fr">
+  <span class="opt"><i class="cb"></i>Tâches réalisables avec le prototype</span><span class="opt"><i class="cb"></i>Consignes claires pour des novices</span>
+  <span class="opt"><i class="cb"></i>Joueurs jamais mis en difficulté</span><span class="opt"><i class="cb"></i>Magicien d’Oz resté invisible</span>
+</div>
+<div class="lbl" style="margin-top:1mm">Points forts à garder · biais éventuels de la séance</div>
+<div class="lines"><i></i><i></i></div>
+<div class="foot"><span>Crashout Circuit · Feuille d’observation · évaluation coopérative</span><span>2 / 2</span></div></section>
+</body></html>
