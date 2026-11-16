@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Questionnaire de fin — Crashout Circuit</title><style>
+/* Styles communs aux documents d'évaluation. Pensés pour une impression A4 en noir et blanc,
+   à remplir au stylo : cases et cercles larges, lignes à 7 mm, aucune information portée par la seule couleur. */
+
+@page { size: A4; margin: 0; }
+
+:root {
+  --ink: #111;
+  --mute: #555;
+  --rule: #8a8a8a;
+  --soft: #ececec;
+  --lh: 7.2mm;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+body {
+  margin: 0;
+  background: #d9d9d9;
+  color: var(--ink);
+  font: 9.6pt/1.3 "Segoe UI", Arial, Helvetica, sans-serif;
+}
+
+/* ---------- Page ---------- */
+.page {
+  position: relative;
+  width: 210mm;
+  height: 297mm;
+  margin: 6mm auto;
+  padding: 10mm 12mm 14mm;
+  background: #fff;
+  overflow: hidden;
+  break-after: page;
+  page-break-after: always;
+}
+.page:last-child { break-after: auto; page-break-after: auto; }
+
+@media print {
+  body { background: #fff; }
+  .page { margin: 0; }
+}
+
+.foot {
+  position: absolute;
+  left: 12mm; right: 12mm; bottom: 6mm;
+  display: flex; justify-content: space-between;
+  font-size: 7.5pt; color: var(--mute);
+  border-top: .2mm solid var(--rule);
+  padding-top: 1mm;
+}
+
+/* ---------- En-tête de page ---------- */
+.hd {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 6mm;
+  border-bottom: .7mm solid var(--ink);
+  padding-bottom: 1.6mm; margin-bottom: 3mm;
+}
+.hd h1 { margin: 0; font-size: 15pt; line-height: 1.1; letter-spacing: .01em; }
+.hd .sub { font-size: 8.5pt; color: var(--mute); margin-top: .6mm; }
+.hd .ids { display: flex; gap: 4mm; font-size: 8.5pt; white-space: nowrap; }
+
+h2 {
+  margin: 3mm 0 1.6mm;
+  font-size: 11pt;
+  display: flex; align-items: baseline; gap: 2.2mm;
+}
+h2 .n {
+  display: inline-block; min-width: 6.5mm; padding: .4mm 1.4mm;
+  background: var(--ink); color: #fff; text-align: center; font-size: 9.5pt;
+}
+h3 { margin: 0; font-size: 10.5pt; }
+p { margin: 0 0 1.6mm; }
+.small { font-size: 8.3pt; color: var(--mute); }
+.tiny { font-size: 7.5pt; color: var(--mute); }
+.hint { font-size: 8.3pt; color: var(--mute); font-style: italic; }
+
+/* ---------- Champs à compléter ---------- */
+.fill {
+  display: inline-block; vertical-align: baseline;
+  border-bottom: .25mm solid var(--ink);
+  min-width: 16mm; height: 1.15em;
+}
+.fill.s { min-width: 9mm; }
+.fill.m { min-width: 28mm; }
+.fill.l { min-width: 55mm; }
+.fill.xl { min-width: 90mm; }
+
+.field { display: flex; align-items: baseline; gap: 1.6mm; white-space: nowrap; }
+.field .fill { flex: 1; }
+
+/* Lignes à écrire : un bloc par ligne (les dégradés se rastérisent mal en PDF) */
+.lines i { display: block; height: var(--lh); border-bottom: .25mm solid var(--rule); }
+
+/* Case ouverte encadrée, à remplir librement */
+.free {
+  border: .3mm solid var(--ink);
+  min-height: 20mm;
+  padding: 1mm 1.6mm;
+}
+.free > .cap { font-size: 8pt; font-weight: 700; }
+
+/* ---------- Cases à cocher et échelles ---------- */
+.cb {
+  display: inline-block; vertical-align: -.9mm;
+  width: 4.4mm; height: 4.4mm;
+  border: .35mm solid var(--ink); background: #fff;
+  margin-right: 1.2mm;
+}
+.opt { display: inline-flex; align-items: center; margin-right: 4mm; white-space: nowrap; }
+.opt .cb { vertical-align: baseline; margin-right: 1.3mm; flex: none; }
+.opts { display: flex; flex-wrap: wrap; row-gap: 1.2mm; }
+
+.sc { display: inline-flex; gap: 1.5mm; vertical-align: middle; }
+.sc i {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 6.4mm; height: 6.4mm; border-radius: 50%;
+  border: .35mm solid var(--ink);
+  font-style: normal; font-size: 7.5pt; color: var(--mute);
+}
+.sc.c i { width: 5.6mm; height: 5.6mm; }
+
+/* ---------- Tableaux ---------- */
+table { border-collapse: collapse; width: 100%; }
+th, td {
+  border: .3mm solid var(--ink);
+  padding: 1mm 1.5mm;
+  vertical-align: middle;
+  text-align: left;
+}
+th { background: var(--soft); font-size: 8.3pt; font-weight: 700; }
+td.c, th.c { text-align: center; }
+td.nw { white-space: nowrap; }
+tr.tall td { height: 10.5mm; }
+tr.tall2 td { height: 12mm; }
+.rot { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; padding: 1mm .6mm; }
+
+/* ---------- Encadrés ---------- */
+.note {
+  border: .3mm solid var(--ink);
+  background: var(--soft);
+  padding: 1.6mm 2.4mm;
+  font-size: 8.8pt;
+}
+.rule { border-left: 1.2mm solid var(--ink); padding: .4mm 0 .4mm 2.4mm; }
+
+.cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; }
+.cols3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3mm; }
+.stack > * + * { margin-top: 2mm; }
+
+/* ---------- Bloc de tâche (feuille d'observation) ---------- */
+.task { border: .5mm solid var(--ink); margin-bottom: 4mm; }
+.task-h {
+  display: flex; align-items: center; gap: 2.4mm;
+  background: var(--ink); color: #fff; padding: 1.1mm 2.4mm;
+}
+.task-h .tid { font-weight: 800; font-size: 11pt; }
+.task-h h3 { flex: 1; font-size: 10.5pt; }
+.task-h .who { font-size: 8pt; display: flex; gap: 2.4mm; }
+.task-h .cb { border-color: #fff; background: transparent; width: 3.8mm; height: 3.8mm; margin-right: .8mm; }
+.task-b { padding: 1.6mm 2.4mm 2mm; }
+.consigne { font-size: 9.2pt; margin-bottom: 1.4mm; }
+.consigne b { font-variant: small-caps; letter-spacing: .02em; }
+.watch { display: grid; grid-template-columns: 1fr 1fr; gap: .8mm 4mm; margin: 1mm 0 1.6mm; font-size: 8.8pt; }
+.watch .opt { white-space: normal; align-items: flex-start; margin: 0; }
+.watch .cb { margin-top: .5mm; }
+.res {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 1.2mm 4mm;
+  border-top: .25mm solid var(--rule); border-bottom: .25mm solid var(--rule);
+  padding: 1.1mm 0; margin-bottom: 1.2mm; font-size: 8.8pt;
+}
+.res b { font-size: 8.3pt; }
+.lbl { font-size: 8.2pt; font-weight: 700; margin: .6mm 0 0; }
+.lbl span { font-weight: 400; color: var(--mute); }
+.ex { font-weight: 400; color: var(--mute); }
+</style></head><body>
+<section class="page">
+
+<header class="hd"><div><h1>Questionnaire de fin</h1><div class="sub">Crashout Circuit · c’est le jeu qui est évalué, pas vous · répondez spontanément</div></div><div class="ids"><span class="field">Code<i class="fill s"></i></span><span class="field">Date<i class="fill s"></i></span></div></header>
+<div class="opts" style="margin:1mm 0 0"><b style="margin-right:3mm">Rôle</b><span class="opt"><i class="cb"></i>Pilote</span><span class="opt"><i class="cb"></i>Copilote</span><b style="margin:0 3mm 0 5mm">Équipe</b><span class="opt"><i class="cb"></i>Cyan</span><span class="opt"><i class="cb"></i>Rose</span></div>
+
+<h2><span class="n">A</span>Vous</h2>
+<div class="stack">
+  <div class="cols2"><span class="field">Âge<i class="fill s"></i></span><div class="opts"><b style="margin-right:3mm">Jeux vidéo</b><span class="opt"><i class="cb"></i>rarement</span><span class="opt"><i class="cb"></i>souvent</span></div></div>
+  <div class="opts"><b style="margin-right:3mm">Écrans tactiles</b><span class="opt"><i class="cb"></i>rarement</span><span class="opt"><i class="cb"></i>souvent</span><b style="margin:0 3mm 0 6mm">Table tactile avec objets</b><span class="opt"><i class="cb"></i>déjà vue</span><span class="opt"><i class="cb"></i>jamais vue</span></div>
+</div>
+
+<h2><span class="n">B</span>Impression générale</h2>
+
+<table>
+  <tr style="height:11mm"><td style="width:34mm;text-align:right">Ennuyeux</td><td class="c" style="width:50mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td><td style="width:34mm">Amusant</td></tr><tr style="height:11mm"><td style="width:34mm;text-align:right">Confus</td><td class="c" style="width:50mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td><td style="width:34mm">Clair</td></tr><tr style="height:11mm"><td style="width:34mm;text-align:right">Frustrant</td><td class="c" style="width:50mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td><td style="width:34mm">Satisfaisant</td></tr><tr style="height:11mm"><td style="width:34mm;text-align:right">Compliqué</td><td class="c" style="width:50mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td><td style="width:34mm">Simple</td></tr>
+</table>
+<div style="margin-top:3.5mm"><b>Note globale</b> <span class="small">(0 = très mauvais · 10 = excellent)</span><div style="margin-top:1.4mm"><span class="sc c"><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i><i>10</i></span></div></div>
+
+<h2><span class="n">C</span>Ce que vous avez compris <span class="small" style="font-weight:400">(quelques mots)</span></h2>
+<div class="stack">
+  <div><b>Rôle du pilote ? du copilote ?</b><div class="lines"><i></i><i></i><i></i></div></div>
+  <div><b>À quoi sert POWER ?</b><div class="lines"><i></i><i></i><i></i></div></div>
+  <div><b>Comment remet-on une voiture en panne en course ?</b><div class="lines"><i></i><i></i><i></i></div></div>
+  <div><b>À quoi servent le mur et les piliers posés sur la table ?</b><div class="lines"><i></i><i></i><i></i></div></div>
+</div>
+<div class="foot"><span>Crashout Circuit · Questionnaire de fin · évaluation coopérative</span><span>1 / 2</span></div></section>
+<section class="page">
+
+<header class="hd"><div><h1>Questionnaire de fin</h1><div class="sub">Écran, gestes, coopération</div></div><div class="ids"><span class="field">Code<i class="fill s"></i></span><span class="field">Date<i class="fill s"></i></span></div></header>
+
+<h2><span class="n">D</span>L’écran</h2>
+
+<table>
+  <tr><th colspan="2">1 = pas du tout d’accord · 5 = tout à fait d’accord</th></tr>
+  <tr style="height:10mm"><td>Je lisais facilement les informations de mon coin.</td><td class="c" style="width:52mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td></tr><tr style="height:10mm"><td>Les icônes et les couleurs étaient faciles à comprendre.</td><td class="c" style="width:52mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td></tr><tr style="height:10mm"><td>Les alertes (pierre, panne) étaient claires.</td><td class="c" style="width:52mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td></tr><tr style="height:10mm"><td>Je comprenais ce que faisait l’autre équipe.</td><td class="c" style="width:52mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td></tr>
+</table>
+
+<h2><span class="n">E</span>Les gestes <span class="small" style="font-weight:400">(1 = pas du tout, 5 = tout à fait)</span></h2>
+<table>
+  <tr><th>Action</th><th class="c" style="width:46mm">Facile à faire</th><th class="c" style="width:46mm">Geste adapté à l’effet</th></tr>
+  <tr style="height:10mm"><td>Conduire</td><td class="c"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td><td class="c"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td></tr><tr style="height:10mm"><td>Utiliser un objet (POWER puis geste)</td><td class="c"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td><td class="c"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td></tr><tr style="height:10mm"><td>Déformer la piste</td><td class="c"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td><td class="c"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td></tr><tr style="height:10mm"><td>Poser un objet sur la table</td><td class="c"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td><td class="c"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td></tr><tr style="height:10mm"><td>Réparer à deux</td><td class="c"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td><td class="c"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td></tr>
+</table>
+
+<h2><span class="n">F</span>Coopération et table</h2>
+
+<table>
+  <tr><th colspan="2">1 = pas du tout d’accord · 5 = tout à fait d’accord</th></tr>
+  <tr style="height:10mm"><td>J’ai bien su ce que faisait mon partenaire.</td><td class="c" style="width:52mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td></tr><tr style="height:10mm"><td>Ma place autour de la table était confortable.</td><td class="c" style="width:52mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td></tr><tr style="height:10mm"><td>La table a bien réagi à mes doigts.</td><td class="c" style="width:52mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td></tr><tr style="height:10mm"><td>Gêner l’équipe adverse était amusant.</td><td class="c" style="width:52mm"><span class="sc c"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></td></tr>
+</table>
+
+<h2><span class="n">G</span>Pour finir</h2>
+<div class="stack">
+  <div><b>À changer en priorité</b><div class="lines"><i></i><i></i><i></i></div></div>
+  <div><b>À garder absolument</b><div class="lines"><i></i><i></i></div></div>
+  <div class="opts"><b style="margin-right:3mm">Rejoueriez-vous ?</b><span class="opt"><i class="cb"></i>oui</span><span class="opt"><i class="cb"></i>peut-être</span><span class="opt"><i class="cb"></i>non</span></div>
+</div>
+<div class="foot"><span>Crashout Circuit · Questionnaire de fin · évaluation coopérative</span><span>2 / 2</span></div></section>
+</body></html>

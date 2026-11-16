@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QCM Crashout Circuit</title>
+<style>
+  :root {
+    --bg: #f6f7fb; --card: #ffffff; --text: #1d2433; --muted: #5d667a; --line: #d9deea;
+    --accent: #2563eb; --accent-text: #ffffff;
+    --ok: #15803d; --ok-bg: #e6f6ec; --ko: #b91c1c; --ko-bg: #fdecec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11151f; --card: #1a2030; --text: #e8ecf5; --muted: #98a2b8; --line: #2c3550;
+      --accent: #5b8cff; --accent-text: #0c1220;
+      --ok: #5fd08a; --ok-bg: #12301f; --ko: #ff8a8a; --ko-bg: #3a1a1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+  .meta { display: flex; justify-content: space-between; color: var(--muted); font-size: .9rem; margin-bottom: 14px; }
+  .question { font-size: 1.1rem; font-weight: 600; margin: 0 0 14px; }
+  .choices { display: grid; gap: 10px; }
+  .choice {
+    text-align: left; font: inherit; color: inherit; background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; cursor: pointer;
+  }
+  .choice:hover:not(:disabled) { border-color: var(--accent); }
+  .choice:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .choice:disabled { cursor: default; }
+  .choice.ok { background: var(--ok-bg); border-color: var(--ok); }
+  .choice.ko { background: var(--ko-bg); border-color: var(--ko); }
+  .explain { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
+  .explain strong.ok { color: var(--ok); }
+  .explain strong.ko { color: var(--ko); }
+  .btn {
+    font: inherit; font-weight: 600; background: var(--accent); color: var(--accent-text);
+    border: 0; border-radius: 10px; padding: 10px 18px; cursor: pointer; margin-top: 16px;
+  }
+  .btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); margin-left: 8px; }
+  .score { font-size: 2rem; font-weight: 700; margin: 0 0 4px; }
+  .miss { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .miss h2 { font-size: 1rem; margin: 0 0 10px; }
+  .miss article { margin-bottom: 14px; }
+  .miss p { margin: 2px 0; }
+  .miss .good { color: var(--ok); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>QCM Crashout Circuit</h1>
+  <p class="sub" id="intro"></p>
+
+  <section class="card" id="quiz">
+    <div class="bar"><div id="progress"></div></div>
+    <div class="meta"><span id="counter"></span><span id="running"></span></div>
+    <p class="question" id="question"></p>
+    <div class="choices" id="choices"></div>
+    <div class="explain hidden" id="explain"></div>
+    <button class="btn hidden" id="next" type="button">Question suivante</button>
+  </section>
+
+  <section class="card hidden" id="result">
+    <p class="score" id="score"></p>
+    <p id="verdict"></p>
+    <button class="btn" id="again" type="button">Nouveau QCM (10 autres questions)</button>
+    <button class="btn ghost hidden" id="retry" type="button">Refaire mes erreurs</button>
+    <div class="miss hidden" id="miss"></div>
+  </section>
+</main>
+
+<script>
+// Pour chaque question, la première réponse est la bonne : elles sont mélangées à l'affichage.
+const BANK = [
+  {
+    q: "Qui décide de l'état du jeu (position des voitures, dégâts, victoire) ?",
+    a: ["Le serveur Node, qui est autoritaire", "La table tactile, qui calcule la physique", "La console Oz", "Chaque navigateur, puis ils se synchronisent"],
+    e: "Le serveur partage et valide l'état. Les clients envoient des intentions (un geste, une direction) et affichent l'état reçu."
+  },
+  {
+    q: "Quelles sont les phases de jeu, dans l'ordre ?",
+    a: ["LOBBY → MAP → READY → RACE ⇄ PAUSED → RESULT", "MENU → DESSIN → COURSE → FIN", "LOBBY → RACE → MAP → RESULT", "START → READY → RACE → WIN"],
+    e: "Le lobby choisit le mode, MAP sert à dessiner le circuit, READY à l'inspecter, puis la course (avec pause possible) et le résultat."
+  },
+  {
+    q: "Que représente la console Oz ?",
+    a: ["Un opérateur humain qui remplace les capteurs des objets tangibles", "Le tableau de bord du pilote", "Un outil de génération de circuit", "Le serveur de jeu"],
+    e: "C'est un dispositif « magicien d'Oz » : l'opérateur pose et active le mur et les piliers pendant qu'aucun vrai capteur n'existe."
+  },
+  {
+    q: "À quelles fréquences tournent la physique et la diffusion de l'état ?",
+    a: ["Physique 60 Hz, diffusion 30 Hz", "Physique 30 Hz, diffusion 60 Hz", "Les deux à 60 Hz", "Physique 120 Hz, diffusion 10 Hz"],
+    e: "Valeurs de config.json : physicsHz = 60 et broadcastHz = 30. La physique est une boucle à pas fixe côté serveur."
+  },
+  {
+    q: "Que fait GestureRecognizer ?",
+    a: ["Il transforme les touches brutes en messages du protocole", "Il dessine les voitures sur le canvas", "Il valide les dégâts côté serveur", "Il génère le circuit à partir des tracés"],
+    e: "Le serveur ne voit jamais une touche brute : le recognizer (côté table) reconnaît le geste et envoie un message comme Slingshot ou BoostGate."
+  },
+  {
+    q: "Quel fichier contient la plupart des règles du jeu ?",
+    a: ["server/GameRules.ts", "client-table/Renderer.ts", "server/index.ts", "client-shared/net.ts"],
+    e: "GameRules gère pickups, armement par POWER, lance-pierre, boost, tangibles, réparation, déformation de piste et victoire."
+  },
+  {
+    q: "À quoi sert server/types.ts ?",
+    a: ["Aux types partagés : GameState, Phase et les messages client/serveur", "À stocker les valeurs de réglage du jeu", "À dessiner les décors", "À lancer les tests"],
+    e: "Serveur et clients importent les mêmes types, donc le protocole reste cohérent des deux côtés."
+  },
+  {
+    q: "Comment tire-t-on avec le lance-pierre sur la table ?",
+    a: ["3 doigts rapprochés, on tire l'un d'eux en arrière et on le relâche", "Un seul appui long sur la voiture adverse", "On glisse deux doigts l'un vers l'autre", "On appuie sur un bouton « tirer » du pilote"],
+    e: "Deux doigts forment la fourche, le troisième est la poche. Seul le relâchement du doigt qui tire déclenche le tir."
+  },
+  {
+    q: "Comment crée-t-on un portail de boost ?",
+    a: ["Avec 2 contacts sur la piste, espacés de 0 à 400 px", "Avec 3 doigts rapprochés", "En dessinant un cercle autour de la voiture", "Avec un bouton du pilote"],
+    e: "Les deux contacts définissent le seuil du portail. Plus ils sont écartés, plus le boost est puissant."
+  },
+  {
+    q: "À quoi sert le bouton POWER du copilote ?",
+    a: ["À armer l'objet ramassé par sa voiture", "À accélérer la voiture", "À réparer la voiture", "À poser le mur"],
+    e: "POWER arme le stock de l'équipe. Ensuite le geste correspondant (lance-pierre ou boost) peut être fait sur la table."
+  },
+  {
+    q: "Quels tangibles existent, et comment sont-ils posés ?",
+    a: ["Un mur et deux piliers, posés via la console Oz", "Trois murs, posés par le pilote", "Deux murs et un pilier, posés par la table", "Aucun : tout est virtuel"],
+    e: "Les trois objets sont neutres et touchent les deux équipes. Deux piliers actifs à portée forment un arc électrique."
+  },
+  {
+    q: "Comment répare-t-on une voiture en panne ?",
+    a: ["Les deux partenaires maintiennent leur pad pendant 2 secondes", "Le pilote tape trois fois sur sa voiture", "Oz clique sur la voiture", "La voiture se répare seule après 10 secondes"],
+    e: "La réparation est synchrone : si un des deux relâche, la jauge repart à zéro (repairHoldS = 2 dans config.json)."
+  },
+  {
+    q: "Comment le tutoriel valide-t-il une étape ?",
+    a: ["Par l'événement réel du jeu qui prouve l'action, jamais par un minuteur", "Au bout d'un temps fixe", "Quand le joueur clique sur « Suivant »", "Quand Oz le confirme"],
+    e: "Par exemple : ramasser un objet attend le retour « pickup » du serveur. Chaque équipe a sa propre progression, et un bouton Passer existe."
+  },
+  {
+    q: "Qu'ont en commun TABLE/PC, TUTORIEL et TEST TANGIBLES ?",
+    a: ["Ils passent tous par startRace() et partagent le même moteur", "Chacun a son propre serveur", "Ils utilisent trois physiques différentes", "Ils ont leurs propres clients"],
+    e: "Même GameState, même PhysicsLoop, mêmes GameRules et mêmes clients. Seuls quelques drapeaux changent le comportement."
+  },
+  {
+    q: "Quels drapeaux différencient les modes dans l'état de jeu ?",
+    a: ["mapMode, sessionMode et state.tutorial", "Un fichier de config par mode", "Une classe par mode", "Le type de navigateur"],
+    e: "Ce sont des « if » posés à plusieurs endroits. Il faut donc y penser quand on ajoute une règle (par exemple un dégât mis à zéro dans le tutoriel)."
+  },
+  {
+    q: "Que change le tutoriel par rapport à une vraie course ?",
+    a: ["Circuit prédéfini, aucun dégât, pas de fin de partie, objets imposés par étape", "Il n'y a pas de physique", "Il n'y a qu'une seule équipe", "Il se joue sans le serveur"],
+    e: "C'est la vraie course avec des garde-fous : les chutes remettent la voiture sur la piste et rien n'est perdu."
+  },
+  {
+    q: "À quoi sert le mode TEST TANGIBLES ?",
+    a: ["Tester les tangibles avec des pilotes automatiques qui suivent la ligne centrale", "Tester le réseau Wi-Fi", "Tester le tutoriel sans copilote", "Dessiner un circuit à la main"],
+    e: "Les voitures roulent seules (AutomaticPilot) sans éviter les obstacles : on voit les vrais rebonds et dégâts du mur et des piliers."
+  },
+  {
+    q: "Où règle-t-on les valeurs de jeu (dégâts, vitesses, déformation) ?",
+    a: ["Dans config.json, puis on relance le serveur", "Dans le HUD, pendant la partie", "Dans types.ts", "Dans le navigateur, via localStorage"],
+    e: "server/config.ts charge config.json avec des valeurs par défaut."
+  },
+  {
+    q: "Quel est le repère logique de la table ?",
+    a: ["1920 × 1080 (16:9)", "1080 × 1080 (carré)", "3840 × 2160, strictement", "Il dépend de la fenêtre du navigateur"],
+    e: "Tout est calculé dans ce repère, puis mis à l'échelle de l'écran. Le canvas garde ses proportions 16:9."
+  },
+  {
+    q: "Pourquoi StateSync existe-t-il dans client-shared/net.ts ?",
+    a: ["Le serveur n'envoie la piste que lorsqu'elle change : il faut reconstituer l'état complet", "Pour chiffrer les messages", "Pour compresser les images", "Pour synchroniser les horloges"],
+    e: "La géométrie de la piste est lourde. Le client garde la dernière version et la réattache à chaque nouvel état."
+  },
+  {
+    q: "À quoi sert client-shared/controls.ts ?",
+    a: ["À exprimer des intentions de jeu indépendantes du périphérique", "À dessiner l'interface", "À stocker les scores", "À lancer le serveur"],
+    e: "Clavier et tactile utilisent la même interface. Un futur adaptateur mobile pourrait s'y brancher sans toucher à la physique."
+  },
+  {
+    q: "Comment lance-t-on tous les contrôles automatiques du projet ?",
+    a: ["npm run verify", "npm start", "npm run dev", "npm run build:server"],
+    e: "verify enchaîne les types, tous les tests et le build. Les tests d'acceptation tournent avec une horloge simulée, sans réseau."
+  },
+  {
+    q: "Que se passe-t-il quand on change de thème visuel ?",
+    a: ["Rien côté serveur : c'est une préférence locale d'affichage", "Le serveur relance la course", "Les collisions changent", "Les équipes sont échangées"],
+    e: "Les cinq thèmes (Néon, Ferraille, Toy Circuit, F1 Classic, Mayhem) ne changent ni la physique ni les règles."
+  },
+  {
+    q: "Quel est le statut de prototypes/piste-vivante ?",
+    a: ["Un prototype de recherche à conserver comme historique, sans y construire", "Le code de production actuel", "Le dossier des tests", "Le dossier des thèmes visuels"],
+    e: "Les nouvelles applications se créent à côté, jamais directement dans ce prototype sans demande explicite."
+  },
+  {
+    q: "Comment la table choisit-elle l'équipe qui fait un geste ?",
+    a: ["Celle du poste copilote le plus proche", "Celle de la personne reconnue par la dalle", "Celle de la voiture en tête", "Celle choisie par Oz"],
+    e: "La table ne reconnaît pas les gens. Le geste est attribué par la position : les postes sont autour de la table, en diagonale par équipe."
+  },
+  {
+    q: "Où se trouve la logique du tutoriel côté serveur (étapes et progression de chaque équipe) ?",
+    a: ["server/Tutorial.ts", "client-table/TutorialOverlay.ts", "server/GameServer.ts", "scripts/acceptance.ts"],
+    e: "Tutorial.ts avance les étapes. L'affichage (bandeaux, bouton Passer) est dans client-table/TutorialOverlay.ts, et GameRules lui transmet les événements."
+  },
+  {
+    q: "Dans quel fichier sont dessinés les quatre panneaux d'angle (direction, PV, POWER, réparation) ?",
+    a: ["client-table/HUD.ts", "client-table/Renderer.ts", "server/layout.ts", "client-table/icons.ts"],
+    e: "HUD.ts dessine chaque panneau tourné vers son bord de table. Leur position est définie dans server/layout.ts, partagé avec le serveur."
+  },
+  {
+    q: "Où le circuit est-il construit à partir des deux tracés des joueurs ?",
+    a: ["server/MapGenerator.ts", "client-table/CircuitTrack.ts", "server/geometry.ts", "client-table/GestureRecognizer.ts"],
+    e: "MapGenerator.ts valide les tracés et produit la géométrie de piste. CircuitTrack.ts ne fait que dessiner la piste dans certains thèmes."
+  },
+  {
+    q: "Quel est le point d'entrée du client de la table (WebSocket, boucle de rendu) ?",
+    a: ["client-table/main.ts", "client-shared/net.ts", "client-table/Renderer.ts", "server/index.ts"],
+    e: "main.ts ouvre la connexion, crée le Renderer, le HUD et le GestureRecognizer, puis lance la boucle de rendu. net.ts fournit la connexion partagée."
+  },
+  {
+    q: "Où se trouvent les tests des règles serveur, avec une horloge simulée et sans réseau ?",
+    a: ["scripts/acceptance.ts", "scripts/network-acceptance.ts", "scripts/gestures.ts", "server/GameRules.ts"],
+    e: "acceptance.ts est la grande suite des règles. network-acceptance.ts teste les vraies WebSockets, gestures.ts teste la reconnaissance tactile."
+  },
+  {
+    q: "Où sont les commandes de l'opérateur Oz (annulation, raccourcis), sans lien avec le DOM ?",
+    a: ["client-oz/OzController.ts", "client-oz/OzMap.ts", "client-oz/OzLog.ts", "server/tangibles.ts"],
+    e: "OzController gère les commandes avec état optimiste et annulation. OzMap dessine la carte et OzLog garde le journal rejouable."
+  },
+  {
+    q: "Quel fichier attribue le rôle (table ou oz) à chaque connexion et diffuse l'état ?",
+    a: ["server/GameServer.ts", "server/index.ts", "server/PhysicsLoop.ts", "client-shared/net.ts"],
+    e: "GameServer lit l'URL de connexion pour le rôle, distribue les messages aux règles et diffuse l'état. index.ts démarre le serveur HTTP et WebSocket."
+  },
+  {
+    q: "Où est définie la disposition de la table (panneaux d'angle, dépôt neutre), partagée entre serveur et client ?",
+    a: ["server/layout.ts", "client-table/view.ts", "config.json", "server/types.ts"],
+    e: "layout.ts n'a aucune dépendance Node : le client l'importe aussi, pour que les zones tactiles et les règles serveur restent identiques."
+  }
+];
+
+const QUESTIONS_PER_RUN = 10;
+const $ = (id) => document.getElementById(id);
+
+function shuffle(list) {
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+let run = [];      // questions de la série en cours, réponses déjà mélangées
+let index = 0;
+let missed = [];
+let answered = false;
+let score = 0;
+
+function prepare(questions) {
+  return questions.map((item) => ({
+    q: item.q,
+    e: item.e,
+    good: item.a[0],
+    choices: shuffle(item.a)
+  }));
+}
+
+function start(questions) {
+  run = prepare(questions);
+  index = 0;
+  score = 0;
+  missed = [];
+  $("quiz").classList.remove("hidden");
+  $("result").classList.add("hidden");
+  show();
+}
+
+function show() {
+  const item = run[index];
+  answered = false;
+  $("progress").style.width = (index / run.length * 100) + "%";
+  $("counter").textContent = "Question " + (index + 1) + " sur " + run.length;
+  $("running").textContent = "Score : " + score;
+  $("question").textContent = item.q;
+  $("explain").classList.add("hidden");
+  $("next").classList.add("hidden");
+  const box = $("choices");
+  box.textContent = "";
+  item.choices.forEach((text) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "choice";
+    button.textContent = text;
+    button.addEventListener("click", () => choose(button, text));
+    box.appendChild(button);
+  });
+}
+
+function choose(button, text) {
+  if (answered) return;
+  answered = true;
+  const item = run[index];
+  const right = text === item.good;
+  if (right) score++; else missed.push(item);
+  for (const other of $("choices").children) {
+    other.disabled = true;
+    if (other.textContent === item.good) other.classList.add("ok");
+  }
+  if (!right) button.classList.add("ko");
+  $("running").textContent = "Score : " + score;
+  const explain = $("explain");
+  explain.textContent = "";
+  const label = document.createElement("strong");
+  label.className = right ? "ok" : "ko";
+  label.textContent = right ? "Bonne réponse. " : "Pas tout à fait. La bonne réponse : " + item.good + ". ";
+  explain.append(label, document.createTextNode(item.e));
+  explain.classList.remove("hidden");
+  $("next").textContent = index === run.length - 1 ? "Voir mon résultat" : "Question suivante";
+  $("next").classList.remove("hidden");
+  $("next").focus();
+}
+
+function finish() {
+  $("quiz").classList.add("hidden");
+  $("result").classList.remove("hidden");
+  $("progress").style.width = "100%";
+  $("score").textContent = score + " / " + run.length;
+  const ratio = score / run.length;
+  $("verdict").textContent = ratio === 1 ? "Parfait, tu maîtrises ces points."
+    : ratio >= 0.7 ? "Bien. Relis les explications des erreurs ci-dessous."
+    : "À retravailler : relis le guide du code puis refais une série.";
+  $("retry").classList.toggle("hidden", missed.length === 0);
+  const box = $("miss");
+  box.textContent = "";
+  box.classList.toggle("hidden", missed.length === 0);
+  if (missed.length) {
+    const title = document.createElement("h2");
+    title.textContent = "À revoir";
+    box.appendChild(title);
+    missed.forEach((item) => {
+      const article = document.createElement("article");
+      const q = document.createElement("p");
+      q.textContent = item.q;
+      q.style.fontWeight = "600";
+      const good = document.createElement("p");
+      good.className = "good";
+      good.textContent = "Réponse : " + item.good;
+      const why = document.createElement("p");
+      why.textContent = item.e;
+      article.append(q, good, why);
+      box.appendChild(article);
+    });
+  }
+}
+
+$("next").addEventListener("click", () => {
+  if (index === run.length - 1) finish();
+  else { index++; show(); }
+});
+$("again").addEventListener("click", () => start(shuffle(BANK).slice(0, QUESTIONS_PER_RUN)));
+$("retry").addEventListener("click", () => start(shuffle(missed.map((item) => ({ q: item.q, e: item.e, a: [item.good, ...item.choices.filter((c) => c !== item.good)] })))));
+
+$("intro").textContent = QUESTIONS_PER_RUN + " questions tirées au hasard parmi " + BANK.length + ". L'ordre des réponses change à chaque fois. Chaque réponse est expliquée pour apprendre.";
+start(shuffle(BANK).slice(0, QUESTIONS_PER_RUN));
+</script>
+</body>
+</html>
