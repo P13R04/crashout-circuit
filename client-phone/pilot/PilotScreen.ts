@@ -4,6 +4,7 @@ import type { GameState, Team } from '../../server/types.js';
 import type { PhoneSession } from '../session.js';
 import { actionButton, holdButton } from '../ui/press.js';
 import { driveSample, shouldSendInput, WHEEL, type SentInput } from './gyro.js';
+import { PilotViewport } from './views/PilotViewport.js';
 import { WheelSensor, type WheelStatus } from './wheelSensor.js';
 
 type LandscapeLock = ScreenOrientation & { lock?: (mode: 'landscape') => Promise<void> };
@@ -23,6 +24,7 @@ export class PilotScreen {
   readonly root = document.createElement('section');
   private readonly landscape = matchMedia('(orientation: landscape)');
   private readonly wheel = new WheelSensor(() => this.landscape.matches);
+  private readonly viewport: PilotViewport;
   private readonly steer;
   private readonly sensor;
   private readonly fullscreen;
@@ -46,6 +48,7 @@ export class PilotScreen {
 
   constructor(private readonly session: PhoneSession, private readonly team: Team, private readonly solo: boolean) {
     this.root.className = 'pilot-screen';
+    this.viewport = new PilotViewport(team, () => session.sync.now());
     this.steer = createControls(msg => this.session.send(msg)).steer;
     this.sensor = actionButton('Activer le volant', this.activate, 'primary');
     this.fullscreen = actionButton('Paysage plein écran', () => { void this.lockLandscape(true); });
@@ -59,7 +62,7 @@ export class PilotScreen {
     const settings = document.createElement('div');
     settings.className = 'pilot-settings';
     settings.append(this.sensor, this.fullscreen, this.calibrate, this.mode);
-    this.root.append(this.phase, this.hint, settings, this.pedal.button, this.repair.button, this.start);
+    this.root.append(this.phase, this.hint, this.viewport.root, settings, this.pedal.button, this.repair.button, this.start);
     this.wheel.start();
     this.timer = window.setInterval(this.tick, WHEEL.pollMs);
     this.landscape.addEventListener('change', this.onRotation);
@@ -71,6 +74,8 @@ export class PilotScreen {
   /** Actualise la phase et les commandes sans remplacer les boutons maintenus. */
   update(state: GameState): void {
     this.state = state;
+    this.viewport.root.hidden = !state.track || !this.landscape.matches;
+    this.viewport.update(state, this.session.stateTime);
     const car = state.cars[this.team];
     const remaining = Math.max(0, Math.ceil((state.sessionStartAt - this.session.sync.now()) / 1000));
     const startLabel = state.phase === 'LOBBY' ? 'Lancer la course' : 'Recommencer';
@@ -94,6 +99,7 @@ export class PilotScreen {
     clearInterval(this.timer);
     this.landscape.removeEventListener('change', this.onRotation);
     this.wheel.close();
+    this.viewport.close();
     if (this.orientationLocked) screen.orientation?.unlock?.();
     if (this.ownsFullscreen && document.fullscreenElement === document.documentElement) {
       void document.exitFullscreen().catch(() => {});
@@ -185,7 +191,7 @@ export class PilotScreen {
   private onRotation = (): void => {
     this.release();
     this.wheel.calibrate();
-    this.tick();
+    if (this.state) this.update(this.state);
   };
 
   /** Neutralise les entrées de conduite même si un bouton était encore maintenu. */

@@ -106,7 +106,7 @@ function showSeat(seat: SeatId, state: Phase): void {
 function render(): void {
   if (notice.textContent !== session.notice) notice.textContent = session.notice;
   const { state, seat, room, online, pending } = session;
-  if (seat?.endsWith('-pilot') && state && (state.soloTest || state.phase === 'RACE' || state.phase === 'PAUSED')) {
+  if (seat?.endsWith('-pilot') && state && (state.soloTest || state.phase === 'RACE' || state.phase === 'PAUSED' || state.phase === 'RESULT')) {
     if (!pilot) {
       const team = playerTeam(seat);
       pilot = new PilotScreen(session, team, state.soloTest);
