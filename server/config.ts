@@ -62,6 +62,7 @@ const defaults = {
   pilotInputTimeoutMs: 250,
   physicsHz: 60,
   broadcastHz: 30,
+  spectatorHz: 20,
   logicalWidth: 1920,
   logicalHeight: 1080,
 };

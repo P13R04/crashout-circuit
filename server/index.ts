@@ -4,7 +4,7 @@
  * Liens : client-table/index.html, client-oz/index.html, server/net/GameServer.ts, server/net/audioHttp.ts,
  * server/config.ts.
  */
-import type { RequestListener, ServerResponse } from 'node:http';
+import type { IncomingMessage, RequestListener, ServerResponse } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { readFileSync, statSync } from 'fs';
 import { resolve, dirname, extname } from 'path';
@@ -12,6 +12,8 @@ import { fileURLToPath } from 'url';
 import { createSessionHttp, sessionAddresses } from './net/sessionHttp.js';
 import { GameServer } from './net/GameServer.js';
 import { audioByteRange } from './net/audioHttp.js';
+import { HostAccess, socketRole } from './net/hostAccess.js';
+import { SpectatorStream } from './net/SpectatorStream.js';
 import { config } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -30,6 +32,8 @@ const MIME: Record<string, string> = {
   '.mp3':  'audio/mpeg',
   '.ogg':  'audio/ogg',
 };
+
+const hostAccess = new HostAccess(process.env.CRASHOUT_SPECTATORS === '1');
 
 const CLIENTS_ROOT = resolve(__dirname, '../../dist/clients');
 
@@ -63,12 +67,18 @@ const handleRequest: RequestListener = (req, res) => {
   if (url.pathname === '/api/session') {
     const port = (httpServer.address() as { port: number }).port;
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    res.end(JSON.stringify({ ...sessionAddresses(port, protocol, publicUrl), room: gameServer.room }));
+    res.end(JSON.stringify({ ...sessionAddresses(port, protocol, publicUrl), room: gameServer.room, spectators: spectators.enabled }));
+    return;
+  }
+
+  if (url.pathname === '/api/spectator') {
+    spectators.connect(req, res, url.searchParams.get('room'));
     return;
   }
 
   // Full server-side journal of pylon events (task 15)
   if (url.pathname === '/api/oz-log') {
+    if (!hostAccess.authorize(req, res, url, protocol === 'https')) return;
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(gameServer.rules.tangibleLog));
     return;
@@ -85,6 +95,7 @@ const handleRequest: RequestListener = (req, res) => {
   // Route to the correct client dist folder
   const phone = url.pathname === '/play' || url.pathname.startsWith('/play/');
   const prefix = phone ? '/play' : url.pathname.startsWith('/oz') ? '/oz' : '';
+  if (!phone && !hostAccess.authorize(req, res, url, protocol === 'https')) return;
   const clientDir = resolve(CLIENTS_ROOT, phone ? 'client-phone' : prefix ? 'client-oz' : 'client-table');
   const filePath = url.pathname.slice(prefix.length) || '/';
 
@@ -108,12 +119,16 @@ try {
   process.exit(1);
 }
 const { server: httpServer, protocol, publicUrl } = transport;
-const wss = new WebSocketServer({ server: httpServer });
+const wss = new WebSocketServer({ server: httpServer, verifyClient: ({ req }: { req: IncomingMessage }) => {
+  const role = socketRole(new URL(req.url ?? '/', 'http://localhost').pathname);
+  return role === 'player' || (role !== null && hostAccess.allow(req));
+} });
 const gameServer = new GameServer(wss, {
   developerTools: process.env.CRASHOUT_DEV_TOOLS === '1',
   soloTest: process.env.CRASHOUT_SOLO_TEST === '1',
 });
 gameServer.rules.setTangiblePlacementMode('touch');
+const spectators = new SpectatorStream(hostAccess.enabled, () => gameServer.getState(), () => gameServer.room);
 
 // Export for use by PhysicsLoop and other modules (added in later tasks)
 export { gameServer };
@@ -123,13 +138,14 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 /** Affiche les adresses de connexion une fois le serveur effectivement lancé. */
 httpServer.listen(PORT, () => {
   const { port } = httpServer.address() as { port: number };
-  const { baseUrls, ozUrls, secure } = sessionAddresses(port, protocol, publicUrl);
+  const { baseUrls, secure } = sessionAddresses(port, protocol, publicUrl);
   console.log('\n🏎  Crashout Circuit server running');
-  console.log(`   Local:   ${protocol}://localhost:${port}`);
+  console.log(`   Local:   ${hostAccess.url(`${protocol}://localhost:${port}`)}`);
 
-  for (const [i, baseUrl] of baseUrls.entries()) {
+  for (const baseUrl of baseUrls) {
     console.log(`   Network: ${baseUrl}`);
-    console.log(`   Oz:      ${ozUrls[i]}`);
+    console.log(`   Oz:      ${hostAccess.url(baseUrl, '/oz')}`);
+    if (spectators.enabled) console.log(`   Spectateur: ${baseUrl}/watch?room=${gameServer.room}`);
     console.log(`   Joueurs: ${baseUrl}/play?room=${gameServer.room}`);
   }
   if (gameServer.getState().soloTest) console.log('   Essai pilote solo : scannez le QR sur la table.');

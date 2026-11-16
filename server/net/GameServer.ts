@@ -5,6 +5,7 @@
  * Référencé par server/index.ts, scripts/network/network-acceptance.ts, scripts/game/public-session.ts.
  */
 import { WebSocket, WebSocketServer } from 'ws';
+import { socketRole } from './hostAccess.js';
 import type { IncomingMessage } from 'node:http';
 import { randomInt, randomUUID } from 'node:crypto';
 import type {
@@ -83,7 +84,8 @@ export class GameServer {
   /** Enregistre le rôle du client, lui envoie l’état complet et installe ses gestionnaires réseau. */
   private onConnection(ws: WebSocket, req: IncomingMessage): void {
     const url = new URL(req.url ?? '/', `http://localhost`);
-    const role = this.resolveRole(url);
+    const role = socketRole(url.pathname);
+    if (!role) { ws.close(1008); return; }
 
     const client: ConnectedClient = { ws, role, id: Symbol(role) };
     this.clients.add(client);
@@ -112,13 +114,6 @@ export class GameServer {
     ws.on('error', (err) => {
       console.error(`[GameServer] WS error (${role}):`, err.message);
     });
-  }
-
-  /** Déduit le rôle du chemin WebSocket. */
-  private resolveRole(url: URL): ClientRole {
-    const path = url.pathname.replace(/^\/ws(?=\/|$)/, '') || '/';
-    if (/^\/player(?:\/|$)/.test(path)) return 'player';
-    return path.startsWith('/oz') ? 'oz' : 'table';
   }
 
   /** Retire la connexion et relâche uniquement les appuis encore associés à son interface. */
