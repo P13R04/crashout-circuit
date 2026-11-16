@@ -1,6 +1,5 @@
 {
   "client-oz/OzMap.ts": 990,
-  "client-table/GestureRecognizer.ts": 950,
   "client-table/Renderer.ts": 633,
   "server/types.ts": 543,
   "client-table/main.ts": 529
