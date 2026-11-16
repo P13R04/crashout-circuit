@@ -1,9 +1,9 @@
 /**
  * Surcouche de diagnostic : mesures de rendu, décisions de reconnaissance et téléchargement du journal.
- * Liens : client-table/GestureLog.ts, client-table/view.ts.
+ * Liens : client-table/gesture/GestureLog.ts, client-table/view.ts.
  * Appelé par client-table/main.ts dans l'ordre d'origine de l'initialisation de la table.
  */
-import { formatGestureEntry, gestureLogCsv } from '../GestureLog.js';
+import { formatGestureEntry, gestureLogCsv } from '../gesture/GestureLog.js';
 import type { View } from '../view.js';
 import { LOGICAL_W } from './tableApp.js';
 import type { TableApp } from './tableApp.js';

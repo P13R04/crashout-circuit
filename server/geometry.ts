@@ -2,7 +2,7 @@
  * Fournit les calculs de distance, d’intersection, de repérage sur la piste et de trajectoire du
  * lance-pierre.
  * Liens : server/types.ts.
- * Référencé notamment par client-oz/OzMap.ts, client-table/GestureRecognizer.ts, client-table/RaceGrid.ts.
+ * Référencé notamment par client-oz/map/OzMap.ts, client-table/gesture/GestureRecognizer.ts, client-table/themes/RaceGrid.ts.
  */
 import type { Vec2, TrackGeometry } from './types.js';
 

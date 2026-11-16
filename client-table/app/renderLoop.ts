@@ -1,10 +1,10 @@
 /**
  * Boucle de rendu : horloge visuelle, mesures de performance, dessin de la scène et surcouche de diagnostic.
- * Liens : client-table/Renderer.ts, client-table/VisualMotion.ts, client-table/Sound.ts.
+ * Liens : client-table/renderer/Renderer.ts, client-table/themes/VisualMotion.ts, client-table/sound/Sound.ts.
  * Appelé par client-table/main.ts dans l'ordre d'origine de l'initialisation de la table.
  */
-import { tableAudio } from '../Sound.js';
-import { advanceVisualTime } from '../VisualMotion.js';
+import { tableAudio } from '../sound/Sound.js';
+import { advanceVisualTime } from '../themes/VisualMotion.js';
 import { LOGICAL_W } from './tableApp.js';
 import type { TableApp } from './tableApp.js';
 import { drawDebug } from './debugOverlay.js';

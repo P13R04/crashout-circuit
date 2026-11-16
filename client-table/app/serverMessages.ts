@@ -5,10 +5,10 @@
  */
 import type { ServerMessage } from '../../server/types.js';
 import { showDividerRefusal, showMapError } from '../view.js';
-import { playFeedback } from '../Sound.js';
-import { loadTheme, type ThemeId } from '../themes.js';
-import { applyTuning } from '../gestureTuning.js';
-import { recordGesture } from '../GestureLog.js';
+import { playFeedback } from '../sound/Sound.js';
+import { loadTheme, type ThemeId } from '../themes/themes.js';
+import { applyTuning } from '../gesture/gestureTuning.js';
+import { recordGesture } from '../gesture/GestureLog.js';
 import type { TableApp } from './tableApp.js';
 import { downloadGestureLog } from './debugOverlay.js';
 

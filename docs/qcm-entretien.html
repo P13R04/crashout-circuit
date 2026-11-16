@@ -107,7 +107,7 @@ const BANK = [
   },
   {
     q: "Quel fichier contient la plupart des règles du jeu ?",
-    a: ["server/GameRules.ts", "client-table/Renderer.ts", "server/index.ts", "client-shared/net.ts"],
+    a: ["server/rules/GameRules.ts", "client-table/renderer/Renderer.ts", "server/index.ts", "client-shared/net.ts"],
     e: "GameRules gère pickups, armement par POWER, lance-pierre, boost, tangibles, réparation, déformation de piste et victoire."
   },
   {
@@ -207,37 +207,37 @@ const BANK = [
   },
   {
     q: "Où se trouve la logique du tutoriel côté serveur (étapes et progression de chaque équipe) ?",
-    a: ["server/Tutorial.ts", "client-table/TutorialOverlay.ts", "server/GameServer.ts", "scripts/acceptance.ts"],
-    e: "Tutorial.ts avance les étapes. L'affichage (bandeaux, bouton Passer) est dans client-table/TutorialOverlay.ts, et GameRules lui transmet les événements."
+    a: ["server/modes/Tutorial.ts", "client-table/ui/TutorialOverlay.ts", "server/net/GameServer.ts", "scripts/acceptance.ts"],
+    e: "Tutorial.ts avance les étapes. L'affichage (bandeaux, bouton Passer) est dans client-table/ui/TutorialOverlay.ts, et GameRules lui transmet les événements."
   },
   {
     q: "Dans quel fichier sont dessinés les quatre panneaux d'angle (direction, PV, POWER, réparation) ?",
-    a: ["client-table/HUD.ts", "client-table/Renderer.ts", "server/layout.ts", "client-table/icons.ts"],
+    a: ["client-table/ui/HUD.ts", "client-table/renderer/Renderer.ts", "server/layout.ts", "client-table/ui/icons.ts"],
     e: "HUD.ts dessine chaque panneau tourné vers son bord de table. Leur position est définie dans server/layout.ts, partagé avec le serveur."
   },
   {
     q: "Où le circuit est-il construit à partir des deux tracés des joueurs ?",
-    a: ["server/MapGenerator.ts", "client-table/CircuitTrack.ts", "server/geometry.ts", "client-table/GestureRecognizer.ts"],
+    a: ["server/track/MapGenerator.ts", "client-table/themes/circuit/CircuitTrack.ts", "server/geometry.ts", "client-table/gesture/GestureRecognizer.ts"],
     e: "MapGenerator.ts valide les tracés et produit la géométrie de piste. CircuitTrack.ts ne fait que dessiner la piste dans certains thèmes."
   },
   {
     q: "Quel est le point d'entrée du client de la table (WebSocket, boucle de rendu) ?",
-    a: ["client-table/main.ts", "client-shared/net.ts", "client-table/Renderer.ts", "server/index.ts"],
+    a: ["client-table/main.ts", "client-shared/net.ts", "client-table/renderer/Renderer.ts", "server/index.ts"],
     e: "main.ts ouvre la connexion, crée le Renderer, le HUD et le GestureRecognizer, puis lance la boucle de rendu. net.ts fournit la connexion partagée."
   },
   {
     q: "Où se trouvent les tests des règles serveur, avec une horloge simulée et sans réseau ?",
-    a: ["scripts/acceptance.ts", "scripts/network-acceptance.ts", "scripts/gestures.ts", "server/GameRules.ts"],
+    a: ["scripts/acceptance.ts", "scripts/network/network-acceptance.ts", "scripts/gestures/gestures.ts", "server/rules/GameRules.ts"],
     e: "acceptance.ts est la grande suite des règles. network-acceptance.ts teste les vraies WebSockets, gestures.ts teste la reconnaissance tactile."
   },
   {
     q: "Où sont les commandes de l'opérateur Oz (annulation, raccourcis), sans lien avec le DOM ?",
-    a: ["client-oz/OzController.ts", "client-oz/OzMap.ts", "client-oz/OzLog.ts", "server/tangibles.ts"],
+    a: ["client-oz/OzController.ts", "client-oz/map/OzMap.ts", "client-oz/OzLog.ts", "server/tangibles/tangibles.ts"],
     e: "OzController gère les commandes avec état optimiste et annulation. OzMap dessine la carte et OzLog garde le journal rejouable."
   },
   {
     q: "Quel fichier attribue le rôle (table ou oz) à chaque connexion et diffuse l'état ?",
-    a: ["server/GameServer.ts", "server/index.ts", "server/PhysicsLoop.ts", "client-shared/net.ts"],
+    a: ["server/net/GameServer.ts", "server/index.ts", "server/PhysicsLoop.ts", "client-shared/net.ts"],
     e: "GameServer lit l'URL de connexion pour le rôle, distribue les messages aux règles et diffuse l'état. index.ts démarre le serveur HTTP et WebSocket."
   },
   {

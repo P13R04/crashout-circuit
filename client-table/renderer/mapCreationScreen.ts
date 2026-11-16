@@ -1,17 +1,17 @@
 /**
  * Écran de création du circuit : points P1 et P2, consignes, ancres et flèches des tracés.
- * Liens : server/mapCreation.ts, client-table/TrackCreation.ts.
+ * Liens : server/track/mapCreation.ts, client-table/ui/TrackCreation.ts.
  * Fonctions appelées par les méthodes de Renderer (server/Renderer.ts), qui garde l'état et délègue ici.
  */
 import type { GameState, Team, Vec2 } from '../../server/types.js';
 import { LOGICAL_W, LOGICAL_H, PLAY_AREA } from '../../server/layout.js';
 import { TEAM_COLOR, type View } from '../view.js';
-import { icon } from '../icons.js';
-import { drawStationLabels } from '../TutorialOverlay.js';
-import { activeMapTeam, inMapAnchor, mapStrokeEndpoints, MAP_ANCHOR_RADIUS } from '../../server/mapCreation.js';
+import { icon } from '../ui/icons.js';
+import { drawStationLabels } from '../ui/TutorialOverlay.js';
+import { activeMapTeam, inMapAnchor, mapStrokeEndpoints, MAP_ANCHOR_RADIUS } from '../../server/track/mapCreation.js';
 import type { Ctx } from './rendererTypes.js';
 import { MAP_GENERATE_BUTTON } from './rendererButtons.js';
-import type { Renderer } from '../Renderer.js';
+import type { Renderer } from './Renderer.js';
 
 // Création : tracés, points de raccord, repères des joueurs et validation.
 /** Dessine les points, les tracés et les repères de joueurs pendant la création du circuit. */

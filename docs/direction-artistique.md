@@ -90,7 +90,7 @@ Une course inspirée d’affiches de sport automobile : route ivoire, fond cobal
 
 ## État du son aujourd’hui
 
-`client-table/Sound.ts` utilise des oscillateurs et du bruit Web Audio. Il couvre notamment validation/refus de tracé, ramassage, impacts, boost, avertissement de pierre, panne et fin de réparation. Le moteur, le compte à rebours, l’armement, l’expiration, la traction élastique, la chute, la progression de réparation, les tangibles et la victoire n’ont pas encore une couverture complète. La création d’un boost et son passage partagent le même son ; ils devraient avoir des rôles différents.
+`client-table/sound/Sound.ts` utilise des oscillateurs et du bruit Web Audio. Il couvre notamment validation/refus de tracé, ramassage, impacts, boost, avertissement de pierre, panne et fin de réparation. Le moteur, le compte à rebours, l’armement, l’expiration, la traction élastique, la chute, la progression de réparation, les tangibles et la victoire n’ont pas encore une couverture complète. La création d’un boost et son passage partagent le même son ; ils devraient avoir des rôles différents.
 
 Il faut remplacer cette base par un petit ensemble cohérent de vrais sons, avec variations et volumes adaptés aux quatre joueurs. La musique restera secondaire : les joueurs doivent pouvoir parler et entendre une alerte. Prévoir des sons simultanés limités et éviter de rejouer un son à chaque mise à jour d’état.
 

@@ -6,9 +6,9 @@
 import type { Vec2 } from '../../server/types.js';
 import { LOGICAL_W, LOGICAL_H } from '../../server/layout.js';
 import { showMapError } from '../view.js';
-import { mapEndpointError, mapStrokeEndpoints } from '../../server/mapCreation.js';
-import { TANGIBLE_CONTACT_GRACE_MS } from '../../server/tangibleTouch.js';
-import type { GestureRecognizer } from '../GestureRecognizer.js';
+import { mapEndpointError, mapStrokeEndpoints } from '../../server/track/mapCreation.js';
+import { TANGIBLE_CONTACT_GRACE_MS } from '../../server/tangibles/tangibleTouch.js';
+import type { GestureRecognizer } from './GestureRecognizer.js';
 
 /** Convertit le contact du navigateur en coordonnées de la table indépendamment de la résolution d’affichage. */
 export function toLogical(recognizer: GestureRecognizer, e: PointerEvent): Vec2 {

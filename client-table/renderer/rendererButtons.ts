@@ -1,7 +1,7 @@
 /**
  * Surfaces touchables des écrans et commandes communes, partagées avec la reconnaissance des gestes.
- * Liens : client-table/GestureRecognizer.ts, server/layout.ts.
- * Réexporté par client-table/Renderer.ts, qui reste la façade du moteur de rendu de la table.
+ * Liens : client-table/gesture/GestureRecognizer.ts, server/layout.ts.
+ * Réexporté par client-table/renderer/Renderer.ts, qui reste la façade du moteur de rendu de la table.
  */
 import { LOGICAL_W, LOGICAL_H, SETTINGS_BUTTON } from '../../server/layout.js';
 

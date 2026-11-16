@@ -1,7 +1,7 @@
 /**
  * Constantes de la reconnaissance tactile : nombre de contacts, seuils de traction du lance-pierre et de la prise de bord.
- * Liens : client-table/gestureTuning.ts (seuils réglables par l'URL).
- * Réexporté par client-table/GestureRecognizer.ts, qui reste la façade du lecteur de gestes.
+ * Liens : client-table/gesture/gestureTuning.ts (seuils réglables par l'URL).
+ * Réexporté par client-table/gesture/GestureRecognizer.ts, qui reste la façade du lecteur de gestes.
  */
 
 

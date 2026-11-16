@@ -2,7 +2,7 @@
  * Définit l’emplacement des postes, des commandes et de la réserve, ainsi que les conversions de coordonnées
  * sur la table.
  * Liens : server/types.ts.
- * Référencé notamment par client-oz/OzController.ts, client-oz/OzMap.ts, client-table/GestureRecognizer.ts.
+ * Référencé notamment par client-oz/OzController.ts, client-oz/map/OzMap.ts, client-table/gesture/GestureRecognizer.ts.
  */
 import type { Team, Vec2, DriveMode } from './types.js';
 

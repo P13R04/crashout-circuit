@@ -4,11 +4,11 @@
  * Importé par scripts/acceptance.ts, lancé depuis les scripts npm de package.json.
  */
 import type { GameState, Vec2, Phase } from '../../server/types.js';
-import { GameRules, createInitialState } from '../../server/GameRules.js';
-import type { RulesHost } from '../../server/GameRules.js';
+import { GameRules, createInitialState } from '../../server/rules/GameRules.js';
+import type { RulesHost } from '../../server/rules/GameRules.js';
 import { PhysicsLoop } from '../../server/PhysicsLoop.js';
 import { config } from '../../server/config.js';
-import { generatePreset } from '../../server/MapGenerator.js';
+import { generatePreset } from '../../server/track/MapGenerator.js';
 import { slingshotShot } from '../../server/geometry.js';
 
 export const queue: Array<{ name: string; fn?: () => void | Promise<void> }> = [];

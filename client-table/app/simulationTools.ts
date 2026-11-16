@@ -1,6 +1,6 @@
 /**
  * Outils de développement du tiroir PC : simulation à la souris du lance-pierre et du boost, et interrupteurs de test.
- * Liens : client-table/index.html, client-table/GestureRecognizer.ts.
+ * Liens : client-table/index.html, client-table/gesture/GestureRecognizer.ts.
  * Appelé par client-table/main.ts dans l'ordre d'origine de l'initialisation de la table.
  */
 import type { TableApp } from './tableApp.js';

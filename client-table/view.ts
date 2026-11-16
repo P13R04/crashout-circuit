@@ -1,16 +1,16 @@
 /**
  * Regroupe l’état d’affichage local de la table, ses messages de dessin, ses contacts et ses effets
  * temporaires.
- * Liens : server/layout.ts, server/geometry.ts, server/types.ts, client-table/themes.ts,
- * client-table/GestureLog.ts.
- * Référencé notamment par client-table/GestureRecognizer.ts, client-table/HUD.ts,
- * client-table/NeonEffects.ts.
+ * Liens : server/layout.ts, server/geometry.ts, server/types.ts, client-table/themes/themes.ts,
+ * client-table/gesture/GestureLog.ts.
+ * Référencé notamment par client-table/gesture/GestureRecognizer.ts, client-table/ui/HUD.ts,
+ * client-table/themes/neon/NeonEffects.ts.
  */
 import type { GameState, Team, Vec2, ItemKind } from '../server/types.js';
 import type { DividerCheck } from '../server/layout.js';
-import type { ThemeId } from './themes.js';
+import type { ThemeId } from './themes/themes.js';
 import type { SlingshotShot } from '../server/geometry.js';
-import type { GestureLogEntry } from './GestureLog.js';
+import type { GestureLogEntry } from './gesture/GestureLog.js';
 
 /** Décrit un retour visuel temporaire avec son origine, son équipe et sa durée. */
 export interface Effect {

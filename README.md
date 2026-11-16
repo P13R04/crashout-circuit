@@ -195,7 +195,7 @@ La branche `baptiste` est maintenant intégrée : dessin possible dans les deux 
 
 ## Commandes et extensions futures
 
-Le jeu reçoit des **actions de jeu**, indépendantes des périphériques. `client-shared/controls.ts` est l’interface commune aux adaptateurs clavier et tactile : direction, POWER et gestes. Les types de messages sont dans `server/types.ts` ; les objets fixes et la validation partagée sont dans `server/tangibles.ts` ; les règles et la consommation des stocks restent validées dans `server/GameRules.ts` (logique dans `server/rules/`).
+Le jeu reçoit des **actions de jeu**, indépendantes des périphériques. `client-shared/controls.ts` est l’interface commune aux adaptateurs clavier et tactile : direction, POWER et gestes. Les types de messages sont dans `server/types.ts` ; les objets fixes et la validation partagée sont dans `server/tangibles/tangibles.ts` ; les règles et la consommation des stocks restent validées dans `server/rules/GameRules.ts` (logique dans `server/rules/`).
 
 Un futur adaptateur mobile pourra convertir un gyroscope en direction normalisée `[-1, 1]` et utiliser la même interface, sans modifier la physique. Aucun contrôle mobile, appairage ni accès aux capteurs n’est implémenté à ce stade. Un futur lecteur de tangibles pourra envoyer les mêmes actions de présence, déplacement et retrait qu’Oz, après ajout de son rôle de connexion.
 
@@ -249,18 +249,18 @@ prototypes/      laboratoire historique, conservé sans modification
 
 ### Taille des fichiers et organisation du code
 
-Aucun fichier `.ts` (hors `prototypes/`) ne dépasse 500 lignes, avec une cible de 300 : `npm run check:sizes` le contrôle dans `check` et `verify` (liste de base dans `scripts/file-sizes.baseline.json`, aujourd’hui vide). Les gros fichiers d’origine sont des **façades** qui délèguent à des modules par responsabilité ; leurs noms et leurs chemins d’import n’ont pas changé.
+Aucun fichier `.ts` (hors `prototypes/`) ne dépasse 500 lignes (cible 300) et aucun dossier ne contient plus de 12 fichiers `.ts` : `npm run check:sizes` le contrôle dans `check` et `verify` (liste de base dans `scripts/quality/file-sizes.baseline.json`, aujourd’hui vide). Les dossiers sont rangés par responsabilité (`server/rules`, `server/track`, `server/tangibles`, `server/modes`, `server/net`, `client-table/gesture`, `renderer`, `themes`, `ui`, `sound`, `app`, `scripts/gestures`, `game`, `rendering`…). Les gros fichiers d’origine sont des **façades** qui délèguent à des modules du même dossier.
 
 | Façade | Modules |
 |---|---|
-| `server/GameRules.ts` | `server/rules/` |
-| `server/MapGenerator.ts` | `server/trackGeneration/` |
+| `server/rules/GameRules.ts` | `server/rules/session/` et `server/rules/gameplay/` |
+| `server/track/MapGenerator.ts` | `server/track/generation/` |
 | `server/types.ts` | `server/protocol/` (état de partie, messages réseau) |
-| `client-table/GestureRecognizer.ts` | `client-table/gesture/` |
-| `client-table/Renderer.ts` | `client-table/renderer/` |
+| `client-table/gesture/GestureRecognizer.ts` | `client-table/gesture/` et `client-table/gesture/actions/` |
+| `client-table/renderer/Renderer.ts` | `client-table/renderer/` |
 | `client-table/main.ts` | `client-table/app/` |
-| `client-oz/OzMap.ts` | `client-oz/map/` |
-| `scripts/acceptance.ts` | `scripts/acceptance/` |
+| `client-oz/map/OzMap.ts` | `client-oz/map/` |
+| `scripts/acceptance.ts` | `scripts/acceptance/` (`track/`, `race/`, `tutorial/`, `tangibles/`) |
 
 Les règles de contribution et les skills IA du dépôt (`limiter-taille-fichiers`, `clean-architecture`) sont dans `AGENTS.md` et `.claude/skills/`. Le [guide du code](docs/guide-du-code.md) décrit chaque fichier.
 
@@ -287,6 +287,6 @@ Les fichiers JSON stricts restent sans commentaires pour être lisibles par Node
 | `package.json` | Commandes de lancement, de compilation et de test ; référence les fichiers de `scripts/`, Vite et les deux configurations TypeScript. |
 | `package-lock.json` | Versions exactes des dépendances de `package.json`, utilisées par `npm ci` et la CI. |
 | `config.json` | Valeurs de la course et de la table, chargées par `server/config.ts` puis utilisées par `GameRules.ts` et `PhysicsLoop.ts`. |
-| `client-table/audio/sources.json` | Provenance et licence des extraits audio référencés dans `AudioAssets.ts` et contrôlés par `scripts/audio.ts`. |
+| `client-table/audio/sources.json` | Provenance et licence des extraits audio référencés dans `AudioAssets.ts` et contrôlés par `scripts/rendering/audio.ts`. |
 
 `tsconfig.json` et `tsconfig.server.json` acceptent les commentaires JSONC ; leur en-tête précise leur partage entre clients, tests et serveur. Les dossiers `dist/` et `node_modules/` sont produits par les outils, et `prototypes/` reste la référence historique.

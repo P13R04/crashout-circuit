@@ -5,7 +5,7 @@
  */
 import type { GameState } from '../../server/types.js';
 import type { viewTransform } from '../ozView.js';
-import type { OzMap } from '../OzMap.js';
+import type { OzMap } from './OzMap.js';
 
 /** Regroupe ce que chaque section de dessin lit : la carte, le contexte canvas et la vue en cours. */
 export interface DrawContext {

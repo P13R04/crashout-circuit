@@ -23,6 +23,7 @@ Avant de modifier ou de remplacer une mécanique, lire le `README.md` du prototy
 ## Taille des fichiers et architecture
 
 - Un fichier source `.ts` vise **300 lignes** et ne dépasse jamais **500 lignes** (hors `prototypes/`) ; une fonction fait 60 lignes au plus, avec 3 niveaux d’imbrication au plus. Pas de fichier fourre-tout (`utils`, `helpers`, `common`) : nommer par responsabilité métier.
-- Le contrôle est automatique : `npm run check:sizes` (dans `check` et `verify`) lit `scripts/file-sizes.baseline.json`, qui liste les fichiers encore trop grands et ne doit jamais grossir.
+- Un dossier contient au plus **12 fichiers `.ts`** (cible 10) : au-delà, créer des sous-dossiers par responsabilité (par exemple `server/rules/session` et `gameplay`, `client-table/themes/neon`).
+- Le contrôle est automatique : `npm run check:sizes` (dans `check` et `verify`) refuse un fichier de plus de 500 lignes ou un dossier de plus de 12 fichiers, et lit `scripts/quality/file-sizes.baseline.json`, qui liste les fichiers encore trop grands et ne doit jamais grossir.
 - Skills du projet, dans `.claude/skills/` : `limiter-taille-fichiers` (seuils chiffrés, à appliquer avant de créer ou d’allonger un fichier et avant de conclure une tâche) et `clean-architecture` (règle de dépendance et frontières, copié de wondelai/skills, voir son `SOURCE.md`).
-- Un découpage est un déplacement pur : mêmes noms publics, mêmes chemins d’import (le fichier d’origine reste une façade), mêmes tests.
+- Un découpage est un déplacement pur : mêmes noms publics, mêmes tests. Un fichier déplacé voit ses imports et les chemins cités dans la documentation mis à jour dans le même commit.

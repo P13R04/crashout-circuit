@@ -1,17 +1,17 @@
 /**
  * Surcouches de course : feux de reprise, bonus attendu, zones neutres, pierres, projectile, lance-pierre et alertes.
- * Liens : client-table/HUD.ts, server/armedPickup.ts.
+ * Liens : client-table/ui/HUD.ts, server/rules/armedPickup.ts.
  * Fonctions appelées par les méthodes de Renderer (server/Renderer.ts), qui garde l'état et délègue ici.
  */
 import type { GameState, Team, Vec2 } from '../../server/types.js';
 import { LOGICAL_W, LOGICAL_H, rotationTowardsTeam, TANGIBLE_DEPOT, NEUTRAL_CONTROLS, inTangibleDepot } from '../../server/layout.js';
-import { drawItemIcon } from '../HUD.js';
+import { drawItemIcon } from '../ui/HUD.js';
 import { TEAM_COLOR, type SlingPreview } from '../view.js';
-import { icon, contacts } from '../icons.js';
-import { themeLook } from '../themes.js';
-import { armedPickup, RESPAWN_COUNTDOWN_MS } from '../../server/armedPickup.js';
+import { icon, contacts } from '../ui/icons.js';
+import { themeLook } from '../themes/themes.js';
+import { armedPickup, RESPAWN_COUNTDOWN_MS } from '../../server/rules/armedPickup.js';
 import type { Ctx } from './rendererTypes.js';
-import type { Renderer } from '../Renderer.js';
+import type { Renderer } from './Renderer.js';
 
 /** Affiche les feux rouges puis verts au-dessus des voitures réparées avant leur reprise. */
 export function drawRespawnLights(renderer: Renderer, ctx: Ctx,state: GameState,now:number): void {

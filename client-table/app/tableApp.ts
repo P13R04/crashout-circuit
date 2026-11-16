@@ -6,8 +6,8 @@
 import { StateSync, connectWs } from '../../client-shared/net.js';
 import { createControls } from '../../client-shared/controls.js';
 import type { View } from '../view.js';
-import type { Renderer } from '../Renderer.js';
-import type { GestureRecognizer } from '../GestureRecognizer.js';
+import type { Renderer } from '../renderer/Renderer.js';
+import type { GestureRecognizer } from '../gesture/GestureRecognizer.js';
 
 /** Largeur logique de la table, en pixels de jeu. */
 export const LOGICAL_W = 1920;

@@ -1,11 +1,11 @@
 /**
  * Types de la carte Oz : outil manuel, rappels vers le contrôleur et glissement en cours d'un tangible.
- * Liens : client-oz/OzController.ts, client-shared/tangibleGeometry.ts, server/tangibles.ts.
- * Réexporté par client-oz/OzMap.ts, qui reste la façade de la carte de la console.
+ * Liens : client-oz/OzController.ts, client-shared/tangibleGeometry.ts, server/tangibles/tangibles.ts.
+ * Réexporté par client-oz/map/OzMap.ts, qui reste la façade de la carte de la console.
  */
 import type { Tangible, Vec2, Team } from '../../server/types.js';
 import { type TangiblePose } from '../../client-shared/tangibleGeometry.js';
-import { type TangibleId } from '../../server/tangibles.js';
+import { type TangibleId } from '../../server/tangibles/tangibles.js';
 
 /** Limite les outils manuels de la console à la paire de piliers, au mur ou à aucun outil. */
 export type OzTool = 'arc' | 'wall' | null;

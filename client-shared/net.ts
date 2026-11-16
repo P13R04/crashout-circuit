@@ -1,7 +1,7 @@
 /**
  * Gère les connexions WebSocket, les reconnexions et la conservation de la géométrie entre deux états reçus.
  * Liens : server/types.ts.
- * Référencé par client-oz/main.ts, client-table/main.ts, scripts/public-session.ts.
+ * Référencé par client-oz/main.ts, client-table/main.ts, scripts/game/public-session.ts.
  */
 import type { GameState, TrackGeometry, ServerMessage } from '../server/types.js';
 
