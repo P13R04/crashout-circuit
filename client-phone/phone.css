@@ -42,8 +42,7 @@ button.choice small { margin-inline-start: auto; color: var(--muted); text-align
 .team-icon { color: var(--accent); font-size: 1.35rem; }
 
 [hidden] { display: none !important; }
-.pilot-screen, .pilot-steering { display: grid; gap: .75rem; }
-.pilot-steering { grid-template-columns: 1fr 1fr; }
+.pilot-screen { display: grid; gap: .75rem; }
 #notice:empty { display: none; }
 
 
@@ -51,7 +50,6 @@ button.choice small { margin-inline-start: auto; color: var(--muted); text-align
 .pilot-screen > p:empty { display: none; }
 .pilot-settings { display: flex; flex-wrap: wrap; gap: .75rem; }
 .pilot-settings button { flex: 1 1 auto; }
-.pilot-steering button { min-height: clamp(110px, 36dvh, 400px); }
 .pilot-screen button.hold { touch-action: none; user-select: none; -webkit-user-select: none; }
 .pilot-screen button.held { background: var(--accent); color: #102026; }
 body:has(.pilot-screen) main { max-width: 54rem; width: 100%; }

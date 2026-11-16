@@ -7,18 +7,20 @@ type OrientationWithPermission = typeof DeviceOrientationEvent & {
   requestPermission?: () => Promise<'granted' | 'denied'>;
 };
 
-export type WheelStatus = 'touch' | 'permission' | 'waiting' | 'calibrating' | 'ready' | 'missing' | 'denied' | 'http';
+export type WheelStatus = 'inactive' | 'permission' | 'waiting' | 'calibrating' | 'ready' | 'missing' | 'denied' | 'http';
 
 export class WheelSensor {
-  status: WheelStatus = 'touch';
+  status: WheelStatus = 'inactive';
   private started = 0;
   private lastReading = 0;
   private calibration: Reading[] = [];
   private calibrationStart = 0;
   private neutral: Reading | null = null;
-  private sample: DriveSample = { steer: 0, throttle: 0 };
+  private sample: DriveSample | null = null;
   private stopped = false;
   private listening = false;
+
+  constructor(private readonly landscape: () => boolean) {}
 
   /** Écoute directement lorsque le navigateur n'exige pas de consentement au toucher. */
   start(): void {
@@ -52,7 +54,7 @@ export class WheelSensor {
     this.lastReading = 0;
     this.calibration = [];
     this.neutral = null;
-    this.sample = { steer: 0, throttle: 0 };
+    this.sample = null;
     this.status = 'waiting';
   };
 
@@ -65,13 +67,12 @@ export class WheelSensor {
     this.listening = false;
   }
 
-  /** Donne une mesure utilisable, un volant neutre en calibration ou la main aux flèches. */
+  /** Renvoie une mesure seulement lorsque le volant est calibré en paysage. */
   read(now: number): DriveSample | null {
+    if (!this.landscape()) return null;
     if ((this.status === 'ready' || this.status === 'waiting' || this.status === 'calibrating')
       && now - (this.lastReading || this.started) >= WHEEL.timeoutMs) this.status = 'missing';
-    if (this.status === 'ready') return this.sample;
-    if (this.status === 'waiting' || this.status === 'calibrating') return { steer: 0, throttle: 0 };
-    return null;
+    return this.status === 'ready' ? this.sample : null;
   }
 
   /** Identifie les navigateurs qui peuvent fournir les mesures. */
@@ -94,13 +95,14 @@ export class WheelSensor {
 
   /** Apprend un neutre sur 500 ms, puis applique la courbe et le filtre aux mesures. */
   private onOrientation = (event: DeviceOrientationEvent): void => {
-    if (document.hidden || this.status === 'missing') return;
+    if (document.hidden || !this.landscape() || this.status === 'missing') return;
     const now = performance.now();
     const angle = screen.orientation?.angle ?? window.orientation ?? 0;
     const reading = wheelAngle(event.beta, event.gamma, angle);
     if (!reading) {
-      this.sample = { steer: 0, throttle: 0 };
+      this.sample = null;
       if (!this.neutral) this.calibration.length = 0;
+      this.status = 'waiting';
       return;
     }
     this.lastReading = now;
@@ -111,10 +113,10 @@ export class WheelSensor {
       if (now - this.calibrationStart < WHEEL.calibrationMs) return;
       this.neutral = neutralAngle(this.calibration);
       this.calibration = [];
-      this.status = 'ready';
     }
+    this.status = 'ready';
     this.sample = {
-      steer: smoothSteer(this.sample.steer, steerFromAngle(reading.wheel, this.neutral.wheel)),
+      steer: smoothSteer(this.sample?.steer ?? 0, steerFromAngle(reading.wheel, this.neutral.wheel)),
       throttle: throttleFromPitch(reading.pitch, this.neutral.pitch),
     };
   };

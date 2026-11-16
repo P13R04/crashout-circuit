@@ -40,8 +40,7 @@ for (let time = WHEEL.pollMs; time <= 1000; time += WHEEL.pollMs) {
   count++;
 }
 assert.ok(count >= 10);
-assert.deepEqual(driveSample(null, -1, false, false), { steer: -1, throttle: 1 });
-assert.deepEqual(driveSample(null, 1, true, false), { steer: 1, throttle: 0 });
-assert.deepEqual(driveSample({ steer: .4, throttle: .2 }, -1, true, true), { steer: .4, throttle: 1 });
-assert.deepEqual(driveSample({ steer: .4, throttle: 1 }, 0, true, false), { steer: .4, throttle: 1 });
+assert.deepEqual(driveSample({ steer: -.4, throttle: 0 }, false, false), { steer: -.4, throttle: 1 });
+assert.deepEqual(driveSample({ steer: .4, throttle: .2 }, true, true), { steer: .4, throttle: 1 });
+assert.deepEqual(driveSample({ steer: .4, throttle: 1 }, true, false), { steer: .4, throttle: 1 });
 console.log('✓ Volant : projection, calibration, zone morte, lissage, pédale et débit des commandes');

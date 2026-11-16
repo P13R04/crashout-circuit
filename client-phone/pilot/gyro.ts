@@ -67,10 +67,10 @@ export function shouldSendInput(now: number, input: DriveSample, last: SentInput
 }
 
 
-/** Conserve la direction du volant ou des flèches et combine les deux manières d'accélérer. */
-export function driveSample(sensor: DriveSample | null, touchSteer: number, pedalMode: boolean, pedalHeld: boolean): DriveSample {
+/** Combine la mesure du volant et la pédale lorsqu'un capteur utilisable est disponible. */
+export function driveSample(sensor: DriveSample, pedalMode: boolean, pedalHeld: boolean): DriveSample {
   return {
-    steer: sensor?.steer ?? touchSteer,
-    throttle: pedalMode ? Math.max(Number(pedalHeld), sensor?.throttle ?? 0) : 1,
+    steer: sensor.steer,
+    throttle: pedalMode ? Math.max(Number(pedalHeld), sensor.throttle) : 1,
   };
 }

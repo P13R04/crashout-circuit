@@ -30,7 +30,8 @@ export function startRace(rules: GameRules, track = generatePreset(), waitForPla
     car.pos = { x: sp.x, y: sp.y };
     car.angle = Math.atan2(tan.y, tan.x);
     s.cars[team] = car;
-    rules.inputs[team] = { throttle: s.soloTest || s.driveMode[team] === 'pedal' ? 0 : 1, steer: 0 };
+    const phonePilot = s.seats?.[`${team}-pilot`]?.connected;
+    rules.inputs[team] = { throttle: s.soloTest || phonePilot || s.driveMode[team] === 'pedal' ? 0 : 1, steer: 0 };
     rules.lastPilotInputAt[team] = rules.now;
     s.repairProgress[team] = 0;
     s.cooldowns[team] = { ghost: 0, destroy: 0, borderPull: 0 };
