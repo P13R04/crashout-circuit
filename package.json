@@ -41,7 +41,7 @@
     "test:phone-views": "tsx scripts/phone/phone-views.ts",
     "test:gyro": "tsx scripts/phone/gyro.ts",
     "test:spectator": "tsx scripts/network/spectator-session.ts",
-    "test:wiimote": "tsx scripts/wiimote/decoding.ts && tsx scripts/wiimote/steering.ts && tsx scripts/wiimote/pilot-link.ts && tsx scripts/wiimote/webhid.ts",
+    "test:wiimote": "tsx scripts/wiimote/decoding.ts && tsx scripts/wiimote/steering.ts && tsx scripts/wiimote/pilot-link.ts && tsx scripts/wiimote/webhid.ts && tsx scripts/wiimote/solo-launch.ts",
     "test:https": "tsx scripts/network/https-session.ts"
   },
   "dependencies": {

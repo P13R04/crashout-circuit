@@ -100,9 +100,11 @@ const handleRequest: RequestListener = (req, res) => {
 
   // Route to the correct client dist folder
   const phone = url.pathname === '/play' || url.pathname.startsWith('/play/');
-  const prefix = phone ? '/play' : url.pathname.startsWith('/oz') ? '/oz' : '';
-  if (!phone && !hostAccess.authorize(req, res, url, protocol === 'https')) return;
-  const clientDir = resolve(CLIENTS_ROOT, phone ? 'client-phone' : prefix ? 'client-oz' : 'client-table');
+  const wiimote = url.pathname === '/wiimote' || url.pathname.startsWith('/wiimote/');
+  const prefix = phone ? '/play' : wiimote ? '/wiimote' : url.pathname.startsWith('/oz') ? '/oz' : '';
+  // Les pages de pilote (téléphone, manette Wii) s'ouvrent avec le code de séance, sans le lien privé de l'hôte.
+  if (!phone && !wiimote && !hostAccess.authorize(req, res, url, protocol === 'https')) return;
+  const clientDir = resolve(CLIENTS_ROOT, phone ? 'client-phone' : wiimote ? 'client-wiimote' : prefix ? 'client-oz' : 'client-table');
   const filePath = url.pathname.slice(prefix.length) || '/';
 
   // Serve the file or fall back to index.html (SPA behaviour)

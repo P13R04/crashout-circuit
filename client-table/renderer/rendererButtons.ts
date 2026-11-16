@@ -7,6 +7,7 @@ import { LOGICAL_W, LOGICAL_H, SETTINGS_BUTTON } from '../../server/layout.js';
 
 // Définit les surfaces touchables des écrans et commandes communes utilisées aussi par GestureRecognizer.ts.
 export const START_TABLE_BUTTON = { x: LOGICAL_W / 2 - 260, y: 548, w: 520, h: 88 };
+export const START_WIIMOTE_BUTTON = { x: LOGICAL_W / 2 - 260, y: 880, w: 520, h: 70 };
 export const START_PC_BUTTON = { x: LOGICAL_W / 2 - 260, y: 660, w: 250, h: 58 };
 export const START_TUTORIAL_BUTTON = { x: LOGICAL_W / 2 - 260, y: 408, w: 520, h: 88 };
 export const START_TANGIBLE_TEST_BUTTON = { x: LOGICAL_W / 2 + 10, y: 660, w: 250, h: 58 };

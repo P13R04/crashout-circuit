@@ -75,6 +75,7 @@ export class GameServer {
       broadcastFull: () => this.broadcastFull(),
     };
     this.rules = new GameRules(this.state, host);
+    this.rules.soloByDefault = this.state.soloTest;
     this.physics = new PhysicsLoop(this.state, this.rules, /* Diffuse le snapshot demandé par la boucle de physique. */ () => this.broadcastTick());
     this.wss.on('connection', this.onConnection.bind(this));
     this.physics.start();

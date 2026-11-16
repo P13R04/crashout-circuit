@@ -34,7 +34,7 @@ import * as screenOverlays from './screenOverlays.js';
 import * as mapCreationScreen from './mapCreationScreen.js';
 
 // Réexports : les noms publics gardent leur chemin d’import.
-export { START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, RESULT_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTONS, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON } from './rendererButtons.js';
+export { START_TABLE_BUTTON, START_WIIMOTE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, RESULT_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTONS, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON } from './rendererButtons.js';
 
 /** Compose les écrans de la table et choisit les couches de piste, d’objets, de voitures et d’interface selon la phase. */
 
