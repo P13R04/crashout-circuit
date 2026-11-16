@@ -1,10 +1,19 @@
 /**
  * Calcule les commandes du pilote à partir de l'orientation du téléphone.
  * Liens : W3C Device Orientation and Motion, client-phone/pilot/wheelSensor.ts.
+ * La courbe de direction et la cadence d'envoi vivent dans client-shared/pilot/ (partagées avec la manette) et sont
+ * réexportées ici pour que les noms et les tests du téléphone restent inchangés.
  */
+import { STEERING } from '../../client-shared/pilot/steeringCurve.js';
+import { CADENCE } from '../../client-shared/pilot/inputCadence.js';
+
+export { steerFromAngle, smoothSteer } from '../../client-shared/pilot/steeringCurve.js';
+export { shouldSendInput, driveSample } from '../../client-shared/pilot/inputCadence.js';
+export type { DriveSample, SentInput } from '../../client-shared/pilot/inputCadence.js';
+
 export const WHEEL = {
-  timeoutMs: 1500, calibrationMs: 500, deadZone: 3, maxSteer: 35, steerExponent: 1.3,
-  smoothing: .25, minPitch: 10, maxPitch: 35, minSendMs: 1000 / 30, heartbeatMs: 100, pollMs: 10,
+  ...STEERING, ...CADENCE,
+  timeoutMs: 1500, minPitch: 10, maxPitch: 35,
 };
 
 type Angles = { wheel: number; pitch: number };
@@ -37,40 +46,7 @@ export function neutralAngle(samples: readonly Angles[]): Angles {
   return { wheel: Math.atan2(sin, cos) / radians, pitch: pitch / samples.length };
 }
 
-/** Transforme un écart d'angle en direction bornée et progressive. */
-export function steerFromAngle(wheel: number, neutral: number): number {
-  const delta = ((wheel - neutral + 540) % 360) - 180;
-  const fraction = Math.min(1, Math.max(0, (Math.abs(delta) - WHEEL.deadZone) / (WHEEL.maxSteer - WHEEL.deadZone)));
-  return Math.sign(delta) * fraction ** WHEEL.steerExponent;
-}
-
-/** Lisse les variations du capteur et recentre instantanément dans la zone morte. */
-export function smoothSteer(previous: number, target: number): number {
-  return target === 0 ? 0 : previous + (target - previous) * WHEEL.smoothing;
-}
-
 /** Transforme l'inclinaison avant en position de pédale. */
 export function throttleFromPitch(pitch: number, neutral: number): number {
   return Math.max(0, Math.min(1, (pitch - neutral - WHEEL.minPitch) / (WHEEL.maxPitch - WHEEL.minPitch)));
-}
-
-export type DriveSample = { steer: number; throttle: number };
-export type SentInput = DriveSample & { time: number };
-
-/** Limite le débit tout en renouvelant les commandes immobiles. */
-export function shouldSendInput(now: number, input: DriveSample, last: SentInput): boolean {
-  const elapsed = now - last.time;
-  if (elapsed < WHEEL.minSendMs) return false;
-  // Préserve une période de 100 ms même lorsque le seuil tombe entre deux lectures.
-  return elapsed >= WHEEL.heartbeatMs - WHEEL.pollMs
-    || Math.abs(input.steer - last.steer) > .01 || Math.abs(input.throttle - last.throttle) > .01;
-}
-
-
-/** Combine la mesure du volant et la pédale lorsqu'un capteur utilisable est disponible. */
-export function driveSample(sensor: DriveSample, pedalMode: boolean, pedalHeld: boolean): DriveSample {
-  return {
-    steer: sensor.steer,
-    throttle: pedalMode ? Math.max(Number(pedalHeld), sensor.throttle) : 1,
-  };
 }

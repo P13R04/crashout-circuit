@@ -15,6 +15,7 @@ npm start
 - **Table** : `http://localhost:3000/` sur l’ordinateur relié à la table, en plein écran.
 - **Magicien d’Oz** : `http://<ip-de-la-table>:3000/oz` sur un ordinateur, une tablette ou un téléphone du même Wi-Fi. Accès direct par cette adresse, sans code ni connexion supplémentaire. L’adresse exacte est affichée au démarrage. `localhost` désigne toujours l’ordinateur sur lequel le navigateur est ouvert.
 - **Téléphones** : scanner le QR de l’accueil, ou ouvrir `/play` sur l’adresse de la séance et saisir le code affiché. Choisir l’équipe puis le rôle.
+- **Manette Wii (essai, #54)** : `http://localhost:5173/client-wiimote/index.html?room=CODE` avec `npm run dev:clients` (Chrome ou Edge de bureau, `localhost` ou HTTPS), pour piloter à la place du téléphone. `npm start` seul ne sert pas encore cette page. Voir [la décision](docs/pilote-wiimote-decision.md) et [le protocole d’essai](docs/pilote-wiimote-protocole-essai.md).
 - Pour changer le port : `PORT=3100 npm start`.
 
 Le serveur doit rester ouvert pendant la séance. Les deux appareils doivent pouvoir communiquer sur le réseau local (un Wi-Fi invité qui isole les appareils ne convient pas). Ce prototype est prévu pour le réseau local de la séance ; il n’implémente pas de compte utilisateur.
