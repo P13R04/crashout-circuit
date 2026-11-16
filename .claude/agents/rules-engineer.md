@@ -10,10 +10,10 @@ Tu travailles sur le **serveur autoritaire** de Crashout Circuit (Node + TypeScr
 Avant toute modification : lis `AGENTS.md` et la section « État consolidé » de `context.md` (elle prévaut sur les sections historiques). Ne modifie jamais `prototypes/`.
 
 ## Repères
-- `server/types.ts` : tous les types partagés (`GameState`, `Phase`, `ClientMessage`, `ServerMessage`). Un nouveau message commence ici.
-- `server/GameRules.ts` : cœur des règles (pickups, POWER, lance-pierre, boost, tangibles, réparation, déformation, fin de partie). Lire par fonctionnalité.
-- `server/PhysicsLoop.ts` (60 Hz), `server/MapGenerator.ts`, `server/Tutorial.ts`, `server/layout.ts` (partagé avec le client), `config.json` + `server/config.ts`.
-- Tests : `scripts/acceptance.ts` (horloge simulée), `scripts/pickups.ts`, `scripts/race-settings.ts`, `scripts/gesture-reservations.ts`.
+- `server/types.ts` : tous les types partagés (`GameState`, `Phase`, `ClientMessage`, `ServerMessage`), réexportés depuis `server/protocol/`. Un nouveau message commence ici.
+- `server/rules/GameRules.ts` : façade du cœur des règles ; la logique est dans `server/rules/` (`armedItems` pour POWER, lance-pierre et boost, `tangiblesRules`, `repairDamage`, `trackDeformation`, `raceResult`…). Chaque méthode appelle la fonction du même nom du module. Lire par fonctionnalité.
+- `server/PhysicsLoop.ts` (60 Hz), `server/track/MapGenerator.ts` (façade ; étapes dans `server/track/generation/`), `server/modes/Tutorial.ts`, `server/layout.ts` (partagé avec le client), `config.json` + `server/config.ts`.
+- Tests : `scripts/acceptance.ts` (lance les scénarios rangés par domaine dans `scripts/acceptance/`, horloge simulée), `scripts/game/pickups.ts`, `scripts/game/race-settings.ts`, `scripts/gestures/gesture-reservations.ts`.
 
 ## Règles à ne pas casser
 - Le serveur décide de tout ; les clients envoient des intentions.

@@ -1,19 +1,19 @@
 /**
  * Aiguillage d'un contact posé : boutons, postes, tangibles, tracé de carte, bonus et prise de bord.
- * Liens : client-table/gesture/gestureTypes.ts, server/layout.ts, client-table/Renderer.ts.
+ * Liens : client-table/gesture/gestureTypes.ts, server/layout.ts, client-table/renderer/Renderer.ts.
  * Fonctions appelées par les méthodes de GestureRecognizer (server/GestureRecognizer.ts), qui garde l'état et délègue ici.
  */
-import { presentingTrack } from '../../server/trackPresentation.js';
+import { presentingTrack } from '../../server/track/trackPresentation.js';
 import { LOGICAL_W, PANELS, padLocal, panelWidth, PANEL_H, PEDAL_LOCAL, POWER_BTN_LOCAL, worldToLocal, steerArea as steerAreaForState, inTangibleDepot, inNeutralUi } from '../../server/layout.js';
 import { trackTangent, nearestTrackEdge } from '../../server/geometry.js';
-import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON } from '../Renderer.js';
-import { inTutorialCard, tutorialButtonAt, tutorialIdentifying } from '../TutorialOverlay.js';
-import { tangibleTouchPose, TANGIBLE_CONTACT_GRACE_MS } from '../../server/tangibleTouch.js';
-import { tangibleDefinition } from '../../server/tangibles.js';
-import { tuning } from '../gestureTuning.js';
+import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON } from '../renderer/Renderer.js';
+import { inTutorialCard, tutorialButtonAt, tutorialIdentifying } from '../ui/TutorialOverlay.js';
+import { tangibleTouchPose, TANGIBLE_CONTACT_GRACE_MS } from '../../server/tangibles/tangibleTouch.js';
+import { tangibleDefinition } from '../../server/tangibles/tangibles.js';
+import { tuning } from './gestureTuning.js';
 import { MAX_CONTACTS } from './gestureConstants.js';
 import type { Contact } from './gestureTypes.js';
-import type { GestureRecognizer } from '../GestureRecognizer.js';
+import type { GestureRecognizer } from './GestureRecognizer.js';
 
 /** Attribue le nouveau doigt à une commande, un tracé ou un geste libre en respectant les priorités de la partie. */
 export function onDown(recognizer: GestureRecognizer, e: PointerEvent): void {

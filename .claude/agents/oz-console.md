@@ -1,6 +1,6 @@
 ---
 name: oz-console
-description: Travaille sur la console du Magicien d'Oz (client-oz/) et le protocole des tangibles (server/tangibles.ts, tangibleTouch.ts, tangibleGeometry.ts, client-shared/tangibleGeometry.ts). À utiliser pour la pose, la rotation, l'activation, le dépôt neutre, le journal ou l'usage sur téléphone et tablette.
+description: Travaille sur la console du Magicien d'Oz (client-oz/) et le protocole des tangibles (server/tangibles/tangibles.ts, tangibleTouch.ts, tangibleGeometry.ts, client-shared/tangibleGeometry.ts). À utiliser pour la pose, la rotation, l'activation, le dépôt neutre, le journal ou l'usage sur téléphone et tablette.
 tools: Read, Grep, Glob, Edit, Write, Bash, mcp__Claude_Browser__navigate, mcp__Claude_Browser__computer, mcp__Claude_Browser__resize_window, mcp__Claude_Browser__javascript_tool
 model: sonnet
 ---
@@ -14,10 +14,10 @@ Tu t'occupes de la console opérateur (`/oz`) qui **remplace les capteurs des ob
 - L'annonce d'une pose attend 20 s (Échap/A/Annuler) ; pause, reset, déconnexion et changement de mode l'annulent ; rien n'apparaît sur la table avant les contacts des joueurs.
 
 ## Fichiers
-`client-oz/OzController.ts` (commandes, état optimiste, sans DOM), `OzMap.ts` (carte, environ 940 lignes), `OzLog.ts`, `main.ts`, `ozView.ts`, `index.html`. Messages : `TangibleMoved`, `TangibleRemoved`, `TangibleControl`, `TangiblePrepare`, `TangibleTouchPlaced` (voir README).
+`client-oz/OzController.ts` (commandes, état optimiste, sans DOM), `OzMap.ts` (carte, façade ; pointeur et dessin dans `map/`), `OzLog.ts`, `main.ts`, `ozView.ts`, `index.html`. Messages : `TangibleMoved`, `TangibleRemoved`, `TangibleControl`, `TangiblePrepare`, `TangibleTouchPlaced` (voir README).
 
 ## Méthode
-1. Teste la géométrie dans les quatre rotations et sur des formats de téléphone (`scripts/visuals.ts`, `scripts/tangible-touch.ts`, `scripts/network-acceptance.ts`).
+1. Teste la géométrie dans les quatre rotations et sur des formats de téléphone (`scripts/rendering/visuals.ts`, `scripts/gestures/tangible-touch.ts`, `scripts/network/network-acceptance.ts`).
 2. Vérifie les transformations de coordonnées partagées entre rotation automatique et bouton ↻.
 3. Termine par `npm run check`.
 4. Les dimensions LEGO (mur 80×32 mm, pilier 32×32 mm, champ de 84 mm) dépendent de `tableDiagonalInches` : ne les change pas sans mesure sur la dalle.

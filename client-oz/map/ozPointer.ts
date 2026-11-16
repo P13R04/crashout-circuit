@@ -5,10 +5,10 @@
  */
 import type { Tangible, Vec2 } from '../../server/types.js';
 import { wallEndpoints, rotateWall } from '../../client-shared/tangibleGeometry.js';
-import { type TangibleId } from '../../server/tangibles.js';
+import { type TangibleId } from '../../server/tangibles/tangibles.js';
 import { distToSegment } from '../../server/geometry.js';
 import { viewTransform, viewToWorld } from '../ozView.js';
-import type { OzMap } from '../OzMap.js';
+import type { OzMap } from './OzMap.js';
 
 /** Convertit les coordonnées du doigt dans le canvas puis dans le repère logique de la table. */
 function point(ozMap: OzMap, e: PointerEvent): Vec2 {

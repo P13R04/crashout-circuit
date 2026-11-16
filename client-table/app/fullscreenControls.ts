@@ -1,9 +1,9 @@
 /**
  * Plein écran, touche Échap et visibilité de la page : relâchement des entrées et retour des sons.
- * Liens : client-table/index.html, client-table/Sound.ts.
+ * Liens : client-table/index.html, client-table/sound/Sound.ts.
  * Appelé par client-table/main.ts dans l'ordre d'origine de l'initialisation de la table.
  */
-import { tableAudio } from '../Sound.js';
+import { tableAudio } from '../sound/Sound.js';
 import type { TableApp } from './tableApp.js';
 
 /** Branche le plein écran, la touche Échap et la gestion de la page cachée. */

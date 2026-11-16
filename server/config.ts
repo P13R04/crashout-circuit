@@ -1,9 +1,9 @@
 /**
  * Charge config.json, complète les valeurs manquantes et calcule les dimensions des tangibles pour la table.
- * Liens : config.json, server/tangibleGeometry.ts.
- * Référencé notamment par server/AutomaticPilot.ts, server/GameRules.ts, server/GameServer.ts.
+ * Liens : config.json, server/tangibles/tangibleGeometry.ts.
+ * Référencé notamment par server/modes/AutomaticPilot.ts, server/rules/GameRules.ts, server/net/GameServer.ts.
  */
-import { physicalDimensions } from './tangibleGeometry.js';
+import { physicalDimensions } from './tangibles/tangibleGeometry.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -18,7 +18,7 @@ const defaults = {
   hpMax: 100,
   dmgWall: 10,
   dmgArc: 10,
-  dmgStone: 50, // two stones break a full-HP car; see scripts/sling-balance.ts (issue #39)
+  dmgStone: 50, // two stones break a full-HP car; see scripts/game/sling-balance.ts (issue #39)
   invulnAfterHitS: 1,
   stunStoneS: 1.5,
   arcSlowFactor: 0.5,

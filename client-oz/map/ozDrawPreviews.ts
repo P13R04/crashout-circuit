@@ -1,10 +1,10 @@
 /**
  * Aperçus des outils de la carte Oz : arc à deux clics, mur à deux clics et pose annoncée.
  * Liens : client-oz/ozView.ts, client-shared/trackVisibility.ts, server/layout.ts.
- * Fonctions appelées par draw() de client-oz/map/ozDraw.ts (client-oz/OzMap.ts garde l'état et délègue).
+ * Fonctions appelées par draw() de client-oz/map/ozDraw.ts (client-oz/map/OzMap.ts garde l'état et délègue).
  */
 import { wallEndpoints, wallCorners } from '../../client-shared/tangibleGeometry.js';
-import { validTangiblePose } from '../../server/tangibles.js';
+import { validTangiblePose } from '../../server/tangibles/tangibles.js';
 import type { DrawContext } from './ozDrawContext.js';
 
 /** Dessine l’aperçu de l’outil arc à deux clics avec sa portée. */

@@ -2,7 +2,7 @@
  * Détermine les bordures visibles de la piste et masque celles qui traversent une autre branche aux
  * croisements.
  * Liens : server/types.ts.
- * Référencé par client-oz/OzMap.ts, client-table/CircuitTrack.ts, client-table/NeonTrack.ts.
+ * Référencé par client-oz/map/OzMap.ts, client-table/themes/circuit/CircuitTrack.ts, client-table/themes/neon/NeonTrack.ts.
  */
 import type { TrackGeometry } from '../server/types.js';
 

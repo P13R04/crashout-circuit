@@ -61,55 +61,46 @@ Le tutoriel est donc la vraie course avec des garde-fous et des étapes par-dess
 
 ### `server/` (logique de jeu, compilée avec `tsconfig.server.json`)
 
-| Fichier | Rôle |
+Le dossier est rangé par responsabilité : quelques fichiers à la racine, le reste dans des sous-dossiers.
+
+| Fichier ou dossier | Rôle |
 |---|---|
 | `index.ts` | Point d'entrée HTTP et WebSocket. Il sert `dist/clients`, `/api/session` (adresses Oz) et `/api/oz-log`. |
-| `GameServer.ts` | Registre des connexions, attribution des rôles (table ou oz) selon l'URL, distribution des messages et diffusion de l'état. |
 | `PhysicsLoop.ts` | Simulation à pas fixe de 60 Hz : déplacement des véhicules, sorties de piste, puis appel des règles. |
-| `GameRules.ts` | Le cœur du jeu, resté **façade** (une classe qui garde l'état et délègue). La logique vit dans `server/rules/`, un module par responsabilité : `trackCreation` (tracés de la carte), `raceStart` et `tutorialFlow` (départ, tutoriel), `sessionControl` (pause, retour à l'accueil, interrupteurs de test PC), `driving`, `armedItems` (POWER, lance-pierre, portails de boost), `repairDamage`, `tangiblesRules`, `trackDeformation`, `effectsExpiry`, `raceResult`. Chaque méthode de `GameRules` appelle la fonction du même nom du module. |
-| `MapGenerator.ts` | Façade de la génération : transforme les deux tracés à main levée des joueurs en circuit fermé valide (`TrackGeometry`). Les étapes (nettoyage du tracé, fusion, géométrie, placement des éléments, validation, stratégies et secours) sont dans `server/trackGeneration/`. |
-| `Tutorial.ts` | Tutoriel guidé, avec une progression indépendante par équipe, validée par de vrais événements de jeu. |
-| `AutomaticPilot.ts` | Suiveur de ligne centrale utilisé par le mode « TEST TANGIBLES ». |
-| `types.ts` | **Tous les types partagés** : `GameState`, `Phase`, `ClientMessage` et `ServerMessage`. Les clients l'importent aussi. Il réexporte `server/protocol/gameState.ts` (état) et `server/protocol/messages.ts` (protocole). |
+| `types.ts` | **Tous les types partagés** : `GameState`, `Phase`, `ClientMessage` et `ServerMessage`. Les clients l'importent aussi. Il réexporte `protocol/gameState.ts` (état) et `protocol/messages.ts` (protocole réseau). |
 | `config.ts` | Charge `config.json` (dégâts, vitesses, déformation, taille de la table) avec des valeurs par défaut. |
 | `layout.ts` | Disposition de la table partagée avec le client : 4 panneaux d'angle, bouton des paramètres, dépôt neutre. |
 | `geometry.ts` | Aides géométriques 2D : intersection de segments, point le plus proche de la ligne centrale, tir du lance-pierre. |
-| `mapCreation.ts` | Règles des ancres P1/P2, partagées entre le dessin, la détection de touche et la validation serveur. |
-| `tangibles.ts`, `tangibleGeometry.ts`, `tangibleTouch.ts` | Les trois tangibles fixes (un mur et deux piliers), la validation de leur pose, la géométrie de collision du mur et les contrôles de la pose tactile à deux contacts. |
-| `boostGeometry.ts` | Placement et orientation du portail de boost à partir de deux contacts, y compris aux carrefours. |
-| `armedPickup.ts`, `raceSettings.ts` | Deux petits fichiers : la règle de réservation unique des objets armés, et l'échelle de vitesse de chaque difficulté. |
+| `net/` | `GameServer.ts` : registre des connexions, attribution des rôles (table ou oz) selon l'URL, distribution des messages et diffusion de l'état. `audioHttp.ts` : service HTTP des fichiers audio. |
+| `rules/` | Le cœur du jeu. `GameRules.ts` est une **façade** (une classe qui garde l'état et délègue ; chaque méthode appelle la fonction du même nom d'un module). `session/` : création du circuit (`trackCreation`), départ (`raceStart`), tutoriel (`tutorialFlow`), pause et retour à l'accueil (`sessionControl`), résultat (`raceResult`), état initial et constantes. `gameplay/` : conduite (`driving`), POWER, lance-pierre et boost (`armedItems`), réparation et dégâts (`repairDamage`), tangibles (`tangiblesRules`), déformation de la piste (`trackDeformation`), expiration des effets (`effectsExpiry`), anciennes capacités. Aussi `armedPickup.ts` (réservation unique des objets armés) et `raceSettings.ts` (échelle de vitesse de chaque difficulté). |
+| `track/` | `MapGenerator.ts` : façade qui transforme les deux tracés à main levée en circuit fermé valide (`TrackGeometry`) ; les étapes (nettoyage, fusion, géométrie, placement, validation, stratégies, secours) sont dans `generation/`. Aussi `mapCreation.ts` (règles des ancres P1/P2, partagées avec le client), `trackPresentation.ts` (horloge commune de la révélation et de la roulette du départ) et `boostGeometry.ts` (portail de boost, y compris aux carrefours). |
+| `tangibles/` | Les trois tangibles fixes (un mur et deux piliers, `tangibles.ts`), la géométrie de collision du mur (`tangibleGeometry.ts`) et les contrôles de la pose tactile à deux contacts (`tangibleTouch.ts`). |
+| `modes/` | `Tutorial.ts` : tutoriel guidé, avec une progression indépendante par équipe, validée par de vrais événements de jeu. `AutomaticPilot.ts` : suiveur de ligne centrale du mode « TEST TANGIBLES ». |
+| `protocol/` | Les deux fichiers réexportés par `types.ts`. |
 
 ### `client-table/` (la table, en Canvas 2D)
 
-- **Cœur**
+La racine ne garde que `main.ts`, `view.ts` et `index.html` ; tout le reste est rangé par sujet.
+
+- **Racine**
   - `main.ts` : point d'entrée. Il ouvre la WebSocket, crée le moteur de rendu et le recognizer de gestes, puis appelle les modules de `app/` (taille du canvas, thèmes, réglages de course, outils de développement, audio, clavier, plein écran, messages du serveur, boucle de rendu).
   - `view.ts` : état local du client (effets, lance-pierre en cours de tir).
-  - `GestureRecognizer.ts` : le cerveau multitouch, resté façade. Il suit jusqu'à 10 contacts ; chaque geste vit dans `gesture/` : lance-pierre (3 doigts, `slingGesture`), portail de boost (`bonusEvaluation`), déformation de la piste (`borderPullGesture`), dessin de la carte (`mapDrawing`), pose des tangibles (`placementTouch`), pilotage et réparation (`pilotControls`), aiguillage des contacts (`contactDown`, `contactRelease`).
-  - `HUD.ts` : les quatre panneaux d'angle, chacun tourné vers son bord de table. Les pilotes ont la direction, les PV et la réparation ; les copilotes ont POWER et la réparation.
-  - `TutorialOverlay.ts` : bandeaux du tutoriel pour chaque équipe.
-  - `Sound.ts` : retours sonores synthétisés, sans fichier audio.
-  - `icons.ts` : pictogrammes canvas partagés.
-- **Rendu**
-  - `Renderer.ts` : moteur de rendu principal, resté façade (couches par thème et composition des écrans). Les écrans et surcouches sont dans `renderer/` (`screenOverlays`, `raceOverlays`, `mapCreationScreen`).
-  - `themes.ts` : liste des thèmes et préférence locale. Les cinq thèmes sont Néon, Ferraille, Toy Circuit, F1 Classic et Mayhem.
-  - `neon.ts`, `VisualMotion.ts` : petites aides partagées pour les textures, le bruit et l'historique de mouvement.
-- **Décors propres à chaque thème**
-  - Néon : `NeonTrack`, `NeonVehicles`, `NeonObjects`, `NeonEffects`, `VoidBackdrop`.
-  - Ferraille : `ScrapTrack`, `ScrapBackdrop`, `ScrapMaterials`, `IndustrialMachinery`, `IndustrialMotion`, `IndustrialVapour`.
-  - Toy : `ToyWorkshop`.
-  - F1 : `F1Venue`, avec `StandSections` (tribunes).
-  - Mayhem : `MayhemFestival`.
-  - Commun : `CircuitTrack` et `CircuitMaterials` (la piste des thèmes F1, Toy et Mayhem), `ThemeWorld` (composition du décor), `SceneryLayout` (placement des éléments de décor sans chevauchement) et `RaceGrid` (cases de départ).
-- **Retours des tangibles**
-  - `TangibleTransitions.ts` : animations d'apparition, de déplacement et de retrait.
-  - `TangibleTouchPreview.ts` : aperçu de la pose à deux contacts.
+- **`gesture/`** : le cerveau multitouch. `GestureRecognizer.ts` est la façade ; elle suit jusqu'à 10 contacts et délègue. `contactDown` et `contactRelease` aiguillent les contacts ; `actions/` contient chaque geste : lance-pierre (3 doigts, `slingGesture`), portail de boost (`bonusEvaluation`), déformation de la piste (`borderPullGesture`), dessin de la carte (`mapDrawing`), pose des tangibles (`placementTouch`), pilotage et réparation (`pilotControls`), simulation à la souris (`mouseSimulation`). `gestureTuning.ts` (seuils réglables par l'URL en développement) et `GestureLog.ts` (journal des décisions, F4, CSV).
+- **`renderer/`** : `Renderer.ts`, moteur de rendu principal (façade : couches par thème et composition des écrans), et les écrans et surcouches (`screenOverlays`, `raceOverlays`, `mapCreationScreen`).
+- **`ui/`** : `HUD.ts` (les quatre panneaux d'angle, chacun tourné vers son bord de table ; les pilotes ont la direction, les PV et la réparation, les copilotes POWER et la réparation), `TutorialOverlay.ts` et `TutorialGestures.ts` (bandeaux et démonstrations du tutoriel), `TrackCreation.ts` (création du circuit), `TangibleTransitions.ts` (apparition, déplacement et retrait), `TangibleTouchPreview.ts` (aperçu de la pose à deux contacts) et `icons.ts` (pictogrammes partagés).
+- **`sound/`** : `Sound.ts`, `AudioPlan.ts`, `AudioAssets.ts` : sons de la table (signaux synthétisés, extraits CC0 déclarés dans `audio/sources.json`), plan d'ambiance et de musique par thème. `audio/` contient les fichiers sonores et leurs licences.
+- **`themes/`** : `themes.ts` (liste des thèmes et préférence locale : Néon, Ferraille, Toy Circuit, F1 Classic, Mayhem), `ThemeWorld.ts` (composition du décor), `SceneryLayout.ts` (placement des éléments sans chevauchement), `RaceGrid.ts` (cases de départ) et `VisualMotion.ts` (historique de mouvement). Un sous-dossier par famille de décor :
+  - `neon/` : `NeonTrack`, `NeonVehicles`, `NeonObjects`, `NeonEffects`, `VoidBackdrop` et `neon.ts` (textures et bruit partagés).
+  - `scrap/` (Ferraille) : `ScrapTrack`, `ScrapBackdrop`, `ScrapMaterials`, `IndustrialMachinery`, `IndustrialMotion`, `IndustrialVapour`.
+  - `circuit/` (Toy, F1, Mayhem) : `CircuitTrack` et `CircuitMaterials` (la piste commune), `ToyWorkshop`, `F1Venue` avec `StandSections` (tribunes), `MayhemFestival`.
+- **`app/`** : les modules d'initialisation appelés par `main.ts`.
 - `index.html` : la page de la table.
 
 ### `client-oz/` (console opérateur)
 
 - `main.ts` : point d'entrée et câblage de la barre d'outils.
 - `OzController.ts` : commandes de l'opérateur, avec état optimiste et annulation, indépendantes du DOM.
-- `OzMap.ts` : la carte, restée façade, avec le placement manuel, le glisser et la rotation du mur. Le pointeur (`map/ozPointer.ts`) et le dessin (`map/ozDraw*.ts`) sont découpés dans `map/`.
+- `map/` : `OzMap.ts` est la carte (façade), avec le placement manuel, le glisser et la rotation du mur ; le pointeur (`ozPointer.ts`) et le dessin (`ozDraw*.ts`) sont des modules du même dossier.
 - `OzLog.ts` : journal horodaté des événements, qui peut être rejoué.
 - `ozView.ts` est un très petit fichier. `index.html` est la page de la console.
 
@@ -121,18 +112,19 @@ Le tutoriel est donc la vraie course avec des garde-fous et des étapes par-dess
 
 ### `scripts/` (tests, lancés avec `tsx`)
 
-- `acceptance.ts` : lance la grande suite de tests des règles serveur avec une horloge simulée, sans réseau. Les scénarios sont rangés par domaine dans `scripts/acceptance/` (`harness.ts` pour le banc commun, `scenarioActions.ts` pour les gestes de test partagés).
-- `network-acceptance.ts` : tests WebSocket réels.
-- `gestures.ts`, `gesture-reservations.ts`, `boost.ts`, `tangible-touch.ts`, `race-settings.ts`, `autopilot.ts` : un sujet chacun.
-- `visuals.ts` : vérifications du rendu et de la disposition.
-- `test-tangible-anims.ts` : vérifications des animations des tangibles.
-- `npm run verify` les lance tous, plus la vérification des types et le build.
+- `acceptance.ts` : lance la grande suite de tests des règles serveur avec une horloge simulée, sans réseau. Les scénarios sont rangés par domaine dans `acceptance/` (`harness.ts` pour le banc commun, `scenarioActions.ts` pour les gestes de test partagés, puis `track/`, `race/`, `tutorial/` et `tangibles/`).
+- `network/` : `network-acceptance.ts`, tests WebSocket réels.
+- `gestures/` : `gestures.ts`, `gesture-reservations.ts`, `boost.ts`, `tangible-touch.ts` (gestes et pose tactile).
+- `game/` : `race-settings.ts`, `pickups.ts`, `track-creation.ts`, `public-session.ts`, `autopilot.ts` (règles par sujet) et `sling-balance.ts` (simulation d'équilibrage du lance-pierre, `npm run sim:sling`).
+- `rendering/` : `visuals.ts` (rendu et disposition), `test-tangible-anims.ts` (animations des tangibles) et `audio.ts`.
+- `quality/` : `file-sizes.ts` (garde-fou de taille des fichiers et de nombre de fichiers par dossier, `npm run check:sizes`), `file-sizes.baseline.json` et son test.
+- `npm run check` (types, taille des fichiers, acceptation, gestes, réseau, audio, création, session publique, pickups, build) est la commande de la CI. `npm run verify` lance tous les tests, plus la vérification des types et le build.
 
 ### Fichiers racine, documentation et prototype
 
 - **Configuration :** `config.json` (toutes les valeurs réglables), `vite.config.ts` (deux pages, `/ws` et `/api` relayés vers le port 3000), `tsconfig.json` (clients et scripts), `tsconfig.server.json` (serveur), `package.json`.
 - **`index.html` :** redirige vers `/client-table/`.
-- **Documentation :** `README.md` est la meilleure description côté utilisateur. `context.md` est le registre de conception (identifiants R-xx, C-xx, etc.). `measures.md` sépare ce qui est testé automatiquement de ce qui doit encore être mesuré sur la vraie table. `docs/` couvre la direction artistique, les thèmes, le rendu néon, la lisibilité, la pose tactile et l'intégration de l'équipe. `issue-3-contexte.md` et `issue-4-contexte.md` sont des notes de passation pour des issues précises.
+- **Documentation :** `README.md` est la meilleure description côté utilisateur. `context.md` est le registre de conception (identifiants R-xx, C-xx, etc.). `measures.md` sépare ce qui est testé automatiquement de ce qui doit encore être mesuré sur la vraie table. `docs/` couvre la direction artistique, les thèmes, le rendu néon, la lisibilité, la pose tactile et l'intégration de l'équipe. 
 - **`.kiro/specs/` :** exigences, conception et liste de tâches d'origine.
 - **`prototypes/piste-vivante/` :** l'ancien prototype de recherche en Next.js. `AGENTS.md` demande de le conserver comme historique et de ne jamais construire dedans.
 
@@ -160,6 +152,5 @@ npm run build && npm start
 npm run verify
 ```
 
-> Écrit d'après l'état de `main` au 29 octobre 2026, avant les pull requests #46 à #49. Celles-ci ajoutent `client-table/gestureTuning.ts`, `client-table/GestureLog.ts`, `scripts/sling-balance.ts` et le script `npm run check`.
 
-> Mise à jour du 16 novembre 2026 : les fichiers de plus de 500 lignes ont été découpés (issue #66). Les chemins d'import d'origine sont conservés : le fichier d'origine réexporte ou délègue. La règle de taille (cible 300 lignes, plafond 500) est contrôlée par `npm run check:sizes`.
+> Écrit d'après l'état de `main` au 29 octobre 2026, puis mis à jour le 16 novembre 2026 : les fichiers de plus de 500 lignes ont été découpés (issue #66) et les dossiers trop pleins répartis en sous-dossiers par responsabilité. La règle (fichier : cible 300 lignes, plafond 500 ; dossier : plafond 12 fichiers `.ts`) est contrôlée par `npm run check:sizes`.

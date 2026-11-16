@@ -51,7 +51,7 @@ En navigateur, vérifier séparément : entrée par le nouveau bouton, départ p
 
 ## 5. Équilibrage du lance-pierre (issue #39)
 
-`npm run sim:sling` (`scripts/sling-balance.ts`) fait courir deux pilotes automatiques avec la vraie physique et les vrais dégâts pendant 10 minutes simulées, tandis que deux copilotes scriptés ramassent le lance-pierre, l'arment avec POWER, visent la position future de l'adversaire et réparent une voiture en panne. Hypothèses humaines : 1,5 s entre la prise et le tir, 1,5 s pour poser le doigt sur le pad de réparation, une voiture blessée mais roulante n'est pas réparée.
+`npm run sim:sling` (`scripts/game/sling-balance.ts`) fait courir deux pilotes automatiques avec la vraie physique et les vrais dégâts pendant 10 minutes simulées, tandis que deux copilotes scriptés ramassent le lance-pierre, l'arment avec POWER, visent la position future de l'adversaire et réparent une voiture en panne. Hypothèses humaines : 1,5 s entre la prise et le tir, 1,5 s pour poser le doigt sur le pad de réparation, une voiture blessée mais roulante n'est pas réparée.
 
 Constats avec les valeurs d'origine (100 PV, étourdissement 1 s) :
 - La cadence est limitée par les pickups, pas par le geste : environ **4 tirs par minute pour toute la table en Easy** (6 en Hard), car 4 pickups reviennent 15 s après la prise et la moitié donne un boost. Une limite de fréquence supplémentaire n'est pas nécessaire.

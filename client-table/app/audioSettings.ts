@@ -1,9 +1,9 @@
 /**
  * Paramètres audio du menu : activation, volumes, déverrouillage au premier contact et clic de l’interface.
- * Liens : client-table/Sound.ts, client-table/index.html.
+ * Liens : client-table/sound/Sound.ts, client-table/index.html.
  * Appelé par client-table/main.ts dans l'ordre d'origine de l'initialisation de la table.
  */
-import { playFeedback, unlock, tableAudio } from '../Sound.js';
+import { playFeedback, unlock, tableAudio } from '../sound/Sound.js';
 
 /** Branche le menu audio et le déverrouillage du son sur la table. */
 export function setupAudioSettings(): void {

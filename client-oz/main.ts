@@ -1,13 +1,13 @@
 /**
  * Relie les boutons, les raccourcis et le journal de la console à sa carte et à la connexion WebSocket.
- * Liens : client-oz/index.html, client-shared/net.ts, client-oz/OzMap.ts, client-oz/OzController.ts,
+ * Liens : client-oz/index.html, client-shared/net.ts, client-oz/map/OzMap.ts, client-oz/OzController.ts,
  * server/types.ts et les utilitaires importés ci-dessous.
  */
 import { StateSync, connectWs, type Connection } from '../client-shared/net.js';
-import { OzMap, type OzTool } from './OzMap.js';
+import { OzMap, type OzTool } from './map/OzMap.js';
 import { OzController, ozShortcut } from './OzController.js';
 import type { Vec2 } from '../server/types.js';
-import type { TangibleId } from '../server/tangibles.js';
+import type { TangibleId } from '../server/tangibles/tangibles.js';
 
 const status = document.getElementById('status')!;
 const hint = document.getElementById('hint')!;

@@ -1,9 +1,9 @@
 /**
  * État de partie partagé : équipes, voitures, tangibles, circuit, tutoriel, réglages et état complet diffusé aux clients.
- * Liens : server/tangibles.ts, server/GameRules.ts.
+ * Liens : server/tangibles/tangibles.ts, server/rules/GameRules.ts.
  * Réexporté par server/types.ts, qui reste le point d'import unique des types partagés.
  */
-import type { TangibleId } from '../tangibles.js';
+import type { TangibleId } from '../tangibles/tangibles.js';
 
 /** Représente une position ou un vecteur à deux coordonnées. */
 export interface Vec2 {

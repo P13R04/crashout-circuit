@@ -1,9 +1,9 @@
 /**
  * Préférences d’affichage locales : thèmes de la table, ambiance par défaut et réduction des animations.
- * Liens : client-table/themes.ts, client-table/index.html.
+ * Liens : client-table/themes/themes.ts, client-table/index.html.
  * Appelé par client-table/main.ts dans l'ordre d'origine de l'initialisation de la table.
  */
-import { THEMES, themeLook, saveTheme, type ThemeId } from '../themes.js';
+import { THEMES, themeLook, saveTheme, type ThemeId } from '../themes/themes.js';
 import type { TableApp } from './tableApp.js';
 
 /** Construit les aperçus de thème, applique l'ambiance Ferraille et suit la préférence de mouvement du navigateur. */

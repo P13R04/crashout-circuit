@@ -1,9 +1,9 @@
 /**
  * Protocole réseau : messages de la table et de la console Oz vers le serveur, et diffusions du serveur.
- * Liens : server/protocol/gameState.ts, server/GameServer.ts, client-shared/net.ts.
+ * Liens : server/protocol/gameState.ts, server/net/GameServer.ts, client-shared/net.ts.
  * Réexporté par server/types.ts, qui reste le point d'import unique des types partagés.
  */
-import type { TangibleId } from '../tangibles.js';
+import type { TangibleId } from '../tangibles/tangibles.js';
 import type { Vec2, Team, Phase, ItemKind, Difficulty, TangiblePlacementMode, Tangible, GameState } from './gameState.js';
 
 /** Associe un type de commande à son horodatage réseau. */

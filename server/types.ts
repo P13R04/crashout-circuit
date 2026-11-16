@@ -1,7 +1,7 @@
 /**
  * Déclare les structures d’état et les messages échangés entre le serveur, la table et la console Oz.
- * Liens : server/tangibles.ts.
- * Référencé notamment par client-oz/OzController.ts, client-oz/OzMap.ts, client-oz/main.ts.
+ * Liens : server/tangibles/tangibles.ts.
+ * Référencé notamment par client-oz/OzController.ts, client-oz/map/OzMap.ts, client-oz/main.ts.
  * Découpé dans server/protocol/ : gameState.ts (état de partie) et messages.ts (protocole réseau). Ce fichier réexporte tous les types : les chemins d'import ne changent pas.
  */
 

@@ -1,7 +1,7 @@
 /**
  * Types de la reconnaissance tactile : zone d'un contact, contact suivi et envoi d'une commande reconnue.
  * Liens : client-table/view.ts, server/layout.ts.
- * Réexporté par client-table/GestureRecognizer.ts, qui reste la façade du lecteur de gestes.
+ * Réexporté par client-table/gesture/GestureRecognizer.ts, qui reste la façade du lecteur de gestes.
  */
 import type { Team, Vec2 } from '../../server/types.js';
 import { type PanelLayout } from '../../server/layout.js';

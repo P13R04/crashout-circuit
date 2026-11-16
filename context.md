@@ -11,14 +11,14 @@ Cette fiche conserve les décisions de conception et leurs identifiants (R-xx, C
 
 ## État consolidé au 16 novembre 2026 (à lire en premier)
 
-Cette section résume tout ce qui a été décidé, construit et dit en conversation jusqu'à `main` @ `91d1312` (2 novembre 2026, 74 commits). Elle réconcilie les sections historiques plus bas. En cas de doute sur une commande ou une règle : **code > README > cette fiche > sections historiques**.
+Cette section résume tout ce qui a été décidé, construit et dit en conversation jusqu'à `main` @ `91d1312` (2 novembre 2026, 74 commits) et la section L (qualité du code, 16 novembre). Elle réconcilie les sections historiques plus bas. En cas de doute sur une commande ou une règle : **code > README > cette fiche > sections historiques**.
 
 ### A. Équipe, dépôt et façon de travailler
 
 - Dépôt GitHub : `P13R04/crashout-circuit`. Branche de référence : `main` (la PR #50 `feat/preparation-tests-utilisateurs` y est fusionnée ; la mention contraire du README sur « main ne contient pas encore… » est périmée).
 - Contributeurs (identités git) : **P13R04** (Pierre Constantin : thèmes, rendu, intégration, audio, tutoriel final, préparation des tests), **QuentinEllPerso** / QuentinELLEON (l'utilisateur de ces conversations : issues #2, #3, #4, #32, #37, #38, #39, #40, tutoriel serveur, CI, docs de test, évaluation), **ba-giacchero** (Baptiste : postes, boost, animations des tangibles, création de circuit, chute), **Marc** / WhiteTiger2309 (contrôles, mode pédale, console Oz).
 - Convention de travail de Quentin : **une branche par issue, nommée comme l'issue** (ex. `32-tutoriel-guide-...`), `add` + `commit` + `push` sous son identité, **sans mention de Claude** dans les commits ni les PR ; lancer `tsc`, les tests d'acceptation et de gestes (idéalement `npm run check`) avant chaque push ; pas de PR avant d'avoir testé sur la table. Commits en français.
-- `AGENTS.md` : ne jamais modifier `prototypes/piste-vivante` (historique de recherche) ; toute nouvelle application se crée à côté.
+- `AGENTS.md` : ne jamais modifier `prototypes/piste-vivante` (historique de recherche) ; toute nouvelle application se crée à côté. Taille des fichiers : cible 300 lignes, plafond 500, contrôlé par `npm run check:sizes` (section L).
 - Le dossier projet est passé de `...\SI5\interfaces-tactiles\projet\crashout-circuit` à `...\SI5\S10\IHM-reparties\projet\crashout-circuit` ; les conversations passées pointent sur l'ancien chemin.
 - L'évaluation suit le cours d'IHM d'Anne-Marie Déry (`EvaluationIHMInterfacesTactiles2026.pdf`, évaluation coopérative en plusieurs étapes).
 
@@ -61,12 +61,12 @@ Phases serveur : `LOBBY → MAP → READY → RACE ⇄ PAUSED → RESULT`. Boucl
 
 ### D. Tutoriel (issue #32)
 
-Vraie course sur circuit prédéfini avec garde-fous ; chaque équipe a sa progression (`state.tutorial.teams[team] = { step, sub }`). Une étape se valide **par un événement réel du jeu** (`Feedback` : `pickup`, `itemArmed`, `stoneWarning`, `boostGate`, `boostHit`, `trackDeformed`, `repairDone`) ou par des appels directs (`onStation`, `onPilotInput`, `onObstacleHit`, `onTangiblePlaced`, `onTangibles`), jamais par minuterie. Étapes table : `identify` (les 4 postes touchent leur clé, puis 3 s de feux), `steer`, `pickup`, `power`, `sling`, `boostPickup`, `boostPower`, `boost`, `boostCross`, `borderPull`, `repair`, `wall`, `pylon`, `arc`, `depot` ; le mode PC retire `identify`, `borderPull`, `depot` et ajoute `pedal`. Retour arrière automatique si le contexte disparaît (objet plus armé, portail expiré, arc disparu). Bouton discret **Passer ›** (noter chaque usage en test). Fin : rangement des trois objets dans la réserve, puis **CRÉER LE CIRCUIT** ouvre une vraie course. Fichiers : `server/Tutorial.ts`, `client-table/TutorialOverlay.ts`, `client-table/TutorialGestures.ts`, branchements dans `GameRules.ts`.
+Vraie course sur circuit prédéfini avec garde-fous ; chaque équipe a sa progression (`state.tutorial.teams[team] = { step, sub }`). Une étape se valide **par un événement réel du jeu** (`Feedback` : `pickup`, `itemArmed`, `stoneWarning`, `boostGate`, `boostHit`, `trackDeformed`, `repairDone`) ou par des appels directs (`onStation`, `onPilotInput`, `onObstacleHit`, `onTangiblePlaced`, `onTangibles`), jamais par minuterie. Étapes table : `identify` (les 4 postes touchent leur clé, puis 3 s de feux), `steer`, `pickup`, `power`, `sling`, `boostPickup`, `boostPower`, `boost`, `boostCross`, `borderPull`, `repair`, `wall`, `pylon`, `arc`, `depot` ; le mode PC retire `identify`, `borderPull`, `depot` et ajoute `pedal`. Retour arrière automatique si le contexte disparaît (objet plus armé, portail expiré, arc disparu). Bouton discret **Passer ›** (noter chaque usage en test). Fin : rangement des trois objets dans la réserve, puis **CRÉER LE CIRCUIT** ouvre une vraie course. Fichiers : `server/modes/Tutorial.ts`, `client-table/ui/TutorialOverlay.ts`, `client-table/ui/TutorialGestures.ts`, branchements dans `GameRules.ts`.
 
 ### E. Vérification et intégration continue
 
-- `npm run check` (types client + serveur, acceptation, gestes, réseau, audio, création de circuit, session publique, pickups, build) ; même commande en CI GitHub (`.github/workflows/check.yml`, Node 20, `npm ci`). `npm run verify` ajoute visuels, tangibles, autopilote, boost, pose tactile, réglages de course, réservations.
-- Dernier relevé : 100 scénarios d'acceptation, 41 contrôles de rendu, 17 gestes (audit du 1er nov.). Aucune mesure sur la vraie dalle (latence, 10 contacts, rejet de paume, 4K/60 fps, palm) : voir `measures.md` §2, toujours « à remplir ».
+- `npm run check` (types client + serveur, taille des fichiers, acceptation, gestes, réseau, audio, création de circuit, session publique, pickups, build) ; même commande en CI GitHub (`.github/workflows/check.yml`, Node 20, `npm ci`). `npm run verify` ajoute visuels, tangibles, autopilote, boost, pose tactile, réglages de course, réservations.
+- Relevé du 16 nov. : 100 scénarios d'acceptation, 42 contrôles de rendu, 37 tests de gestes (audit du 1er nov. : 41 et 17). Aucune mesure sur la vraie dalle (latence, 10 contacts, rejet de paume, 4K/60 fps, palm) : voir `measures.md` §2, toujours « à remplir ».
 - Simulation d'équilibrage : `npm run sim:sling`.
 - Journal tactile (dev) : F4 / `?log=1` → CSV ; seuils réglables par URL (`?cluster=`, `?palm=`…).
 
@@ -80,9 +80,9 @@ Fiche de lancement complète dans `docs/sessions-de-test.md` : 45 min (5 accueil
 
 ### H. Outils d'apprentissage et de passation
 
-- `docs/guide-du-code.md` (+ `archi.png`, `partage.png`) : guide fichier par fichier et ordre de lecture ; rédigé à l'état du 29 oct. (avant #46–#49 maintenant fusionnés).
+- `docs/guide-du-code.md` (+ `archi.png`, `partage.png`) : guide fichier par fichier et ordre de lecture ; mis à jour le 16 nov. (fichiers ajoutés depuis #46–#49 et découpage #66).
 - `docs/qcm-entretien.html` : QCM autonome, 10 questions tirées parmi 33 (architecture, gestes/POWER, tangibles, réparation, tutoriel, modes, « où se trouve… dans le code »), réponses mélangées, mode « refaire mes erreurs ». Pour préparer l'entretien individuel.
-- Notes de passation `issue-3-contexte.md` (circuit) et `issue-4-contexte.md` (lance-pierre) : **historiques** (état du 12 oct.) ; le lance-pierre a depuis changé (voir C).
+- Les notes de passation `issue-3-contexte.md` (circuit) et `issue-4-contexte.md` (lance-pierre), qui datent du 12 oct., ont été **supprimées le 16 nov.** (périmées, l'historique git les conserve) ; le lance-pierre a depuis changé (voir C).
 
 ### I. Journal de décisions issu des conversations
 
@@ -93,6 +93,7 @@ Fiche de lancement complète dans `docs/sessions-de-test.md` : 45 min (5 accueil
 - **« Magicien d'Oz »** (#34) : technique de simulation des capteurs, pas un habillage de conte.
 - **Faux tangibles bois** (#33) remplacés par des **LEGO** (photos du mur LEGO ayant guidé le thème Ferraille).
 - Accès Oz par code **retiré à la demande de l'équipe** ; console jamais visible des joueurs.
+- **Lance-pierre, relâchement** (`273d9e5`, `91d1312`, 2 nov.) : les trois doigts doivent être posés ; après une traction valide, lever n'importe lequel tire une fois ; une annulation système ne tire jamais ; un appui tapé puis levé avant la traction ne compte plus. Les tests ont été alignés le 16 nov. (hypothèse : comportement voulu ; à confirmer sur la dalle, issue #38).
 
 ### J. Points ouverts
 
@@ -100,8 +101,8 @@ Fiche de lancement complète dans `docs/sessions-de-test.md` : 45 min (5 accueil
 2. **Validations sur dalle** (aucune faite) : #38 (9/10 sur lance-pierre), 10 contacts, rejet de paume, latence <50 ms, 4K 60 fps, échelle LEGO 55" vs dalle réelle, lisibilité depuis chaque bord.
 3. **Issues GitHub encore ouvertes (état du 1er nov.)** : #8, #20, #23, #26, #27, #28, #29, #32, #34, #35, #36, #37, #38, #39, #40, #41 ; plusieurs sont déjà implémentées et attendent retours/mesures (audit : `docs/audit-pretests-2026-11-01.md`).
 4. Soutenance : date à confirmer ; revendication IHM = couplage spatial entre tangibles et gestes multitouch collaboratifs (voir §2) ; limite assumée : latence de l'opérateur Oz (R-16) à mesurer et déclarer.
-5. Documentation à resynchroniser : README (phrase sur `main`), `docs/audit-pretests` (cite `server/slingshot.ts` qui n'existe pas, la logique est dans `server/geometry.ts`), `docs/guide-du-code.md` (ajouter `gestureTuning.ts`, `GestureLog.ts`, `AudioAssets/AudioPlan`, `check`).
-6. Fichiers non suivis par git (à commiter ou jeter) : `docs/archi.png`, `docs/partage.png`, `docs/guide-du-code.md`, `docs/evaluation/`, `docs/qcm-entretien.html`.
+5. Documentation resynchronisée le 16 nov. (README, audit du 1er nov., guide du code, agents). À refaire après tout changement de comportement du lance-pierre ou de structure des dossiers.
+6. `docs/archi.png`, `docs/partage.png`, `docs/guide-du-code.md`, `docs/evaluation/` et `docs/qcm-entretien.html` sont suivis par git (PR #51). `docs/ihm-reparties/` (documents de cours) reste non suivi.
 7. Pistes de recherche à garder pour la soutenance : occlusion par les bras, tangible translucide, surface de contact analogique (§16).
 
 ### K. Pièges connus
@@ -110,6 +111,13 @@ Fiche de lancement complète dans `docs/sessions-de-test.md` : 45 min (5 accueil
 - `npm start` / `dev:server` exécutent `dist/server/` : toujours `npm run build` (ou `build:server`) après avoir récupéré des sources.
 - `localhost` désigne la machine du navigateur ; Oz se joint par l'IP de la table affichée au démarrage (pas de Wi-Fi invité isolant).
 - Les modes de test (clavier, simulations, voitures auto, F3/F4) sont **refusés par le serveur** sans `CRASHOUT_DEV_TOOLS=1` : ne jamais l'activer pendant une séance.
+
+### L. Qualité du code et découpage (issue #66, 16 novembre 2026)
+
+- **Règle** : fichier `.ts` cible 300 lignes, plafond 500 ; dossier plafond 12 fichiers `.ts` (cible 10) ; fonction ≤ 60 lignes ; imbrication ≤ 3 ; pas de fichier `utils`/`helpers`/`common`. Contrôle : `npm run check:sizes` (dans `check` et `verify`), liste de base `scripts/quality/file-sizes.baseline.json` (vide). Skills : `.claude/skills/limiter-taille-fichiers` (propre au projet) et `.claude/skills/clean-architecture` (wondelai/skills, MIT, voir son `SOURCE.md`).
+- **Façades et dossiers** : `GameRules`, `MapGenerator`, `types`, `GestureRecognizer`, `Renderer`, `OzMap`, `main.ts` (table) et `acceptance.ts` gardent leurs noms publics ; la logique est dans des modules du même dossier (`server/rules/session` et `gameplay`, `server/track/generation`, `server/protocol`, `client-table/gesture/actions`, `renderer`, `app`, `client-oz/map`, `scripts/acceptance/*`). Le 16 novembre, les dossiers trop pleins ont été répartis (`server/net`, `modes`, `tangibles`, `track` ; `client-table/ui`, `sound`, `themes/{neon,scrap,circuit}` ; `scripts/gestures`, `game`, `rendering`, `network`, `quality`) : **les chemins d'import ont changé** par rapport aux versions antérieures. Les champs lus par les modules ne sont plus `private`.
+- **Reste long** : `onDown` (205 lignes) et `drawMovePreview` (155) dépassent la cible de 60 lignes par fonction ; les couper changerait la logique.
+- **Vérifié** : mêmes 100 scénarios d'acceptation, `npm run verify` vert. **Non vérifié** : plein écran réel, outils de développement, cinq thèmes à l'œil, console Oz rejouée, partie complète sur la table.
 - Les modes sont des `if` sur des drapeaux (`state.tutorial`, `sessionMode`) : une nouvelle règle de dégâts ou de fin doit penser au tutoriel et au test tangibles.
 - Un tangible annoncé par Oz réserve tous les nouveaux contacts sur la carte (20 s, Échap/A annule) : l'opérateur ne doit rien sélectionner pendant les gestes de bonus.
 - JSON stricts (`config.json`, `package.json`) sans commentaires ; `tsconfig*.json` en JSONC.

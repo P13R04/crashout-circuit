@@ -1,6 +1,6 @@
 /**
  * Paramètres de séance dans le menu HTML : accueil, difficulté, tours, chronomètre et conduite de développement.
- * Liens : client-table/index.html, server/raceSettings.ts.
+ * Liens : client-table/index.html, server/rules/raceSettings.ts.
  * Appelé par client-table/main.ts dans l'ordre d'origine de l'initialisation de la table.
  */
 import type { TableApp } from './tableApp.js';

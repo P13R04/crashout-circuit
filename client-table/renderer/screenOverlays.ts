@@ -1,18 +1,18 @@
 /**
  * Écrans et commandes de session : accueil, compte à rebours, pause, départ de course et résultat.
- * Liens : client-table/icons.ts, client-table/HUD.ts.
+ * Liens : client-table/ui/icons.ts, client-table/ui/HUD.ts.
  * Fonctions appelées par les méthodes de Renderer (server/Renderer.ts), qui garde l'état et délègue ici.
  */
 import type { GameState } from '../../server/types.js';
 import { LOGICAL_W, LOGICAL_H } from '../../server/layout.js';
 import { TEAM_COLOR } from '../view.js';
-import { icon, type Icon } from '../icons.js';
-import { tutorialIdentifying } from '../TutorialOverlay.js';
-import { themeLook } from '../themes.js';
-import { glow, NEON, plate } from '../neon.js';
+import { icon, type Icon } from '../ui/icons.js';
+import { tutorialIdentifying } from '../ui/TutorialOverlay.js';
+import { themeLook } from '../themes/themes.js';
+import { glow, NEON, plate } from '../themes/neon/neon.js';
 import type { Ctx } from './rendererTypes.js';
 import { START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, RESULT_BUTTON, PAUSE_BUTTON, RACE_START_BUTTON } from './rendererButtons.js';
-import type { Renderer } from '../Renderer.js';
+import type { Renderer } from './Renderer.js';
 
 /** Dessine l’accueil et ses boutons sans révéler les modes de test lors d’une séance publique. */
 export function drawLobby(renderer: Renderer, ctx: Ctx, developerTools=false): void {

@@ -5,9 +5,9 @@
  */
 import assert from 'node:assert/strict';
 import type { Team, Vec2 } from '../../server/types.js';
-import { createInitialState } from '../../server/GameRules.js';
+import { createInitialState } from '../../server/rules/GameRules.js';
 import { config } from '../../server/config.js';
-import { GestureRecognizer } from '../../client-table/GestureRecognizer.js';
+import { GestureRecognizer } from '../../client-table/gesture/GestureRecognizer.js';
 import { createView } from '../../client-table/view.js';
 import { test, type Rig, rig, msg } from './harness.js';
 

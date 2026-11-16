@@ -1,15 +1,15 @@
 /**
  * Initialise la table et relie les paramètres HTML, le clavier, le réseau, l’audio et la boucle de dessin.
- * Liens : client-table/index.html, server/layout.ts, client-shared/net.ts, client-table/Renderer.ts,
+ * Liens : client-table/index.html, server/layout.ts, client-shared/net.ts, client-table/renderer/Renderer.ts,
  * server/types.ts et les utilitaires importés ci-dessous.
  */
 import { createControls } from '../client-shared/controls.js';
 import { StateSync, connectWs } from '../client-shared/net.js';
 import type { ServerMessage } from '../server/types.js';
 import { createView } from './view.js';
-import { Renderer } from './Renderer.js';
-import { GestureRecognizer } from './GestureRecognizer.js';
-import { tableAudio } from './Sound.js';
+import { Renderer } from './renderer/Renderer.js';
+import { GestureRecognizer } from './gesture/GestureRecognizer.js';
+import { tableAudio } from './sound/Sound.js';
 import type { TableApp } from './app/tableApp.js';
 import { setupCanvasSizing } from './app/canvasSizing.js';
 import { setupDisplayPreferences } from './app/displayPreferences.js';

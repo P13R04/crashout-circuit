@@ -3,22 +3,22 @@
  * état et une horloge contrôlés.
  * Les scénarios sont enregistrés par les modules de scripts/acceptance/, dans l'ordre d'import ci-dessous,
  * puis exécutés ici. Harnais commun : scripts/acceptance/harness.ts.
- * Liens : server/GameRules.ts, server/PhysicsLoop.ts, server/MapGenerator.ts, server/layout.ts,
+ * Liens : server/rules/GameRules.ts, server/PhysicsLoop.ts, server/track/MapGenerator.ts, server/layout.ts,
  * server/geometry.ts et les utilitaires importés par chaque module.
  * Lancé depuis les scripts npm de package.json.
  */
 import { queue } from './acceptance/harness.js';
-import './acceptance/mapGenerator.js';
-import './acceptance/mapPhase.js';
-import './acceptance/physics.js';
-import './acceptance/tutorialLessons.js';
-import './acceptance/tutorialTable.js';
-import './acceptance/tangibles.js';
-import './acceptance/items.js';
-import './acceptance/abilitiesRepair.js';
-import './acceptance/testSwitchesBorderPull.js';
-import './acceptance/ozConsole.js';
-import './acceptance/ozFastConsole.js';
+import './acceptance/track/mapGenerator.js';
+import './acceptance/track/mapPhase.js';
+import './acceptance/race/physics.js';
+import './acceptance/tutorial/tutorialLessons.js';
+import './acceptance/tutorial/tutorialTable.js';
+import './acceptance/tangibles/tangibles.js';
+import './acceptance/race/items.js';
+import './acceptance/race/abilitiesRepair.js';
+import './acceptance/race/testSwitchesBorderPull.js';
+import './acceptance/tangibles/ozConsole.js';
+import './acceptance/tangibles/ozFastConsole.js';
 
 let passed = 0;
 let failed = 0;

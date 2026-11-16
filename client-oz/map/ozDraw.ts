@@ -1,7 +1,7 @@
 /**
  * Dessin de la carte Oz : table, circuit, voitures et tangibles posés.
  * Liens : client-oz/ozView.ts, client-shared/trackVisibility.ts, server/layout.ts.
- * Fonctions appelées par draw() de client-oz/map/ozDraw.ts (client-oz/OzMap.ts garde l'état et délègue).
+ * Fonctions appelées par draw() de client-oz/map/ozDraw.ts (client-oz/map/OzMap.ts garde l'état et délègue).
  */
 import type { Tangible } from '../../server/types.js';
 import { wallEndpoints, wallCorners } from '../../client-shared/tangibleGeometry.js';
@@ -9,7 +9,7 @@ import { nearestOnTrack } from '../../server/geometry.js';
 import { visibleTrackEdges } from '../../client-shared/trackVisibility.js';
 import { viewTransform } from '../ozView.js';
 import { PANELS, PANEL_H, panelWidth, TANGIBLE_DEPOT, NEUTRAL_CONTROLS } from '../../server/layout.js';
-import type { OzMap } from '../OzMap.js';
+import type { OzMap } from './OzMap.js';
 import type { DrawContext } from './ozDrawContext.js';
 import { drawArcPreview, drawWallPreview, drawPreparingPreview } from './ozDrawPreviews.js';
 import { drawMovePreview } from './ozDrawMove.js';

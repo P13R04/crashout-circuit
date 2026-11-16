@@ -2,7 +2,7 @@
  * Convertit les coordonnées entre la carte Oz et la table, y compris lorsque la vue est tournée ou en
  * portrait.
  * Liens : server/types.ts.
- * Référencé par client-oz/OzMap.ts, scripts/acceptance.ts.
+ * Référencé par client-oz/map/OzMap.ts, scripts/acceptance.ts.
  */
 import type { Vec2 } from '../server/types.js';
 

@@ -1,7 +1,7 @@
 /**
  * Lance le serveur HTTP et WebSocket, sert les deux interfaces et affiche leurs adresses sur le réseau
  * local.
- * Liens : client-table/index.html, client-oz/index.html, server/GameServer.ts, server/audioHttp.ts,
+ * Liens : client-table/index.html, client-oz/index.html, server/net/GameServer.ts, server/net/audioHttp.ts,
  * server/config.ts.
  */
 import http from 'http';
@@ -10,8 +10,8 @@ import { readFileSync, statSync } from 'fs';
 import { resolve, dirname, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { networkInterfaces } from 'os';
-import { GameServer } from './GameServer.js';
-import { audioByteRange } from './audioHttp.js';
+import { GameServer } from './net/GameServer.js';
+import { audioByteRange } from './net/audioHttp.js';
 import { config } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
