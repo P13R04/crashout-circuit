@@ -14,7 +14,7 @@ Tu t'occupes de la console opérateur (`/oz`) qui **remplace les capteurs des ob
 - L'annonce d'une pose attend 20 s (Échap/A/Annuler) ; pause, reset, déconnexion et changement de mode l'annulent ; rien n'apparaît sur la table avant les contacts des joueurs.
 
 ## Fichiers
-`client-oz/OzController.ts` (commandes, état optimiste, sans DOM), `OzMap.ts` (carte, environ 940 lignes), `OzLog.ts`, `main.ts`, `ozView.ts`, `index.html`. Messages : `TangibleMoved`, `TangibleRemoved`, `TangibleControl`, `TangiblePrepare`, `TangibleTouchPlaced` (voir README).
+`client-oz/OzController.ts` (commandes, état optimiste, sans DOM), `OzMap.ts` (carte, façade ; pointeur et dessin dans `map/`), `OzLog.ts`, `main.ts`, `ozView.ts`, `index.html`. Messages : `TangibleMoved`, `TangibleRemoved`, `TangibleControl`, `TangiblePrepare`, `TangibleTouchPlaced` (voir README).
 
 ## Méthode
 1. Teste la géométrie dans les quatre rotations et sur des formats de téléphone (`scripts/visuals.ts`, `scripts/tangible-touch.ts`, `scripts/network-acceptance.ts`).

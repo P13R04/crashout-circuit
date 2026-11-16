@@ -19,9 +19,9 @@ code > `README.md` (comportement exécuté) > `context.md` section « État cons
 
 ## À surveiller en particulier
 - Valeurs de `config.json` reprises dans les tableaux (§14 de `context.md`, `docs/seuils-tactiles.md`).
-- Noms de fichiers cités (l'audit du 1er novembre cite `server/slingshot.ts`, qui n'existe pas).
-- `docs/guide-du-code.md` : fichiers ajoutés depuis le 29 octobre.
-- `issue-3-contexte.md` et `issue-4-contexte.md` : notes de passation historiques ; ne les « corrige » pas, signale leur âge.
+- Noms de fichiers cités (vérifie que chaque chemin cité existe : les gros fichiers sont des façades dont la logique est dans des sous-dossiers).
+- `docs/guide-du-code.md` : nouveaux fichiers et sous-dossiers de découpage (`server/rules`, `server/trackGeneration`, `server/protocol`, `client-table/gesture`, `renderer`, `app`, `client-oz/map`, `scripts/acceptance`).
+- Notes de passation `issue-*-contexte.md` : supprimées le 16 novembre ; si une note de ce type réapparaît, signale son âge au lieu de la corriger.
 - Le tableau des sessions de `docs/sessions-de-test.md` : ne le remplis jamais sans données de séance réelles.
 
 ## Interdits
