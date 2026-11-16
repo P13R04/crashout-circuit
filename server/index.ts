@@ -92,6 +92,13 @@ const handleRequest: RequestListener = (req, res) => {
     return;
   }
 
+  if (url.pathname === '/test' || url.pathname === '/test/') {
+    const { soloTest, developerTools } = gameServer.getState();
+    if (soloTest && developerTools && serveStatic(res, resolve(CLIENTS_ROOT, 'client-phone/test.html'))) return;
+    res.writeHead(404).end();
+    return;
+  }
+
   if (url.pathname === '/watch' || url.pathname === '/watch/') {
     if (spectators.enabled && serveStatic(res, resolve(CLIENTS_ROOT, 'client-phone/spectator.html'))) return;
     res.writeHead(404).end();
@@ -156,6 +163,7 @@ httpServer.listen(PORT, () => {
   }
   if (gameServer.getState().soloTest) console.log('   Essai pilote solo : scannez le QR sur la table.');
   if (gameServer.getState().soloTest && gameServer.getState().developerTools) {
+    console.log(`   Menu des essais : ${protocol}://localhost:${port}/test`);
     console.log(`   Pilote PC : ${protocol}://localhost:${port}/play?room=${gameServer.room}&keyboard=1`);
   }
   if (!secure) console.log('   HTTP : capteurs iOS indisponibles. Utilisez une adresse HTTPS pour jouer au gyroscope.');

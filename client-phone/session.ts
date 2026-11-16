@@ -169,6 +169,18 @@ export class PhoneSession {
     this.refresh();
   }
 
+  /** Ferme le transport sur une vraie sortie de page et libère le pilote de test. */
+  suspend(): void {
+    if (this.state?.soloTest) this.saveReservation(null);
+    this.generation++;
+    this.conn?.close();
+    this.conn = null;
+    this.online = false;
+    this.confirmed = false;
+    this.pending = null;
+    this.seat = null;
+  }
+
   /** Retourne à la saisie du code si le serveur a redémarré. */
   private closeSession(): void {
     this.generation++;

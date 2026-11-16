@@ -30,7 +30,7 @@ export class PilotViewport {
   private state: GameState | null = null;
   private readonly reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
-  constructor(private readonly team: Team, private readonly now: () => number, solo: boolean) {
+  constructor(private readonly team: Team, private readonly now: () => number) {
     this.root.className = 'pilot-viewport';
     this.canvas.setAttribute('aria-label', 'Circuit vu de dessus');
     const framing = actionButton('Circuit entier', () => {
@@ -50,10 +50,14 @@ export class PilotViewport {
     this.hp.setAttribute('aria-label', 'Santé de la voiture');
     this.status.className = 'detail';
     this.status.setAttribute('role', 'status');
-    this.root.append(this.canvas, this.scene.canvas, this.view, this.mapOptions, this.info, this.hp, this.status);
+    const hud = document.createElement('div');
+    hud.className = 'pilot-hud';
+    hud.append(this.info, this.hp, this.view, this.mapOptions);
+    this.status.classList.add('pilot-race-status');
+    this.root.append(this.canvas, this.scene.canvas, hud, this.status);
     let saved: string | null = null;
     try { saved = sessionStorage.getItem('crashout-pilot-view'); } catch { /* Préférence facultative. */ }
-    this.switchView(saved === 'map' || saved === 'chase' || saved === 'cockpit' ? saved : solo ? 'cockpit' : 'map');
+    this.switchView(saved === 'map' || saved === 'chase' || saved === 'cockpit' ? saved : 'cockpit');
     this.raf = requestAnimationFrame(this.draw);
   }
 

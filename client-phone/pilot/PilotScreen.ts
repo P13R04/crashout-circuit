@@ -4,6 +4,7 @@ import type { GameState, Team } from '../../server/types.js';
 import type { PhoneSession } from '../session.js';
 import { actionButton, holdButton } from '../ui/press.js';
 import { driveSample, shouldSendInput, WHEEL, type SentInput } from './gyro.js';
+import { settingsMenu, steeringWheel, themeControl } from './pilotPanel.js';
 import { KeyboardDrive } from './KeyboardDrive.js';
 import { PilotViewport } from './views/PilotViewport.js';
 import { WheelSensor, type WheelStatus } from './wheelSensor.js';
@@ -34,6 +35,11 @@ export class PilotScreen {
   private readonly mode;
   private readonly start;
   private readonly pedal;
+  private readonly left;
+  private readonly right;
+  private readonly wheelGraphic = steeringWheel();
+  private readonly theme;
+  private readonly settings: HTMLDetailsElement;
   private readonly repair;
   private readonly phase = document.createElement('p');
   private readonly hint = document.createElement('p');
@@ -41,6 +47,9 @@ export class PilotScreen {
   private state: GameState | null = null;
   private driving = false;
   private pedalHeld = false;
+  private wheelAngle = 0;
+  private leftHeld = false;
+  private rightHeld = false;
   private closed = false;
   private wakeLock: WakeLockSentinel | null = null;
   private wakePending = false;
@@ -51,21 +60,37 @@ export class PilotScreen {
   constructor(private readonly session: PhoneSession, private readonly team: Team, private readonly solo: boolean, keyboard = false) {
     this.root.className = 'pilot-screen';
     this.keyboard = keyboard ? new KeyboardDrive(this.release) : null;
-    this.viewport = new PilotViewport(team, () => session.sync.now(), solo);
+    this.viewport = new PilotViewport(team, () => session.sync.now());
     this.steer = createControls(msg => this.session.send(msg)).steer;
     this.sensor = actionButton('Activer le volant', this.activate, 'primary');
-    this.fullscreen = actionButton('Paysage plein écran', () => { void this.lockLandscape(true); });
+    this.fullscreen = actionButton('Plein écran', () => { void this.lockLandscape(true); });
     this.calibrate = actionButton('Calibrer', this.wheel.calibrate);
     this.mode = actionButton('AUTO / PÉDALE', () => this.session.send({ type: 'ToggleDriveMode', team }));
     this.start = actionButton('Lancer la course', () => this.session.send({ type: 'StartSolo' }), 'solo-start');
     this.pedal = holdButton('Accélérer', held => { this.pedalHeld = held; });
+    this.left = holdButton('← Gauche', held => { this.leftHeld = held; });
+    this.right = holdButton('Droite →', held => { this.rightHeld = held; });
+    this.theme = themeControl(theme => this.session.send({ type: 'SetTheme', theme }));
     this.repair = holdButton('Réparer', on => this.session.send({ type: 'PadHold', team, role: 'pilot', on }));
     this.phase.setAttribute('role', 'status');
     this.hint.setAttribute('role', 'status');
-    const settings = document.createElement('div');
-    settings.className = 'pilot-settings';
-    settings.append(this.sensor, this.fullscreen, this.calibrate, this.mode);
-    this.root.append(this.phase, this.hint, this.viewport.root, settings, this.pedal.button, this.repair.button, this.start);
+    this.phase.className = 'pilot-phase';
+    this.hint.className = 'pilot-hint';
+    this.left.button.classList.add('pilot-left');
+    this.right.button.classList.add('pilot-right');
+    this.pedal.button.classList.add('pilot-throttle');
+    this.repair.button.classList.add('pilot-repair');
+    const quit = actionButton('Quitter l’essai', () => this.session.leave());
+    quit.hidden = !solo;
+    this.settings = settingsMenu(this.fullscreen, this.calibrate, this.theme, quit);
+    const actions = document.createElement('div');
+    actions.className = 'pilot-actions';
+    actions.append(this.mode, this.settings);
+    const instructions = document.createElement('div');
+    instructions.className = 'pilot-instructions';
+    instructions.append(this.phase, this.hint, this.sensor, this.start);
+    this.root.append(this.viewport.root, this.wheelGraphic, actions, instructions, this.left.button,
+      this.right.button, this.pedal.button, this.repair.button);
     if (!this.keyboard) this.wheel.start();
     this.timer = window.setInterval(this.tick, WHEEL.pollMs);
     this.landscape.addEventListener('change', this.onRotation);
@@ -77,6 +102,11 @@ export class PilotScreen {
   /** Actualise la phase et les commandes sans remplacer les boutons maintenus. */
   update(state: GameState): void {
     this.state = state;
+    this.root.classList.toggle('has-track', Boolean(state.track));
+    this.root.classList.toggle('portrait', !this.keyboard && !this.landscape.matches);
+    this.theme.hidden = !this.solo || !state.developerTools;
+    const themeSelect = this.theme.querySelector('select')!;
+    if (themeSelect.value !== state.theme) themeSelect.value = state.theme;
     this.viewport.root.hidden = !state.track || (!this.keyboard && !this.landscape.matches);
     this.viewport.update(state, this.session.stateTime);
     const car = state.cars[this.team];
@@ -118,15 +148,23 @@ export class PilotScreen {
     const state = this.state;
     if (!state) return;
     const now = performance.now();
+    const pedal = state.driveMode[this.team] === 'pedal';
     const sensor = this.keyboard ? this.keyboard.read() : this.wheel.read(now);
-    const ready = sensor !== null && this.session.canPlay && !document.hidden;
+    const touch = !this.keyboard && pedal && this.landscape.matches;
+    const ready = (sensor !== null || touch) && this.session.canPlay && !document.hidden;
     const racing = ready && state.phase === 'RACE';
     const driving = racing && !state.cars[this.team].disabled && state.sessionStartAt <= this.session.sync.now();
     if (!driving && this.driving) this.releaseDrive();
     this.driving = driving;
     this.refreshControls(ready, racing);
-    if (!driving || !sensor) return;
-    const input = driveSample(sensor, state.driveMode[this.team] === 'pedal', this.pedalHeld);
+    const manual = Number(this.rightHeld) - Number(this.leftHeld);
+    const input = driveSample({ steer: manual || sensor?.steer || 0, throttle: sensor?.throttle ?? 0 }, pedal, this.pedalHeld);
+    const angle = ready ? Math.round(Math.sign(input.steer) * Math.abs(input.steer) ** (1 / WHEEL.steerExponent) * 58) : 0;
+    if (angle !== this.wheelAngle) {
+      this.wheelAngle = angle;
+      this.wheelGraphic.style.setProperty('--steer', angle + 'deg');
+    }
+    if (!driving) return;
     if (!shouldSendInput(now, input, this.last)) return;
     this.steer(this.team, input.steer, input.throttle);
     this.last = { ...input, time: now };
@@ -140,25 +178,28 @@ export class PilotScreen {
     const pedal = this.state?.driveMode[this.team] === 'pedal';
     const hint = this.keyboard ? '← / → pour tourner. ↑ en mode pédale.' : !landscape && status !== 'http'
       ? 'Tourne le téléphone en paysage. Désactive le verrouillage de la rotation si nécessaire.'
-      : wheelHints[status];
+      : this.driving ? '' : pedal ? 'Braque au volant ou avec les pédales latérales.' : wheelHints[status];
     const sensorLabel = status === 'inactive' ? 'Activer le volant' : 'Réessayer le capteur';
     const modeLabel = pedal ? 'Mode pédale' : 'Avance auto';
     if (this.hint.textContent !== hint) this.hint.textContent = hint;
     if (this.sensor.textContent !== sensorLabel) this.sensor.textContent = sensorLabel;
     if (this.mode.textContent !== modeLabel) this.mode.textContent = modeLabel;
-    this.sensor.hidden = !!this.keyboard || status === 'ready' || status === 'http' || calibrating;
+    this.sensor.hidden = !!this.keyboard || status === 'ready' || status === 'http' || calibrating || (pedal && this.driving);
     this.sensor.disabled = status === 'permission';
-    this.fullscreen.hidden = !!this.keyboard || landscape || status === 'http' || !document.fullscreenEnabled
-      || !(screen.orientation as LandscapeLock | undefined)?.lock;
+    this.fullscreen.hidden = !document.fullscreenEnabled;
     this.calibrate.hidden = !!this.keyboard || !landscape || status !== 'ready';
     this.start.hidden = !this.solo;
     this.start.disabled = !ready;
-    this.mode.disabled = !racing;
+    this.mode.disabled = !this.session.canPlay || (!this.solo && this.state?.phase !== 'RACE');
+    this.wheelGraphic.hidden = !this.state?.track || (!landscape && !this.keyboard);
+    this.left.button.hidden = this.right.button.hidden = !pedal || !!this.keyboard || !landscape || !racing;
+    this.left.button.disabled = this.right.button.disabled = !this.driving;
+    if (!pedal) { this.left.release(); this.right.release(); }
     if (!racing) this.repair.release();
     this.repair.button.disabled = !racing;
     this.repair.button.hidden = this.solo;
     if (!pedal) this.pedal.release();
-    this.pedal.button.hidden = !pedal || !this.driving;
+    this.pedal.button.hidden = !pedal || !racing || !!this.keyboard;
     this.pedal.button.disabled = !this.driving;
   }
 
@@ -173,7 +214,6 @@ export class PilotScreen {
   /** Profite du verrouillage natif lorsqu'il est disponible. */
   private async lockLandscape(fullscreen = false): Promise<void> {
     const orientation = screen.orientation as LandscapeLock | undefined;
-    if (!orientation?.lock) return;
     try {
       if (fullscreen && !document.fullscreenElement) {
         await document.documentElement.requestFullscreen();
@@ -183,9 +223,12 @@ export class PilotScreen {
         }
         this.ownsFullscreen = true;
       }
-      await orientation.lock('landscape');
-      if (this.closed) orientation.unlock();
-      else this.orientationLocked = true;
+      if (!this.keyboard && orientation?.lock) {
+        await orientation.lock('landscape');
+        if (this.closed) orientation.unlock();
+        else this.orientationLocked = true;
+      }
+      this.settings.open = false;
     } catch {
       // Le navigateur peut demander une rotation manuelle.
     }
@@ -203,6 +246,8 @@ export class PilotScreen {
     const wasDriving = this.driving;
     this.driving = false;
     this.pedal.release();
+    this.left.release();
+    this.right.release();
     if (wasDriving) this.steer(this.team, 0, 0);
     this.last = { time: -Infinity, steer: 0, throttle: 0 };
   }

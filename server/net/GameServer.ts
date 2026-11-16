@@ -121,11 +121,13 @@ export class GameServer {
     this.clients.delete(client);
     console.log(`[GameServer] Client disconnected: ${client.role} (total: ${this.clients.size})`);
     if (client.role === 'player') {
-      const seat = this.playerSeats.disconnect(client.id, this.state.phase, Date.now());
+      const seat = this.state.soloTest
+        ? this.playerSeats.release(client.id)
+        : this.playerSeats.disconnect(client.id, this.state.phase, Date.now());
       if (seat) {
         this.mobilePads.delete(seat);
         releasePlayerControls(this.rules, seat);
-        this.broadcastTick();
+        this.afterPlayerDeparture();
       }
       return;
     }
@@ -204,11 +206,19 @@ export class GameServer {
 
   /** Libère une place à la demande du joueur si la course n'a pas commencé. */
   private leavePlayer(client: ConnectedClient): void {
-    const seat = this.playerSeats.leave(client.id, this.state.phase);
+    const seat = this.state.soloTest ? this.playerSeats.release(client.id) : this.playerSeats.leave(client.id, this.state.phase);
     if (!seat) return;
     this.mobilePads.delete(seat);
     releasePlayerControls(this.rules, seat);
     this.sendTo(client.ws, { type: 'Left', t: Date.now() });
+    this.afterPlayerDeparture();
+  }
+
+  private afterPlayerDeparture(): void {
+    if (this.state.soloTest) {
+      this.state.driveMode.A = 'auto';
+      if (this.state.phase !== 'LOBBY') { this.rules.resetToLobby(); return; }
+    }
     this.broadcastTick();
   }
 

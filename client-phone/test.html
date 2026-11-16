@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Crashout Circuit · Essais locaux</title>
+  <link rel="stylesheet" href="./phone.css">
+</head>
+<body>
+  <main class="test-hub">
+    <header><p class="brand">CRASHOUT CIRCUIT</p><h1>Essais locaux</h1></header>
+    <nav aria-label="Modes de test">
+      <a class="spectator-link" id="try-phone" hidden><strong>Pilote téléphone</strong><small>Paysage · gyroscope ou pédales</small></a>
+      <a class="spectator-link" id="try-pc" hidden><strong>Pilote PC</strong><small>Flèches directionnelles · cockpit 3D</small></a>
+      <a class="spectator-link" id="try-watch" hidden><strong>Spectateur</strong><small>Vue globale · survol · poursuite</small></a>
+      <a class="spectator-link" href="/"><strong>Table</strong><small>QR code et vue d’ensemble</small></a>
+    </nav>
+    <p id="test-status" role="status">Connexion à la séance…</p>
+  </main>
+  <script type="module" src="./testHub.ts"></script>
+</body>
+</html>

@@ -48,16 +48,21 @@ try {
   game.rules.expirePilotInputs(t + 1000);
   assert.deepEqual(game.rules.inputs.A, { throttle: 0, steer: 0 });
 
-  pilot.ws.terminate();
-  await until(() => state.seats['A-pilot'].connected ? undefined : true, 'Le poste doit passer hors ligne');
-  const resumed = await client('player');
-  resumed.send({ type: 'Join', token });
-  assert.equal((await resumed.receive('Joined')).seat, 'A-pilot');
+  pilot.ws.close();
+  await until(() => state.seats['A-pilot'].taken ? undefined : true, 'La fermeture libère la place solo');
+  assert.equal(state.phase, 'LOBBY');
   const previousTrack = state.trackVersion;
-  resumed.send({ type: 'StartSolo' });
-  await resumed.flush();
+  visitor.send({ type: 'Join', seat: 'A-pilot' });
+  assert.equal((await visitor.receive('Joined')).seat, 'A-pilot');
+  visitor.send({ type: 'ToggleDriveMode' });
+  visitor.send({ type: 'StartSolo' });
+  await visitor.flush();
   assert.equal(state.trackVersion, previousTrack + 1);
   assert.equal(state.phase, 'RACE');
+  assert.equal(state.driveMode.A, 'pedal');
+  visitor.send({ type: 'Leave' });
+  await visitor.receive('Left');
+  assert.equal(state.seats['A-pilot'].taken, false);
   assert.ok(table.messages.filter(msg => msg.type === 'State').every(msg => !JSON.stringify(msg).includes(token)));
 } finally {
   await fixture.close();
@@ -74,4 +79,4 @@ try {
 } finally {
   await normal.close();
 }
-console.log('✓ Solo : place unique, départ depuis le téléphone, conduite, reprise, relance et mode standard préservé');
+console.log('✓ Solo : place unique, départ depuis le téléphone, conduite, libération immédiate, relance et mode standard préservé');

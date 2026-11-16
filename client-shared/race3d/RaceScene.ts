@@ -10,6 +10,8 @@ import { CarModel } from './carModel.js';
 import { COCKPIT_FOG, shotFor, type CameraMode } from './cameras.js';
 import { roadPaint, skyPaint, stipple } from './paint.js';
 import { LOOKS } from './looks.js';
+import { ThemeStage } from './ambience/ThemeStage.js';
+import { terrainSurface } from './ambience/surfaces.js';
 import { Venue } from './venue/Venue.js';
 import { RaceObjects } from './RaceObjects.js';
 import { RoadMesh } from './RoadMesh.js';
@@ -21,6 +23,7 @@ export class RaceScene {
   private roadMaterials = roadPaint(LOOKS.classic);
   private readonly road = new RoadMesh(this.roadMaterials);
   private readonly venue = new Venue();
+  private readonly stage = new ThemeStage();
   private readonly sun = new DirectionalLight(LOOKS.classic.light, 2.05);
   private theme: ThemeId = 'classic';
   private version = -1;
@@ -46,11 +49,11 @@ export class RaceScene {
   private bounds = { center: { x: 960, y: 540 }, span: 1800 };
 
   constructor(private readonly canvas: HTMLCanvasElement) {
-    this.renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'low-power' });
+    this.renderer = new WebGLRenderer({ canvas, antialias: false, stencil: true, powerPreference: 'low-power' });
     this.scene.background = this.clearSky;
     this.scene.add(new AmbientLight(0xdce9ff, 1.65));
     this.sun.position.set(-300, 440, 260);
-    this.scene.add(this.sun, this.camera, this.road.group, this.venue.root, this.objects.root, this.car.A.root, this.car.B.root);
+    this.scene.add(this.sun, this.camera, this.road.group, this.venue.root, this.stage.root, this.objects.root, this.car.A.root, this.car.B.root);
     const texture = stipple(LOOKS.classic.ground, true);
     texture.repeat.set(110, 105);
     this.ground = new Mesh(new PlaneGeometry(6200, 6200), new MeshBasicMaterial({ map: texture }));
@@ -91,11 +94,15 @@ export class RaceScene {
     this.updateCars(state, poses, cockpit ? team : null, reduced || state.phase !== 'RACE' ? 0 : delta);
     this.objects.update(state, now, reduced || this.slow);
     this.venue.animate(now, reduced || this.slow);
+    this.stage.animate(now, reduced || this.slow);
+    const pulse = this.roadMaterials.energy.map;
+    if (pulse) pulse.offset.x = reduced || this.slow ? 0 : (now / 1450) % 1;
     this.renderer.render(this.scene, this.camera);
   }
 
   dispose(): void {
     this.venue.dispose();
+    this.stage.dispose();
     this.sky.dispose();
     const materials = new Set<Material>(Object.values(this.roadMaterials)), textures = new Set<Texture>();
     this.scene.traverse(node => {
@@ -142,10 +149,15 @@ export class RaceScene {
     this.road.update(track, version);
     const newCourse = !this.lastTrack || this.lastTrack.length !== track.baseCenterline.length
       || this.lastTrack.some((p, i) => p.x !== track.baseCenterline[i].x || p.y !== track.baseCenterline[i].y);
-    if (newCourse || changed) this.venue.build(track, theme);
+    if (newCourse || changed) {
+      if (theme === 'classic') this.venue.build(track);
+      this.stage.build(track, theme);
+    }
+    this.venue.root.visible = theme === 'classic';
     this.lastTrack = track.baseCenterline;
     this.lastStateTrack = track;
-    this.venue.followRoad(track);
+    if (theme === 'classic') this.venue.followRoad(track);
+    this.stage.followRoad(track);
     this.version = version;
     this.updateBounds(track);
   }
@@ -162,11 +174,13 @@ export class RaceScene {
       material.map?.dispose();
       material.dispose();
     }
-    this.roadMaterials = roadPaint(look);
-    this.road.repaint(this.roadMaterials);
+    this.roadMaterials = roadPaint(look, theme);
+    this.road.repaint(this.roadMaterials, theme);
     this.ground.material.map?.dispose();
-    const texture = stipple(look.ground, look.bands);
-    texture.repeat.set(110, 105);
+    const texture = terrainSurface(theme) ?? stipple(look.ground, look.bands);
+    texture.repeat.set(theme === 'toy' ? 19 : 110, theme === 'toy' ? 36 : 105);
+    this.ground.visible = theme !== 'neon';
+    this.ground.position.y = theme === 'scrap' ? -12 : theme === 'toy' ? -6 : 0;
     this.ground.material.map = texture;
   }
 

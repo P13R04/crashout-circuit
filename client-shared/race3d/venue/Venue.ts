@@ -2,9 +2,8 @@
 import { BoxGeometry, Color, Group, InstancedMesh, MeshLambertMaterial, Object3D } from 'three';
 import type { Matrix4 } from 'three';
 import type { TrackGeometry } from '../../../server/types.js';
-import type { ThemeId } from '../../../server/protocol/theme.js';
 import { clearance, venuePlots, type Plot } from './layout.js';
-import { venueParts, type Part } from './models.js';
+import { grandPrixParts, type Part } from './models.js';
 
 type Placed = { plot: Plot; from: number; to: number; blocked: boolean };
 type Flag = { index: number; angle: number; plot: Plot; part: Part; visible: boolean };
@@ -24,9 +23,9 @@ export class Venue {
 
   constructor() { this.zero.scale.setScalar(0); this.zero.updateMatrix(); }
 
-  build(track: TrackGeometry, theme: ThemeId): void {
+  build(track: TrackGeometry): void {
     this.removeBatch();
-    const groups = venuePlots(track).map(plot => ({ plot, parts: venueParts(theme, plot.kind) }));
+    const groups = venuePlots(track).map(plot => ({ plot, parts: grandPrixParts(plot.kind) }));
     const size = groups.reduce((count, group) => count + group.parts.length, 0);
     if (!size) return;
     const batch = this.batch = new InstancedMesh(this.box, this.material, size);

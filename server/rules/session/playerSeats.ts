@@ -63,6 +63,11 @@ export class PlayerSeats {
   /** Libère immédiatement la place de la connexion avant le départ de la course. */
   leave(owner: symbol, phase: Phase): SeatId | undefined {
     if (phase !== 'LOBBY' && phase !== 'MAP' && phase !== 'READY') return;
+    return this.release(owner);
+  }
+
+  /** Rend la place immédiatement disponible, indépendamment de la phase. */
+  release(owner: symbol): SeatId | undefined {
     const seat = this.seatOf(owner);
     if (!seat) return;
     this.free(seat);

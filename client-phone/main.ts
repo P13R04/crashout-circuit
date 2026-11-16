@@ -140,12 +140,12 @@ function render(): void {
     const taken = state.seats['A-pilot'].taken;
     screen.replaceChildren(choice('Rejoindre comme pilote', '◈', taken ? 'Réservé' : 'Libre', 'A',
       () => session.join('A-pilot'), taken || !online || pending !== null));
-    if (state.developerTools && params.get('keyboard') !== '1' && matchMedia('(any-pointer: fine)').matches) {
-      const pc = document.createElement('a');
-      pc.href = '/play?room=' + room + '&keyboard=1';
-      pc.className = 'spectator-link';
-      pc.textContent = 'Essai cockpit au clavier';
-      screen.append(pc);
+    if (state.developerTools) {
+      const tests = document.createElement('a');
+      tests.href = '/test';
+      tests.className = 'spectator-link';
+      tests.textContent = 'Tous les modes de test';
+      screen.append(tests);
     }
   } else if (team) {
     document.body.dataset.team = team;
@@ -167,3 +167,8 @@ function render(): void {
 document.addEventListener('visibilitychange', () => { if (!document.hidden) session.resume(); });
 render();
 if (initial) void session.open(initial);
+
+window.addEventListener('pagehide', () => session.suspend());
+window.addEventListener('pageshow', event => {
+  if (event.persisted && session.room) void session.open(session.room);
+});

@@ -42,17 +42,10 @@ button.choice small { margin-inline-start: auto; color: var(--muted); text-align
 .team-icon { color: var(--accent); font-size: 1.35rem; }
 
 [hidden] { display: none !important; }
-.pilot-screen { display: grid; gap: .75rem; }
 #notice:empty { display: none; }
 
-
-.pilot-screen > p { margin: 0; }
-.pilot-screen > p:empty { display: none; }
-.pilot-settings { display: flex; flex-wrap: wrap; gap: .75rem; }
-.pilot-settings button { flex: 1 1 auto; }
 .pilot-screen button.hold { touch-action: none; user-select: none; -webkit-user-select: none; }
 .pilot-screen button.held { background: var(--accent); color: #102026; }
-body:has(.pilot-screen) main { max-width: 54rem; width: 100%; }
 
 .pilot-viewport { display: grid; gap: .45rem; }
 .pilot-viewport canvas { display: block; width: 100%; height: clamp(160px, 58dvh, 620px); border-radius: 10px; background: #16212a; }
@@ -70,3 +63,82 @@ main.spectator { width: min(100%, 82rem); padding-top: max(.75rem, env(safe-area
 }
 .spectator-link { display: grid; align-items: center; text-decoration: none; }
 #watch-status:empty { display: none; }
+
+body:has(.pilot-screen) { overflow: hidden; overscroll-behavior: none; }
+body:has(.pilot-screen) main > header { display: none; }
+body:has(.pilot-screen) #notice {
+  position: fixed; z-index: 8; margin: 0; text-align: center;
+  inset: max(4px, env(safe-area-inset-top)) 25% auto; pointer-events: none;
+}
+
+.pilot-screen {
+  --hud-top: max(9px, env(safe-area-inset-top));
+  --hud-left: max(10px, env(safe-area-inset-left));
+  --hud-right: max(10px, env(safe-area-inset-right));
+  --hud-bottom: max(9px, env(safe-area-inset-bottom));
+  position: fixed; inset: 0; display: block; overflow: hidden; isolation: isolate;
+  background: radial-gradient(ellipse at 50% 48%, #243d48, #101821 64%);
+  font-size: clamp(.75rem, 2.8dvh, .95rem);
+}
+.pilot-screen .pilot-viewport { position: absolute; inset: 0; display: block; }
+.pilot-screen .pilot-viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0; }
+.pilot-screen button, .pilot-screen select, .pilot-settings summary {
+  border: 1px solid #8093a7a0; border-radius: 9px; padding: .42rem .75rem; min-height: 44px;
+  background: #14212bea; color: #f5f8fb; font: inherit; font-weight: 700;
+}
+.pilot-screen button.primary, .pilot-screen .solo-start:enabled { background: var(--accent); color: #101c24; }
+.pilot-screen .pilot-hud {
+  position: absolute; top: var(--hud-top); left: var(--hud-left); display: grid; align-items: start;
+  justify-items: start; gap: 3px; padding: 7px; border-radius: 10px; background: #0c1626dc;
+}
+.pilot-screen .pilot-hud progress { height: 5px; width: min(100%, 9rem); }
+.pilot-race-status { position: absolute; bottom: calc(var(--hud-bottom) + 51px); width: 100%; text-align: center; }
+.pilot-actions { position: absolute; z-index: 5; top: var(--hud-top); right: var(--hud-right); display: flex; gap: 6px; }
+.pilot-settings { display: block; position: relative; }
+.pilot-settings summary { cursor: pointer; list-style: none; display: grid; place-items: center; }
+.pilot-settings summary::-webkit-details-marker { display: none; }
+.pilot-settings > div {
+  position: absolute; right: 0; top: calc(100% + 5px); width: max-content; max-width: 56vw;
+  display: grid; gap: 4px; padding: 8px; background: #101b28fa; border: 1px solid #627686; border-radius: 10px;
+}
+.pilot-settings label { display: grid; gap: 4px; }
+.pilot-instructions {
+  position: absolute; z-index: 3; inset: auto 25% var(--hud-bottom); display: grid; gap: 3px;
+  text-align: center; justify-items: center; pointer-events: none;
+}
+.pilot-instructions button { pointer-events: auto; }
+.pilot-instructions p { margin: 0; border-radius: 7px; padding: .22em .5em; background: #12202ae8; }
+.pilot-instructions p:empty { display: none; }
+.pilot-screen:not(.has-track) .pilot-instructions, .pilot-screen.portrait .pilot-instructions {
+  inset: 49% 12% auto; transform: translateY(-35%); gap: 8px;
+}
+.pilot-screen button.hold { position: absolute; z-index: 4; bottom: var(--hud-bottom); }
+.pilot-left, .pilot-repair { left: var(--hud-left); }
+.pilot-left:not([hidden]) ~ .pilot-repair { bottom: calc(var(--hud-bottom) + 50px); }
+.pilot-right { right: var(--hud-right); }
+.pilot-screen button.pilot-throttle { right: var(--hud-right); bottom: calc(var(--hud-bottom) + 50px); }
+
+.pilot-wheel {
+  --size: clamp(64px, 32dvh, 148px);
+  position: absolute; z-index: 2; top: 50%; left: 50%; width: var(--size); height: var(--size);
+  transform: translate(-50%, -50%) rotate(var(--steer, 0deg)); pointer-events: none;
+  transition: transform .055s linear; filter: drop-shadow(0 5px 6px #03070bbb);
+}
+.pilot-wheel span { position: absolute; display: block; }
+.wheel-ring {
+  inset: 2%; border-radius: 50%;
+  background: repeating-conic-gradient(#202b32 0 3deg, #161d25 3deg 7deg);
+  border: 2px solid #53626b;
+  mask-image: radial-gradient(transparent 0 58%, #000 60% 100%);
+}
+.wheel-spokes {
+  inset: 26% 9% 9%; background: linear-gradient(140deg, #515c65, #18242d 58%, #2f3b48);
+  clip-path: polygon(0 17%, 40% 36%, 60% 36%, 100% 17%, 97% 38%, 62% 60%, 59% 100%, 41% 100%, 38% 60%, 3% 38%);
+}
+.wheel-hub { inset: 38% 37%; border: 1px solid #61717d; border-radius: 38%; background: radial-gradient(circle at 40% 30%, #465965, #14212b); }
+.wheel-hub::before { content: ''; position: absolute; inset: 45% 30%; border-radius: 2px; background: var(--accent); }
+.wheel-mark { width: 7%; height: 10%; top: 0; left: 46.5%; border-radius: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+@media(prefers-reduced-motion: reduce) { .pilot-wheel { transition: none; } }
+.test-hub nav { display: grid; gap: .55rem; }
+.test-hub .spectator-link { gap: .25rem; }
+.test-hub small, #test-status { color: var(--muted); }

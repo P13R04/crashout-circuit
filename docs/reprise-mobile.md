@@ -69,3 +69,11 @@ CRASHOUT_SOLO_TEST=1 CRASHOUT_DEV_TOOLS=1 CRASHOUT_SPECTATORS=1 CRASHOUT_TLS_KEY
 - **Spectateur**. Ouvrir le lien annoncé par le serveur dans un autre onglet ou sur un deuxième appareil. Choisir **Circuit entier**, **Survol** ou **Poursuite plongeante**. En partie à deux équipes, choisir la voiture cyan ou rose. Utiliser une fenêtre distincte pour garder le jeu clavier au premier plan pendant l’observation.
 
 Grand Prix est le thème initial de l’essai solo. L’ambiance de la table se propage aux autres écrans pendant la course. Le navigateur charge le module 3D à la première utilisation. Si WebGL 2 est indisponible, la carte 2D reste accessible. Les cibles de fluidité sur Safari iPhone et Chrome Android se mesurent sur appareils physiques.
+
+### Tableau de bord du pilote et ambiances
+
+Le [menu des essais locaux](http://localhost:3000/test) réunit la table, le pilote mobile, le pilote clavier et le spectateur. Un seul appareil prend la place solo. **Quitter l’essai** ou fermer l’onglet libère immédiatement la place et ramène le salon à l’accueil. Les places de la session standard gardent leur délai de reconnexion.
+
+En mode **Avance auto**, le gyroscope dirige la voiture en paysage. **Mode pédale** donne accès à deux boutons de braquage et à une commande d’accélération. Le gyroscope reste utilisable dans ce mode. Le volant central suit la commande de direction et le cockpit occupe tout le cadre du navigateur. **Réglages** donne accès au plein écran natif quand le navigateur le propose, au recalibrage et, en essai solo, au choix de l’ambiance.
+
+Pour comparer les thèmes, change d’ambiance dans **Réglages** pendant une course, puis passe en poursuite pour regarder le décor. Les objets animés restent dans des emplacements extérieurs à la chaussée, les nuances de bordure suivent la géométrie du serveur et les effets d’ambiance s’atténuent avec la préférence de mouvement réduit ou la baisse de qualité.

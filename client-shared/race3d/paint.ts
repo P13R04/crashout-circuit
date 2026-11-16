@@ -1,6 +1,8 @@
 /** Prépare les matériaux de chaussée et d'ambiance utilisés par la scène WebGL. */
-import { CanvasTexture, Color, DoubleSide, MeshBasicMaterial, RepeatWrapping, SRGBColorSpace } from 'three';
+import { CanvasTexture, Color, DoubleSide, MeshBasicMaterial, NotEqualStencilFunc, RepeatWrapping, ReplaceStencilOp, SRGBColorSpace } from 'three';
 
+import type { ThemeId } from '../../server/protocol/theme.js';
+import { edgePulse, roadSurface } from './ambience/surfaces.js';
 import type { RaceLook } from './looks.js';
 
 export function stipple(color: number, bands = false): CanvasTexture {
@@ -26,13 +28,17 @@ export function stipple(color: number, bands = false): CanvasTexture {
   return texture;
 }
 
-export function roadPaint(look: RaceLook) {
+export function roadPaint(look: RaceLook, theme: ThemeId = 'classic') {
   return {
-    road: new MeshBasicMaterial({ map: stipple(look.road), side: DoubleSide }),
+    // Les branches à niveau d'un huit partagent le même plan. Une seule écrit la texture à chaque pixel.
+    road: new MeshBasicMaterial({ map: roadSurface(theme) ?? stipple(look.road), side: DoubleSide,
+      stencilWrite: theme !== 'classic', stencilRef: 1, stencilFunc: NotEqualStencilFunc, stencilZPass: ReplaceStencilOp }),
     verge: new MeshBasicMaterial({ map: stipple(look.verge), side: DoubleSide }),
     curb: new MeshBasicMaterial({ color: look.curb, side: DoubleSide }),
     white: new MeshBasicMaterial({ color: look.white, side: DoubleSide }),
     dark: new MeshBasicMaterial({ color: 0x161c22, side: DoubleSide }),
+    deck: new MeshBasicMaterial({ color: look.structure, side: DoubleSide }),
+    energy: new MeshBasicMaterial({ map: edgePulse(theme) ?? null, color: theme === 'toy' ? 0xffbe57 : 0xffffff, side: DoubleSide }),
   };
 }
 

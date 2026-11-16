@@ -1,10 +1,11 @@
 /** Construit les bandes 3D depuis les deux limites de chaussée diffusées par le serveur. */
 import { BufferAttribute, BufferGeometry, DynamicDrawUsage, Float32BufferAttribute, Group, Mesh } from 'three';
+import type { ThemeId } from '../../server/protocol/theme.js';
 import type { Material } from 'three';
 import type { TrackGeometry, Vec2 } from '../../server/types.js';
 import { visibleTrackEdges } from '../trackVisibility.js';
 
-type RoadMaterials = { road: Material; verge: Material; curb: Material; white: Material; dark: Material };
+type RoadMaterials = { road: Material; verge: Material; curb: Material; white: Material; dark: Material; deck?: Material; energy?: Material };
 
 class Strip {
   private readonly vertices: Float32BufferAttribute;
@@ -38,9 +39,17 @@ class Strip {
     this.put(base + 3, d, height);
   }
 
-  private put(index: number, p: Vec2, height: number): void {
+  ribbon(a: Vec2, b: Vec2, c: Vec2, d: Vec2, near: number, far: number, height: number, lower = height): void {
+    const base = this.count++ * 4;
+    this.put(base, a, height, near, 0);
+    this.put(base + 1, b, height, far, 0);
+    this.put(base + 2, c, lower, far, 1);
+    this.put(base + 3, d, lower, near, 1);
+  }
+
+  private put(index: number, p: Vec2, height: number, u = p.x / 72, v = p.y / 72): void {
     this.vertices.setXYZ(index, p.x, height, p.y);
-    this.uv.setXY(index, p.x / 72, p.y / 72);
+    this.uv.setXY(index, u, v);
   }
 
   upload(): void {
@@ -59,6 +68,7 @@ export class RoadMesh {
   readonly group = new Group();
   private version = -1;
   private size = 0;
+  private theme: ThemeId = 'classic';
   private strips: Strip[] = [];
 
   constructor(private materials: RoadMaterials) {}
@@ -72,27 +82,38 @@ export class RoadMesh {
     if (n < 3) { this.group.visible = false; return; }
     this.group.visible = true;
     if (n !== this.size) this.allocate(n);
-    const [road, verge, curb, white, dark] = this.strips;
+    const [road, , curb, white, dark] = this.strips;
     this.strips.forEach(strip => strip.reset());
     const visible = visibleTrackEdges(track);
+    const length = track.centerline.reduce((count, point, index, points) => {
+      const next = points[(index + 1) % points.length];
+      return count + Math.hypot(next.x - point.x, next.y - point.y);
+    }, 0);
+    const repeat = length / Math.max(1, Math.round(length / 130)) || 130;
+    const pulseRepeat = length / Math.max(1, Math.round(length / 140)) || 140;
     let distance = 0;
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
-      road.quad(outer[i], outer[j], inner[j], inner[i], .15);
-      const paint = Math.floor(distance / 15) % 2 ? curb : white;
-      if (visible[0][i] && visible[0][j]) this.drawEdge(verge, paint, outer, inner, i, j);
-      if (visible[1][i] && visible[1][j]) this.drawEdge(verge, paint, inner, outer, i, j);
       const a = track.centerline[i], b = track.centerline[j];
-      distance += Math.hypot(b.x - a.x, b.y - a.y);
+      const next = distance + Math.hypot(b.x - a.x, b.y - a.y);
+      if (this.theme === 'classic') road.quad(outer[i], outer[j], inner[j], inner[i], .15);
+      else road.ribbon(outer[i], outer[j], inner[j], inner[i], distance / repeat, next / repeat, .15);
+      const paint = Math.floor(distance / 15) % 2 ? curb : white;
+      if (visible[0][i] && visible[0][j]) this.drawEdge(outer, inner, i, j, paint, distance / pulseRepeat, next / pulseRepeat);
+      if (visible[1][i] && visible[1][j]) this.drawEdge(inner, outer, i, j, paint, distance / pulseRepeat, next / pulseRepeat);
+      distance = next;
     }
     this.startLine(track, white, dark);
     this.strips.forEach(strip => strip.upload());
   }
 
-  repaint(materials: RoadMaterials): void {
+  repaint(materials: RoadMaterials, theme: ThemeId): void {
+    this.theme = theme;
+    this.version = -1;
     this.materials = materials;
-    const { road, verge, curb, white, dark } = materials;
-    this.strips.forEach((strip, index) => { strip.mesh.material = [road, verge, curb, white, dark][index]; });
+    const { road, verge, curb, white, dark, deck = dark, energy = curb } = materials;
+    const paints = [road, verge, curb, white, dark, deck, energy];
+    this.strips.forEach((strip, index) => { strip.mesh.material = paints[index]; });
   }
 
   dispose(): void {
@@ -104,17 +125,32 @@ export class RoadMesh {
   private allocate(n: number): void {
     this.dispose();
     this.size = n;
-    const { road, verge, curb, white, dark } = this.materials;
+    const { road, verge, curb, white, dark, deck = dark, energy = curb } = this.materials;
     this.strips = [new Strip(n, road), new Strip(2 * n, verge), new Strip(2 * n, curb),
-      new Strip(2 * n + 24, white), new Strip(24, dark)];
+      new Strip(2 * n + 24, white), new Strip(24, dark), new Strip(4 * n, deck), new Strip(2 * n, energy)];
     for (const { mesh } of this.strips) this.group.add(mesh);
   }
 
-  private drawEdge(verge: Strip, paint: Strip, edge: Vec2[], inside: Vec2[], i: number, j: number): void {
+  private drawEdge(edge: Vec2[], inside: Vec2[], i: number, j: number, paint: Strip, distance: number, next: number): void {
+    const [, verge, curb, , , deck, energy] = this.strips;
     const a = edge[i], b = edge[j];
     const borderA = offset(a, inside[i], 3), borderB = offset(b, inside[j], 3);
-    verge.quad(borderA, borderB, offset(b, inside[j], 15), offset(a, inside[i], 15), .09);
-    paint.quad(offset(a, inside[i], -2), offset(b, inside[j], -2), borderB, borderA, .24);
+    if (this.theme === 'classic') {
+      verge.quad(borderA, borderB, offset(b, inside[j], 15), offset(a, inside[i], 15), .09);
+      paint.quad(offset(a, inside[i], -2), offset(b, inside[j], -2), borderB, borderA, .24);
+      return;
+    }
+    if (this.theme === 'mayhem') {
+      verge.quad(offset(a, inside[i], -4), offset(b, inside[j], -4),
+        offset(b, inside[j], 14), offset(a, inside[i], 14), .21);
+      return;
+    }
+    const toy = this.theme === 'toy', neon = this.theme === 'neon';
+    const rimA = offset(a, inside[i], toy ? 8 : 5), rimB = offset(b, inside[j], toy ? 8 : 5);
+    const top = toy ? 4.2 : 1.2;
+    deck.ribbon(rimA, rimB, rimB, rimA, 0, 1, top, neon ? -13 : -8);
+    curb.quad(a, b, rimB, rimA, top);
+    energy.ribbon(borderA, borderB, offset(b, inside[j], -1), offset(a, inside[i], -1), distance, next, top + .2);
   }
 
   private startLine(track: TrackGeometry, white: Strip, dark: Strip): void {
