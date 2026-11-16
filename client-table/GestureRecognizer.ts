@@ -752,14 +752,18 @@ export class GestureRecognizer {
     if (!this.slingIds) {
       const candidates = this.bonusRecent.filter(c=>!c.consumed&&c.releasedAt===undefined);
       let free: Contact[] | null = null;
+      let tightest = Infinity;
       // Cherche un vrai groupe local au lieu de laisser trois doigts éloignés (deux joueurs)
       // bloquer tout le geste.
       for(let i=0;i<candidates.length&&!free;i++)for(let j=i+1;j<candidates.length&&!free;j++)for(let k=j+1;k<candidates.length;k++){
         const triple=[candidates[i],candidates[j],candidates[k]];
         const cx=triple.reduce((n,c)=>n+c.sx,0)/3,cy=triple.reduce((n,c)=>n+c.sy,0)/3;
-        if(Math.max(...triple.map(c=>Math.hypot(c.sx-cx,c.sy-cy)))<=tuning.slingClusterPx){free=triple;break;}
+        const tripleSpread=Math.max(...triple.map(c=>Math.hypot(c.sx-cx,c.sy-cy)));
+        tightest=Math.min(tightest,tripleSpread);
+        if(tripleSpread<=tuning.slingClusterPx){free=triple;break;}
       }
-      if (!free) return;
+      // Trois doigts ou plus sont posés mais aucun groupe n’est assez serré : le journal garde la raison.
+      if (!free) { if (candidates.length >= 3) this.logOnce('clusterTooWide', { spread: tightest, limit: tuning.slingClusterPx }); return; }
       const cx = (free[0].sx + free[1].sx + free[2].sx) / 3;
       const cy = (free[0].sy + free[1].sy + free[2].sy) / 3;
       const spread = Math.max(...free.map(/* Mesure l’écart initial de chaque doigt au centre du groupe pour contrôler son regroupement. */ c => Math.hypot(c.sx - cx, c.sy - cy)));

@@ -155,14 +155,14 @@ await test('whichever finger is pulled is the pouch (roles do not depend on the 
   near(m.anchor, { x: (F1.x + F3.x) / 2, y: (F1.y + F3.y) / 2 }, 'fork');
 });
 
-/** Vérifie qu’un appui fixe levé reste mémorisé sans déclencher le tir. */
-await test('a fork lift stays latched and never fires before the pouch release', async () => {
+/** Vérifie que lever un appui fixe après une traction valide tire aussitôt, une seule fois (ordre des relâchements non garanti). */
+await test('lifting a fork finger after a valid pull fires once and the other lifts add nothing', async () => {
   const r = rig();
   await land(r);
   await pullDown(r, 3, F3, 150);
   r.up(1, F1.x, F1.y);
-  assert.equal(r.sent.length,0);await sleep(300);
-  assert.equal(r.sent.length, 0);
+  assert.equal(r.sent.length, 1, 'the first lift after a valid pull fires the shot');
+  await sleep(300);
   r.up(2, F2.x, F2.y);
   r.up(3, F3.x, F3.y + 150);
   assert.equal(r.sent.length, 1, 'the other fingers do not fire anything else');
@@ -358,17 +358,19 @@ await test('an expected boost accepts delayed taps and ignores a third finger in
   r.down(2,1000,500);r.down(3,812,510);await sleep(240);
   assert.equal(r.sent.filter(/* Isole les créations de zone d’accélération pour vérifier le résultat de ce scénario. */ m=>m.type==='BoostGate').length,1);assert.equal(r.view.sling,null);r.recognizer.releaseAll();
 });
-/** Vérifie une fourche décalée dans le temps avec perte et retour bref d’un appui. */
-await test('a slingshot accepts delayed fork contacts and a brief lost/replaced anchor',async()=>{
+/** Vérifie une fourche dont les appuis arrivent à 450 ms d’écart : un appui levé après la traction tire une seule fois. */
+await test('a slingshot accepts delayed fork contacts and a lifted anchor fires exactly once',async()=>{
   const r=rig();r.down(1,F1.x,F1.y);await sleep(450);r.down(2,F2.x,F2.y);r.down(3,F3.x,F3.y);
-  await pullDown(r,3,F3,150);r.up(1,F1.x,F1.y);await sleep(80);assert.equal(r.sent.length,0);
-  r.down(4,F1.x+6,F1.y+4);r.up(3,F3.x,F3.y+150);assert.equal(r.sent.filter(/* Isole les tirs de lance-pierre pour vérifier le résultat de ce scénario. */ m=>m.type==='Slingshot').length,1);r.recognizer.releaseAll();
+  await pullDown(r,3,F3,150);r.up(1,F1.x,F1.y);await sleep(80);
+  const shots=()=>r.sent.filter(/* Isole les tirs de lance-pierre pour vérifier le résultat de ce scénario. */ m=>m.type==='Slingshot').length;
+  assert.equal(shots(),1,'the lifted anchor fires the shot');
+  r.down(4,F1.x+6,F1.y+4);r.up(3,F3.x,F3.y+150);assert.equal(shots(),1,'a replaced anchor and the pouch release add nothing');r.recognizer.releaseAll();
 });
-/** Vérifie que les deux appuis de fourche peuvent être brièvement tapés avant la poche maintenue. */
-await test('a slingshot fork may be tapped before the pulling finger is held',async()=>{
+/** Vérifie qu’un appui de fourche tapé puis levé avant la traction ne compte plus : les trois doigts doivent être posés. */
+await test('a fork finger tapped and lifted before the pull is not part of the fork',async()=>{
   const r=rig();r.down(1,F1.x,F1.y);r.up(1,F1.x,F1.y);await sleep(350);
   r.down(2,F2.x,F2.y);r.down(3,F3.x,F3.y);await pullDown(r,3,F3,150);r.up(3,F3.x,F3.y+150);
-  assert.equal(r.sent.filter(/* Isole les tirs de lance-pierre pour vérifier le résultat de ce scénario. */ m=>m.type==='Slingshot').length,1);r.recognizer.releaseAll();
+  assert.equal(r.sent.filter(/* Isole les tirs de lance-pierre pour vérifier le résultat de ce scénario. */ m=>m.type==='Slingshot').length,0);r.recognizer.releaseAll();
 });
 
 /** Vérifie le double maintien sur le bord intérieur replié d’un virage en coude. */
@@ -401,12 +403,16 @@ await test('fingers landing before the POWER state echo are retained',async()=>{
   r.view.state!.cars.A.itemArmed=true;r.recognizer.syncState();await sleep(210);
   assert.equal(r.sent.filter(/* Isole les créations de zone d’accélération pour vérifier le résultat de ce scénario. */ m=>m.type==='BoostGate').length,1,'network echo does not reject fresh fingers');r.recognizer.releaseAll();
 });
-/** Vérifie une seconde entière entre les deux premiers appuis de la fourche. */
-await test('slingshot fork accepts a full second between the first two taps',async()=>{
-  const r=rig();r.down(1,F1.x,F1.y);r.up(1,F1.x,F1.y);await sleep(1000);
-  r.down(2,F2.x,F2.y);r.down(3,F3.x,F3.y);await pullDown(r,3,F3,150);
-  r.cancel(2,F2.x,F2.y);await sleep(350);assert.equal(r.sent.length,0,'a dropped anchor never fires');
-  r.up(3,F3.x,F3.y+150);assert.equal(r.sent.filter(/* Isole les tirs de lance-pierre pour vérifier le résultat de ce scénario. */ m=>m.type==='Slingshot').length,1,'latched fork survives a missed hold');r.recognizer.releaseAll();
+/** Vérifie une seconde entière entre les deux premiers appuis tenus, et qu’une annulation système d’un appui ne tire jamais. */
+await test('slingshot fork accepts a full second between the first two held fingers and a cancelled anchor never fires',async()=>{
+  const shots=(r:ReturnType<typeof rig>)=>r.sent.filter(/* Isole les tirs de lance-pierre pour vérifier le résultat de ce scénario. */ m=>m.type==='Slingshot').length;
+  const held=rig();held.down(1,F1.x,F1.y);await sleep(1000);
+  held.down(2,F2.x,F2.y);held.down(3,F3.x,F3.y);await pullDown(held,3,F3,150);held.up(3,F3.x,F3.y+150);
+  assert.equal(shots(held),1,'two fork fingers one second apart still form the fork');held.recognizer.releaseAll();
+  const cancelled=rig();cancelled.down(1,F1.x,F1.y);await sleep(1000);
+  cancelled.down(2,F2.x,F2.y);cancelled.down(3,F3.x,F3.y);await pullDown(cancelled,3,F3,150);
+  cancelled.cancel(2,F2.x,F2.y);await sleep(350);cancelled.up(3,F3.x,F3.y+150);
+  assert.equal(shots(cancelled),0,'a dropped anchor never fires');cancelled.recognizer.releaseAll();
 });
 
 /** Vérifie qu’un doigt qui glisse légèrement pendant la stabilisation ne bloque pas l’accélération attendue. */
