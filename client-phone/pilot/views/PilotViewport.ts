@@ -5,6 +5,10 @@ import { PeripheralView } from './PeripheralView.js';
 import { RaceFrames } from '../../../client-shared/raceMap/raceFrames.js';
 import { SceneSlot } from '../../../client-shared/race3d/SceneSlot.js';
 
+type PilotView = 'map' | 'cockpit' | 'chase';
+const nextView: Record<PilotView, PilotView> = { map: 'cockpit', cockpit: 'chase', chase: 'map' };
+const viewLabel: Record<PilotView, string> = { map: 'Périphérique', cockpit: 'Cockpit', chase: 'Poursuite' };
+
 export class PilotViewport {
   readonly root = document.createElement('section');
   private readonly canvas = document.createElement('canvas');
@@ -14,8 +18,8 @@ export class PilotViewport {
     this.view.disabled = true;
     this.view.textContent = 'Vue 2D · WebGL indisponible';
   });
-  private readonly view = actionButton('Vue · Périphérique', () => this.switchView(this.mode === 'map' ? 'cockpit' : 'map'));
-  private mode: 'map' | 'cockpit' = 'map';
+  private readonly view = actionButton('Vue · Périphérique', () => this.switchView(nextView[this.mode]));
+  private mode: PilotView = 'map';
   private readonly mapOptions = document.createElement('div');
   private readonly info = document.createElement('div');
   private readonly hp = document.createElement('progress');
@@ -47,9 +51,9 @@ export class PilotViewport {
     this.status.className = 'detail';
     this.status.setAttribute('role', 'status');
     this.root.append(this.canvas, this.scene.canvas, this.view, this.mapOptions, this.info, this.hp, this.status);
-    try { this.switchView(sessionStorage.getItem('crashout-pilot-view') === 'map' ? 'map'
-      : sessionStorage.getItem('crashout-pilot-view') === 'cockpit' || solo ? 'cockpit' : 'map'); }
-    catch { this.switchView(solo ? 'cockpit' : 'map'); }
+    let saved: string | null = null;
+    try { saved = sessionStorage.getItem('crashout-pilot-view'); } catch { /* Préférence facultative. */ }
+    this.switchView(saved === 'map' || saved === 'chase' || saved === 'cockpit' ? saved : solo ? 'cockpit' : 'map');
     this.raf = requestAnimationFrame(this.draw);
   }
 
@@ -72,9 +76,9 @@ export class PilotViewport {
     this.scene.close();
   }
 
-  private switchView(mode: 'map' | 'cockpit'): void {
+  private switchView(mode: PilotView): void {
     this.mode = mode;
-    this.view.textContent = mode === 'cockpit' ? 'Vue · Cockpit' : 'Vue · Périphérique';
+    this.view.textContent = 'Vue · ' + viewLabel[mode];
     this.mapOptions.hidden = mode !== 'map';
     if (mode === 'map') this.scene.hide();
     try { sessionStorage.setItem('crashout-pilot-view', mode); } catch { /* Préférence facultative. */ }
