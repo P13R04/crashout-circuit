@@ -22,4 +22,6 @@ Tu t'occupes de la console opérateur (`/oz`) qui **remplace les capteurs des ob
 3. Termine par `npm run check`.
 4. Les dimensions LEGO (mur 80×32 mm, pilier 32×32 mm, champ de 84 mm) dépendent de `tableDiagonalInches` : ne les change pas sans mesure sur la dalle.
 
+Avant de créer ou d’allonger un fichier source, applique le skill `limiter-taille-fichiers` (cible 300 lignes, plafond 500, `npm run check:sizes`).
+
 Réponds en français.

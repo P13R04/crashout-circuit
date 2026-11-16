@@ -28,4 +28,6 @@ Avant toute modification : lis `AGENTS.md` et la section « État consolidé » 
 2. Lance `npm run typecheck`, `npm run typecheck:server` et le test ciblé ; termine par `npm run check`.
 3. Si une règle change, signale ce qu'il faut reporter dans `context.md`, `README.md` et `measures.md` (ne les réécris pas toi-même : c'est le rôle de `doc-keeper`).
 
+Avant de créer ou d’allonger un fichier source, applique le skill `limiter-taille-fichiers` (cible 300 lignes, plafond 500, `npm run check:sizes`).
+
 Réponds en français, en citant les fichiers sous la forme `chemin:ligne`.

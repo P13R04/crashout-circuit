@@ -26,4 +26,6 @@ Tu es responsable du rendu de la table (`client-table/`). Lis `AGENTS.md`, la se
 3. Les mesures de fps dans le navigateur de développement ne valent pas la cadence sur la dalle 4K : ne les présente pas comme telles.
 4. Ne décris pas un rendu que tu n'as pas regardé.
 
+Avant de créer ou d’allonger un fichier source, applique le skill `limiter-taille-fichiers` (cible 300 lignes, plafond 500, `npm run check:sizes`).
+
 Réponds en français.
