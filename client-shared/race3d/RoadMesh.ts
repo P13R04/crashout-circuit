@@ -57,7 +57,7 @@ export class RoadMesh {
   private size = 0;
   private strips: Strip[] = [];
 
-  constructor(private readonly materials: RoadMaterials) {}
+  constructor(private materials: RoadMaterials) {}
 
   /** Réutilise les tampons et les indices quand seul le tracé a été déformé. */
   update(track: TrackGeometry, version: number): void {
@@ -83,6 +83,12 @@ export class RoadMesh {
     }
     this.startLine(track, white, dark);
     this.strips.forEach(strip => strip.upload());
+  }
+
+  repaint(materials: RoadMaterials): void {
+    this.materials = materials;
+    const { road, verge, curb, white, dark } = materials;
+    this.strips.forEach((strip, index) => { strip.mesh.material = [road, verge, curb, white, dark][index]; });
   }
 
   dispose(): void {

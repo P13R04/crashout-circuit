@@ -3,11 +3,19 @@
  * Liens : server/net/GameServer.ts, server/rules/GameRules.ts.
  */
 import type { ClientMessage, Team } from '../types.js';
+import { isThemeId } from '../protocol/theme.js';
 import type { GameRules } from '../rules/GameRules.js';
 
 /** Applique les commandes de préparation, de départ et de fin de séance. */
 export function handleTableSession(rules: GameRules, msg: ClientMessage): void {
   const { phase, developerTools, soloTest } = rules.state;
+  if (msg.type === 'SetTheme') {
+    if (isThemeId(msg.theme) && rules.state.theme !== msg.theme) {
+      rules.state.theme = msg.theme;
+      rules.host.broadcastFull();
+    }
+    return;
+  }
   if (soloTest && msg.type !== 'Pause' && msg.type !== 'Reset' && msg.type !== 'NewGame') return;
   switch (msg.type) {
     case 'RaceSettings':

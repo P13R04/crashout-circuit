@@ -3,11 +3,14 @@ import { AmbientLight, BoxGeometry, Color, DirectionalLight, Fog, Mesh, MeshBasi
   PerspectiveCamera, PlaneGeometry, Scene, WebGLRenderer } from 'three';
 import type { Material, Texture } from 'three';
 import type { RaceViewState } from '../../server/protocol/raceView.js';
+import type { ThemeId } from '../../server/protocol/theme.js';
 import type { Team, TrackGeometry } from '../../server/types.js';
 import type { CarPose } from '../raceMap/objects2d.js';
 import { CarModel } from './carModel.js';
 import { COCKPIT_FOG, shotFor, type CameraMode } from './cameras.js';
-import { GRAND_PRIX, roadPaint, stipple } from './paint.js';
+import { roadPaint, stipple } from './paint.js';
+import { LOOKS } from './looks.js';
+import { Venue } from './venue/Venue.js';
 import { RaceObjects } from './RaceObjects.js';
 import { RoadMesh } from './RoadMesh.js';
 
@@ -15,10 +18,15 @@ export class RaceScene {
   private readonly renderer: WebGLRenderer;
   private readonly scene = new Scene();
   private readonly camera = new PerspectiveCamera(49, 1, 2, 3700);
-  private readonly road = new RoadMesh(roadPaint(GRAND_PRIX));
+  private roadMaterials = roadPaint(LOOKS.classic);
+  private readonly road = new RoadMesh(this.roadMaterials);
+  private readonly venue = new Venue();
+  private readonly sun = new DirectionalLight(LOOKS.classic.light, 2.05);
+  private theme: ThemeId = 'classic';
+  private version = -1;
   private readonly objects = new RaceObjects();
   private readonly car = { A: new CarModel('A'), B: new CarModel('B') };
-  private readonly cockpitFog = new Fog(GRAND_PRIX.fog, COCKPIT_FOG.near, COCKPIT_FOG.far);
+  private readonly cockpitFog = new Fog(LOOKS.classic.fog, COCKPIT_FOG.near, COCKPIT_FOG.far);
   private readonly nose = new Mesh(new BoxGeometry(4.8, .6, 7), new MeshBasicMaterial({ color: 0x203e43, fog: false }));
   private readonly ground;
   private width = 0;
@@ -29,17 +37,17 @@ export class RaceScene {
   private elapsed = 0;
   private previousMode: CameraMode | null = null;
   private heading = 0;
+  private lastStateTrack: TrackGeometry | null = null;
   private lastTrack: TrackGeometry['baseCenterline'] | null = null;
   private bounds = { center: { x: 960, y: 540 }, span: 1800 };
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'low-power' });
-    this.scene.background = new Color(GRAND_PRIX.sky);
+    this.scene.background = new Color(LOOKS.classic.sky);
     this.scene.add(new AmbientLight(0xdce9ff, 1.65));
-    const sun = new DirectionalLight(0xffe5c2, 2.1);
-    sun.position.set(-300, 440, 260);
-    this.scene.add(sun, this.camera, this.road.group, this.objects.root, this.car.A.root, this.car.B.root);
-    const texture = stipple(GRAND_PRIX.grass, true);
+    this.sun.position.set(-300, 440, 260);
+    this.scene.add(this.sun, this.camera, this.road.group, this.venue.root, this.objects.root, this.car.A.root, this.car.B.root);
+    const texture = stipple(LOOKS.classic.ground, true);
     texture.repeat.set(110, 105);
     this.ground = new Mesh(new PlaneGeometry(6200, 6200), new MeshBasicMaterial({ map: texture }));
     this.ground.rotation.x = -Math.PI / 2;
@@ -52,11 +60,11 @@ export class RaceScene {
   draw(state: RaceViewState, poses: Record<Team, CarPose>, mode: CameraMode, team: Team, now: number, reduced: boolean): void {
     if (!state.track || !this.resize()) return;
     const delta = this.profile();
-    this.road.update(state.track, state.trackVersion);
-    if (this.lastTrack !== state.track.baseCenterline) this.updateBounds(state.track);
+    this.updateTrack(state.track, state.trackVersion, state.theme);
+    const look = LOOKS[this.theme];
     const cockpit = mode === 'cockpit';
     this.scene.fog = cockpit ? this.cockpitFog : null;
-    (this.scene.background as Color).set(cockpit ? GRAND_PRIX.fog : GRAND_PRIX.sky);
+    (this.scene.background as Color).set(cockpit ? look.fog : look.sky);
     const pose = poses[team];
     if (reduced || this.previousMode !== mode) this.heading = pose.angle;
     const d = pose.angle - this.heading;
@@ -72,12 +80,14 @@ export class RaceScene {
     this.nose.visible = cockpit;
     this.nose.material.color.set(team === 'A' ? 0x457f89 : 0x9b4f68);
     this.updateCars(state, poses, cockpit ? team : null, reduced || state.phase !== 'RACE' ? 0 : delta);
-    this.objects.update(state, now, reduced);
+    this.objects.update(state, now, reduced || this.slow);
+    this.venue.animate(now, reduced || this.slow);
     this.renderer.render(this.scene, this.camera);
   }
 
   dispose(): void {
-    const materials = new Set<Material>(), textures = new Set<Texture>();
+    this.venue.dispose();
+    const materials = new Set<Material>(Object.values(this.roadMaterials)), textures = new Set<Texture>();
     this.scene.traverse(node => {
       if (!(node instanceof Mesh)) return;
       node.geometry.dispose();
@@ -101,10 +111,39 @@ export class RaceScene {
     }
   }
 
-  private updateBounds(track: TrackGeometry): void {
-    if (this.lastTrack && this.lastTrack.length === track.baseCenterline.length
-      && this.lastTrack.every((p, i) => p.x === track.baseCenterline[i].x && p.y === track.baseCenterline[i].y)) return;
+  private updateTrack(track: TrackGeometry, version: number, theme: ThemeId): void {
+    const changed = this.theme !== theme;
+    if (changed) this.repaint(theme);
+    if (this.version === version && !changed) return;
+    this.road.update(track, version);
+    const newCourse = !this.lastTrack || this.lastTrack.length !== track.baseCenterline.length
+      || this.lastTrack.some((p, i) => p.x !== track.baseCenterline[i].x || p.y !== track.baseCenterline[i].y);
+    if (newCourse || changed) this.venue.build(track, theme);
     this.lastTrack = track.baseCenterline;
+    this.lastStateTrack = track;
+    this.venue.followRoad(track);
+    this.version = version;
+    this.updateBounds(track);
+  }
+
+  private repaint(theme: ThemeId): void {
+    const look = LOOKS[theme];
+    this.theme = theme;
+    this.sun.color.set(look.light);
+    this.cockpitFog.color.set(look.fog);
+    for (const material of Object.values(this.roadMaterials)) {
+      material.map?.dispose();
+      material.dispose();
+    }
+    this.roadMaterials = roadPaint(look);
+    this.road.repaint(this.roadMaterials);
+    this.ground.material.map?.dispose();
+    const texture = stipple(look.ground, look.bands);
+    texture.repeat.set(110, 105);
+    this.ground.material.map = texture;
+  }
+
+  private updateBounds(track: TrackGeometry): void {
     let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
     for (const edge of [track.outerEdge, track.innerEdge]) for (const p of edge) {
       left = Math.min(left, p.x); right = Math.max(right, p.x);
@@ -123,7 +162,7 @@ export class RaceScene {
       this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2) * (this.slow ? .5 : .75));
       this.renderer.setSize(w, h, false);
       this.camera.aspect = w / h;
-      this.lastTrack = null;
+      if (this.lastStateTrack) this.updateBounds(this.lastStateTrack);
     }
     return true;
   }

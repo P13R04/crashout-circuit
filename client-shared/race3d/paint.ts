@@ -1,14 +1,7 @@
 /** Prépare les matériaux de chaussée et d'ambiance utilisés par la scène WebGL. */
 import { CanvasTexture, Color, DoubleSide, MeshBasicMaterial, RepeatWrapping, SRGBColorSpace } from 'three';
 
-export type RaceLook = {
-  sky: number; fog: number; grass: number; road: number; verge: number; curb: number; white: number;
-};
-
-export const GRAND_PRIX: RaceLook = {
-  sky: 0xadbfd0, fog: 0xb5c2cb, grass: 0x557052, road: 0x3d4145, verge: 0xafaa8c,
-  curb: 0xcf403a, white: 0xf5f0df,
-};
+import type { RaceLook } from './looks.js';
 
 export function stipple(color: number, bands = false): CanvasTexture {
   const canvas = document.createElement('canvas');
@@ -21,7 +14,10 @@ export function stipple(color: number, bands = false): CanvasTexture {
   for (let i = 0; i < 4096; i++) {
     seed = (Math.imul(1664525, seed) + 1013904223) | 0;
     const shade = ((seed >>> 24) % 19) - 9 + (bands && i % 64 < 32 ? 7 : 0);
-    pixels.data.set([red + shade, green + shade, blue + shade, 255], i * 4);
+    pixels.data[i * 4] = red + shade;
+    pixels.data[i * 4 + 1] = green + shade;
+    pixels.data[i * 4 + 2] = blue + shade;
+    pixels.data[i * 4 + 3] = 255;
   }
   ctx.putImageData(pixels, 0, 0);
   const texture = new CanvasTexture(canvas);
