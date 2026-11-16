@@ -52,3 +52,20 @@ Le volant exige HTTPS et un certificat approuvé par le téléphone. La conduite
 ### Recetter la partie complète
 
 > Après validation des dépendances de #47, lis sa fiche dans QuentinELLEON/crashout-circuit. Joue une partie à quatre sur la vraie table et les téléphones. Documente les appareils, les résultats observés et les blocages. Vérifie les commandes `npm run check` et `npm run verify`, puis propose les PR dans l’ordre des dépendances.
+
+## Essai 3D Grand Prix
+
+Reconstruire et lancer le serveur au premier plan dans un terminal interactif. Les chemins du certificat doivent correspondre au réseau utilisé pour le test sur téléphone.
+
+```bash
+npm ci
+npm run build
+CRASHOUT_SOLO_TEST=1 CRASHOUT_DEV_TOOLS=1 CRASHOUT_SPECTATORS=1 CRASHOUT_TLS_KEY=/chemin/table-key.pem CRASHOUT_TLS_CERT=/chemin/table-cert.pem npm start
+```
+
+- **Table**. Ouvrir le lien privé imprimé à côté de « Local » dans Terminal. Recharger la page si le serveur a été redémarré. Le QR de l’accueil donne accès à **Jouer** et à **Regarder la course**.
+- **Pilote PC**. Ouvrir le lien « Pilote PC », prendre la place cyan et lancer la course. Les flèches gauche et droite braquent. La flèche haut accélère en mode pédale. Choisir **Vue · Cockpit** pour l’essai à la première personne. Un changement d’onglet relâche les commandes clavier.
+- **Pilote téléphone**. Scanner le QR avec le téléphone sur le même réseau, tourner l’appareil en paysage, autoriser le capteur et attendre le calibrage. La vue cockpit limite la visibilité à l’approche du prochain virage. La table donne la position du reste des voitures et des interventions.
+- **Spectateur**. Ouvrir le lien annoncé par le serveur dans un autre onglet ou sur un deuxième appareil. Choisir **Circuit entier**, **Survol** ou **Poursuite plongeante**. En partie à deux équipes, choisir la voiture cyan ou rose. Utiliser une fenêtre distincte pour garder le jeu clavier au premier plan pendant l’observation.
+
+Grand Prix est le thème initial de l’essai solo. L’ambiance de la table se propage aux autres écrans pendant la course. Le navigateur charge le module 3D à la première utilisation. Si WebGL 2 est indisponible, la carte 2D reste accessible. Les cibles de fluidité sur Safari iPhone et Chrome Android se mesurent sur appareils physiques.

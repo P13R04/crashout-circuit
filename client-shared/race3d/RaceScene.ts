@@ -1,6 +1,6 @@
 /** Rend une seule scène WebGL à travers les différents cadrages de course. */
 import { AmbientLight, BoxGeometry, Color, DirectionalLight, Fog, Mesh, MeshBasicMaterial,
-  PerspectiveCamera, PlaneGeometry, Scene, WebGLRenderer } from 'three';
+  Group, PerspectiveCamera, PlaneGeometry, Scene, WebGLRenderer } from 'three';
 import type { Material, Texture } from 'three';
 import type { RaceViewState } from '../../server/protocol/raceView.js';
 import type { ThemeId } from '../../server/protocol/theme.js';
@@ -8,7 +8,7 @@ import type { Team, TrackGeometry } from '../../server/types.js';
 import type { CarPose } from '../raceMap/objects2d.js';
 import { CarModel } from './carModel.js';
 import { COCKPIT_FOG, shotFor, type CameraMode } from './cameras.js';
-import { roadPaint, stipple } from './paint.js';
+import { roadPaint, skyPaint, stipple } from './paint.js';
 import { LOOKS } from './looks.js';
 import { Venue } from './venue/Venue.js';
 import { RaceObjects } from './RaceObjects.js';
@@ -27,7 +27,11 @@ export class RaceScene {
   private readonly objects = new RaceObjects();
   private readonly car = { A: new CarModel('A'), B: new CarModel('B') };
   private readonly cockpitFog = new Fog(LOOKS.classic.fog, COCKPIT_FOG.near, COCKPIT_FOG.far);
-  private readonly nose = new Mesh(new BoxGeometry(4.8, .6, 7), new MeshBasicMaterial({ color: 0x203e43, fog: false }));
+  private readonly nose = new Group();
+  private readonly nosePaint = new MeshBasicMaterial({ color: 0x203e43, fog: false });
+  private sky = skyPaint(LOOKS.classic);
+  private readonly clearSky = new Color(LOOKS.classic.sky);
+  private readonly mobile = matchMedia('(pointer: coarse)').matches;
   private readonly ground;
   private width = 0;
   private height = 0;
@@ -43,7 +47,7 @@ export class RaceScene {
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'low-power' });
-    this.scene.background = new Color(LOOKS.classic.sky);
+    this.scene.background = this.clearSky;
     this.scene.add(new AmbientLight(0xdce9ff, 1.65));
     this.sun.position.set(-300, 440, 260);
     this.scene.add(this.sun, this.camera, this.road.group, this.venue.root, this.objects.root, this.car.A.root, this.car.B.root);
@@ -53,7 +57,7 @@ export class RaceScene {
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.position.set(960, 0, 540);
     this.scene.add(this.ground);
-    this.nose.position.set(0, -3.3, -7.5);
+    this.makeNose();
     this.camera.add(this.nose);
   }
 
@@ -64,7 +68,8 @@ export class RaceScene {
     const look = LOOKS[this.theme];
     const cockpit = mode === 'cockpit';
     this.scene.fog = cockpit ? this.cockpitFog : null;
-    (this.scene.background as Color).set(cockpit ? look.fog : look.sky);
+    this.scene.background = cockpit ? this.sky : this.clearSky;
+    this.clearSky.set(look.sky);
     const pose = poses[team];
     if (reduced || this.previousMode !== mode) this.heading = pose.angle;
     const d = pose.angle - this.heading;
@@ -74,11 +79,15 @@ export class RaceScene {
     this.camera.position.set(...shot.eye);
     this.camera.up.set(0, shot.top ? 0 : 1, shot.top ? -1 : 0);
     this.camera.lookAt(...shot.target);
-    this.camera.fov = shot.fov;
-    this.camera.far = shot.far;
-    this.camera.updateProjectionMatrix();
+    const near = shot.top ? 32 : cockpit ? 2 : 8;
+    if (this.camera.fov !== shot.fov || this.camera.far !== shot.far || this.camera.near !== near) {
+      this.camera.fov = shot.fov;
+      this.camera.far = shot.far;
+      this.camera.near = near;
+      this.camera.updateProjectionMatrix();
+    }
     this.nose.visible = cockpit;
-    this.nose.material.color.set(team === 'A' ? 0x457f89 : 0x9b4f68);
+    this.nosePaint.color.set(team === 'A' ? 0x457f89 : 0x9b4f68);
     this.updateCars(state, poses, cockpit ? team : null, reduced || state.phase !== 'RACE' ? 0 : delta);
     this.objects.update(state, now, reduced || this.slow);
     this.venue.animate(now, reduced || this.slow);
@@ -87,6 +96,7 @@ export class RaceScene {
 
   dispose(): void {
     this.venue.dispose();
+    this.sky.dispose();
     const materials = new Set<Material>(Object.values(this.roadMaterials)), textures = new Set<Texture>();
     this.scene.traverse(node => {
       if (!(node instanceof Mesh)) return;
@@ -99,6 +109,20 @@ export class RaceScene {
     }
     for (const texture of textures) texture.dispose();
     this.renderer.dispose();
+  }
+
+  private makeNose(): void {
+    const trim = new MeshBasicMaterial({ color: 0x212b31, fog: false });
+    const stripe = new MeshBasicMaterial({ color: 0xe4e7da, fog: false });
+    const part = (w: number, h: number, d: number, x: number, y: number, z: number, material: MeshBasicMaterial) => {
+      const box = new Mesh(new BoxGeometry(w, h, d), material);
+      box.position.set(x, y, z);
+      this.nose.add(box);
+    };
+    part(2.8, .35, 4.1, 0, -3.8, -6.6, this.nosePaint);
+    part(3.8, .30, 1.9, 0, -3.85, -4.75, trim);
+    part(.3, .035, 2.6, 0, -3.6, -7.38, stripe);
+    part(5.4, .17, .65, 0, -3.97, -8.65, trim);
   }
 
   private updateCars(state: RaceViewState, poses: Record<Team, CarPose>, hidden: Team | null, delta: number): void {
@@ -131,6 +155,9 @@ export class RaceScene {
     this.theme = theme;
     this.sun.color.set(look.light);
     this.cockpitFog.color.set(look.fog);
+    this.sky.dispose();
+    this.sky = skyPaint(look);
+    for (const model of Object.values(this.car)) model.setTheme(theme);
     for (const material of Object.values(this.roadMaterials)) {
       material.map?.dispose();
       material.dispose();
@@ -150,7 +177,7 @@ export class RaceScene {
       top = Math.min(top, p.y); bottom = Math.max(bottom, p.y);
     }
     this.bounds = { center: { x: (left + right) / 2, y: (top + bottom) / 2 },
-      span: Math.max(350, bottom - top, (right - left) / Math.min(1, this.camera.aspect)) + 150 };
+      span: Math.max(350, bottom - top, (right - left) / this.camera.aspect) + 150 };
   }
 
   private resize(): boolean {
@@ -159,9 +186,10 @@ export class RaceScene {
     if (w !== this.width || h !== this.height) {
       this.width = w;
       this.height = h;
-      this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2) * (this.slow ? .5 : .75));
+      this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2) * (this.slow ? .5 : this.mobile ? .75 : 1));
       this.renderer.setSize(w, h, false);
       this.camera.aspect = w / h;
+      this.camera.updateProjectionMatrix();
       if (this.lastStateTrack) this.updateBounds(this.lastStateTrack);
     }
     return true;

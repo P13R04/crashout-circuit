@@ -155,6 +155,9 @@ httpServer.listen(PORT, () => {
     console.log(`   Joueurs: ${baseUrl}/play?room=${gameServer.room}`);
   }
   if (gameServer.getState().soloTest) console.log('   Essai pilote solo : scannez le QR sur la table.');
+  if (gameServer.getState().soloTest && gameServer.getState().developerTools) {
+    console.log(`   Pilote PC : ${protocol}://localhost:${port}/play?room=${gameServer.room}&keyboard=1`);
+  }
   if (!secure) console.log('   HTTP : capteurs iOS indisponibles. Utilisez une adresse HTTPS pour jouer au gyroscope.');
   console.log(`   Outils de test : ${gameServer.getState().developerTools?'activés':'désactivés'}`);
   console.log(`   Config:  lapsToWin=${config.lapsToWin}, physicsHz=${config.physicsHz}\n`);

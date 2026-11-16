@@ -33,6 +33,9 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 let state: RaceViewState | null = null;
 let online = false;
 let disconnected = false;
+let stream: EventSource | null = null;
+let reconnect = 0;
+let roomCode = '';
 
 const director = () => camera.value as CameraMode;
 const team = (): Team => state?.soloTest ? 'A' : teamSelect.value as Team;
@@ -90,20 +93,31 @@ async function open(): Promise<void> {
     status.textContent = 'Séance spectateur indisponible. Vérifie le lien ou scanne le QR de la table.';
     return;
   }
-  const stream = new EventSource('/api/spectator?room=' + room);
-  stream.addEventListener('race', onFrame);
-  stream.onopen = () => { online = true; refresh(); };
-  let retry = 0;
-  stream.onerror = () => {
+  roomCode = room;
+  connect();
+}
+
+function connect(): void {
+  stream?.close();
+  const current = stream = new EventSource('/api/spectator?room=' + roomCode);
+  current.addEventListener('race', onFrame);
+  current.onopen = () => { online = true; refresh(); };
+  current.onerror = () => {
     online = false;
     disconnected = true;
     refresh();
-    if (stream.readyState === EventSource.CLOSED) retry = window.setTimeout(() => { void open().catch(showError); }, 2000);
+    if (current.readyState === EventSource.CLOSED) reconnect = window.setTimeout(connect, 2000);
   };
-  window.addEventListener('pagehide', () => { clearTimeout(retry); stream.close(); }, { once: true });
 }
 
 function showError(): void { status.textContent = 'Serveur injoignable. Actualise la page pour réessayer.'; }
 camera.addEventListener('change', refresh);
+window.addEventListener('pagehide', () => {
+  clearTimeout(reconnect);
+  stream?.close();
+});
+window.addEventListener('pageshow', event => {
+  if (event.persisted && roomCode) connect();
+});
 requestAnimationFrame(draw);
 void open().catch(showError);

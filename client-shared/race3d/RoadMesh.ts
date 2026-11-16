@@ -1,5 +1,5 @@
 /** Construit les bandes 3D depuis les deux limites de chaussée diffusées par le serveur. */
-import { BufferAttribute, BufferGeometry, Float32BufferAttribute, Group, Mesh } from 'three';
+import { BufferAttribute, BufferGeometry, DynamicDrawUsage, Float32BufferAttribute, Group, Mesh } from 'three';
 import type { Material } from 'three';
 import type { TrackGeometry, Vec2 } from '../../server/types.js';
 import { visibleTrackEdges } from '../trackVisibility.js';
@@ -13,8 +13,8 @@ class Strip {
   readonly mesh: Mesh<BufferGeometry, Material>;
 
   constructor(capacity: number, material: Material) {
-    this.vertices = new Float32BufferAttribute(new Float32Array(capacity * 12), 3);
-    this.uv = new Float32BufferAttribute(new Float32Array(capacity * 8), 2);
+    this.vertices = new Float32BufferAttribute(new Float32Array(capacity * 12), 3).setUsage(DynamicDrawUsage);
+    this.uv = new Float32BufferAttribute(new Float32Array(capacity * 8), 2).setUsage(DynamicDrawUsage);
     const indices = new Uint16Array(capacity * 6);
     for (let i = 0; i < capacity; i++) {
       const v = i * 4;
@@ -31,12 +31,16 @@ class Strip {
   reset(): void { this.count = 0; }
 
   quad(a: Vec2, b: Vec2, c: Vec2, d: Vec2, height: number): void {
-    for (const [i, p] of [a, b, c, d].entries()) {
-      const index = this.count * 4 + i;
-      this.vertices.setXYZ(index, p.x, height, p.y);
-      this.uv.setXY(index, p.x / 72, p.y / 72);
-    }
-    this.count++;
+    const base = this.count++ * 4;
+    this.put(base, a, height);
+    this.put(base + 1, b, height);
+    this.put(base + 2, c, height);
+    this.put(base + 3, d, height);
+  }
+
+  private put(index: number, p: Vec2, height: number): void {
+    this.vertices.setXYZ(index, p.x, height, p.y);
+    this.uv.setXY(index, p.x / 72, p.y / 72);
   }
 
   upload(): void {
@@ -74,7 +78,7 @@ export class RoadMesh {
     let distance = 0;
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
-      road.quad(outer[i], outer[j], inner[j], inner[i], .08);
+      road.quad(outer[i], outer[j], inner[j], inner[i], .15);
       const paint = Math.floor(distance / 15) % 2 ? curb : white;
       if (visible[0][i] && visible[0][j]) this.drawEdge(verge, paint, outer, inner, i, j);
       if (visible[1][i] && visible[1][j]) this.drawEdge(verge, paint, inner, outer, i, j);
@@ -109,8 +113,8 @@ export class RoadMesh {
   private drawEdge(verge: Strip, paint: Strip, edge: Vec2[], inside: Vec2[], i: number, j: number): void {
     const a = edge[i], b = edge[j];
     const borderA = offset(a, inside[i], 3), borderB = offset(b, inside[j], 3);
-    verge.quad(borderA, borderB, offset(b, inside[j], 15), offset(a, inside[i], 15), .045);
-    paint.quad(offset(a, inside[i], -2), offset(b, inside[j], -2), borderB, borderA, .19);
+    verge.quad(borderA, borderB, offset(b, inside[j], 15), offset(a, inside[i], 15), .09);
+    paint.quad(offset(a, inside[i], -2), offset(b, inside[j], -2), borderB, borderA, .24);
   }
 
   private startLine(track: TrackGeometry, white: Strip, dark: Strip): void {
@@ -123,7 +127,7 @@ export class RoadMesh {
     for (let col = 0; col < 16; col++) {
       for (let row = 0; row < 2; row++) {
         const paint = (col + row) % 2 ? dark : white;
-        paint.quad(cell(col, row), cell(col + 1, row), cell(col + 1, row + 1), cell(col, row + 1), .27);
+        paint.quad(cell(col, row), cell(col + 1, row), cell(col + 1, row + 1), cell(col, row + 1), .32);
       }
     }
   }

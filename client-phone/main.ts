@@ -11,7 +11,8 @@ import { PhoneSession } from './session.js';
 const title = document.querySelector<HTMLHeadingElement>('#title')!;
 const notice = document.querySelector<HTMLParagraphElement>('#notice')!;
 const screen = document.querySelector<HTMLElement>('#screen')!;
-const initial = new URLSearchParams(location.search).get('room') ?? '';
+const params = new URLSearchParams(location.search);
+const initial = params.get('room') ?? '';
 const session = new PhoneSession(render);
 const WAITING: Record<Phase, string> = {
   LOBBY: 'En attente du départ sur la table.',
@@ -109,7 +110,7 @@ function render(): void {
   if (seat?.endsWith('-pilot') && state && (state.soloTest || state.phase === 'RACE' || state.phase === 'PAUSED' || state.phase === 'RESULT')) {
     if (!pilot) {
       const team = playerTeam(seat);
-      pilot = new PilotScreen(session, team, state.soloTest);
+      pilot = new PilotScreen(session, team, state.soloTest, params.get('keyboard') === '1' && state.soloTest && state.developerTools);
       title.textContent = state.soloTest ? 'Pilote solo' : `Pilote · Équipe ${TEAM_LABEL[team]}`;
       document.body.dataset.team = team;
       screen.replaceChildren(pilot.root);
@@ -122,7 +123,7 @@ function render(): void {
     pilot = null;
     screenKey = '';
   }
-  const key = JSON.stringify([room, team, online, seat, pending, state?.soloTest, seat ? state?.phase : state?.seats]);
+  const key = JSON.stringify([room, team, online, seat, pending, state?.soloTest, state?.developerTools, seat ? state?.phase : state?.seats]);
   if (key === screenKey) return;
   screenKey = key;
   delete document.body.dataset.team;
@@ -139,6 +140,13 @@ function render(): void {
     const taken = state.seats['A-pilot'].taken;
     screen.replaceChildren(choice('Rejoindre comme pilote', '◈', taken ? 'Réservé' : 'Libre', 'A',
       () => session.join('A-pilot'), taken || !online || pending !== null));
+    if (state.developerTools && params.get('keyboard') !== '1' && matchMedia('(any-pointer: fine)').matches) {
+      const pc = document.createElement('a');
+      pc.href = '/play?room=' + room + '&keyboard=1';
+      pc.className = 'spectator-link';
+      pc.textContent = 'Essai cockpit au clavier';
+      screen.append(pc);
+    }
   } else if (team) {
     document.body.dataset.team = team;
     title.textContent = `Choisir un rôle · ${TEAM_LABEL[team]}`;

@@ -35,3 +35,21 @@ export function roadPaint(look: RaceLook) {
     dark: new MeshBasicMaterial({ color: 0x161c22, side: DoubleSide }),
   };
 }
+
+/** Dégrade le ciel vers la teinte du brouillard à l’horizon. */
+export function skyPaint(look: RaceLook): CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  const fill = ctx.createLinearGradient(0, 0, 0, 128);
+  fill.addColorStop(0, '#' + new Color(look.sky).multiplyScalar(.69).getHexString());
+  fill.addColorStop(.51, '#' + new Color(look.fog).getHexString());
+  fill.addColorStop(1, '#' + new Color(look.fog).getHexString());
+  ctx.fillStyle = fill;
+  ctx.fillRect(0, 0, 2, 128);
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  texture.generateMipmaps = false;
+  return texture;
+}
