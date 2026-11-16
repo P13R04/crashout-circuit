@@ -16,7 +16,7 @@
     "start": "node dist/server/index.js",
     "typecheck": "tsc --noEmit",
     "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
-    "check": "npm run typecheck && npm run typecheck:server && npm run check:sizes && npm run test:file-sizes && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run test:audio && npm run test:track-creation && npm run test:public-session && npm run test:pickups && npm run build",
+    "check": "npm run typecheck && npm run typecheck:server && npm run check:sizes && npm run test:file-sizes && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run test:seats && npm run test:audio && npm run test:track-creation && npm run test:public-session && npm run test:pickups && npm run build",
     "check:sizes": "tsx scripts/quality/file-sizes.ts",
     "test:file-sizes": "tsx scripts/quality/file-sizes-test.ts",
     "sim:sling": "tsx scripts/game/sling-balance.ts",
@@ -30,11 +30,12 @@
     "test:race-settings": "tsx scripts/game/race-settings.ts",
     "test:boost": "tsx scripts/gestures/boost.ts",
     "test:tangible-touch": "tsx scripts/gestures/tangible-touch.ts",
-    "verify": "npm run typecheck && npm run check:sizes && npm run test:file-sizes && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run test:visuals && npm run test:tangibles && npm run test:autopilot && npm run test:boost && npm run test:tangible-touch && npm run test:race-settings && npm run test:reservations && npm run test:audio && npm run test:track-creation && npm run test:public-session && npm run test:pickups && npm run build",
+    "verify": "npm run typecheck && npm run check:sizes && npm run test:file-sizes && npm run test:acceptance && npm run test:gestures && npm run test:network && npm run test:seats && npm run test:visuals && npm run test:tangibles && npm run test:autopilot && npm run test:boost && npm run test:tangible-touch && npm run test:race-settings && npm run test:reservations && npm run test:audio && npm run test:track-creation && npm run test:public-session && npm run test:pickups && npm run build",
     "test:audio": "tsx scripts/rendering/audio.ts",
     "test:track-creation": "tsx scripts/game/track-creation.ts",
     "test:public-session": "tsx scripts/game/public-session.ts",
-    "test:pickups": "tsx scripts/game/pickups.ts"
+    "test:pickups": "tsx scripts/game/pickups.ts",
+    "test:seats": "tsx scripts/network/seats.ts"
   },
   "dependencies": {
     "ws": "^8.18.0"

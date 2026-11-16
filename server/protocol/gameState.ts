@@ -13,6 +13,16 @@ export interface Vec2 {
 
 /** Distingue l’équipe cyan de l’équipe rose dans l’état et les commandes. */
 export type Team = 'A' | 'B';
+
+/** Identifie le poste de jeu d'une équipe. */
+export type SeatId = `${Team}-${'pilot' | 'copilot'}`;
+
+/** Décrit l'occupation publique d'un poste. */
+export interface Seat {
+  taken: boolean;
+  connected: boolean;
+  name?: string;
+}
 /** Nomme les écrans et les états de session partagés par les clients. */
 export type Phase = 'LOBBY' | 'MAP' | 'READY' | 'RACE' | 'PAUSED' | 'RESULT';
 /** Distingue les deux bonus ramassables du jeu. */
@@ -242,6 +252,7 @@ export interface GameState {
   developerTools: boolean;
   /** Driving scheme selected independently by each pilot. */
   driveMode: Record<Team, DriveMode>;
+  seats: Record<SeatId, Seat>;
   tick: number;
   cars: Record<Team, Car>;
   walls: Wall[];

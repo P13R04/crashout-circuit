@@ -40,6 +40,12 @@ export function createInitialState(): GameState {
     sessionMode: 'race',
     developerTools: false,
     driveMode: { A: 'auto', B: 'auto' },
+    seats: {
+      'A-pilot': { taken: false, connected: false },
+      'A-copilot': { taken: false, connected: false },
+      'B-pilot': { taken: false, connected: false },
+      'B-copilot': { taken: false, connected: false },
+    },
     tick: 0,
     cars: { A: makeCar('A'), B: makeCar('B') },
     walls: [],
