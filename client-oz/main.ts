@@ -23,6 +23,8 @@ const touchButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-tan
 const quickUndo=document.getElementById('quick-undo') as HTMLButtonElement;
 const quickDeselect=document.getElementById('quick-deselect') as HTMLButtonElement;
 
+const objectTools = document.getElementById('object-tools')!;
+const quickTools = document.getElementById('quick-tools')!;
 const objectList=document.getElementById('object-list')!;
 const objectCards=new Map<number,{state:HTMLElement;toggle:HTMLButtonElement;remove:HTMLButtonElement}>();
 // Crée une carte de commandes par tangible et branche ses boutons d’activation et de retrait.
@@ -295,7 +297,11 @@ function refresh(): void {
   }
   placementMode.disabled=!controller.connected||!s;
   placementMode.value=touch?'touch':'manual';
-  touchTools.hidden=false;
+  objectTools.hidden = !enabled;
+  quickTools.hidden = !enabled;
+  quickUndo.disabled = !controller.canUndo;
+  quickDeselect.disabled = !map.hasOperation;
+  touchTools.hidden = !touch;
   btnArc.hidden=touch;btnWall.hidden=touch;btnClear.hidden=touch;
   for(const button of touchButtons){
     const id=Number(button.dataset.tangible);
