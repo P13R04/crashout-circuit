@@ -1,4 +1,5 @@
 /** Pilote le salon de l’instance choisie avec la session hôte du navigateur. */
+import { readSession } from '../client-shared/sessionInfo.js';
 import { playerTeam, roleLabel, SEAT_IDS, TEAM_LABEL } from '../client-shared/seatLabels.js';
 import { THEMES } from '../server/protocol/theme.js';
 import type { GameState, Phase } from '../server/types.js';
@@ -12,6 +13,7 @@ const form = document.querySelector<HTMLFormElement>('#settings')!;
 const room = document.querySelector('#room')!;
 const status = document.querySelector('#status')!;
 const join = document.querySelector<HTMLAnchorElement>('#join')!;
+const oz = document.querySelector<HTMLAnchorElement>('#oz')!;
 const seats = document.querySelector('#seats')!;
 const commands = [...document.querySelectorAll<HTMLButtonElement>('[data-command]')];
 const select = form.elements.namedItem('theme') as HTMLSelectElement;
@@ -21,7 +23,7 @@ let current: Snapshot | null = null, busy = false, editing = false, seatKey = ''
 function apply(value: Snapshot): void {
   current = value;
   room.textContent = `Salon ${value.room} · ${phaseLabel[value.phase]}${value.wideTable ? ' · circuit agrandi' : ''}`;
-  join.href = '/play?room=' + value.room;
+  oz.hidden = value.soloTest;
   if (!editing) {
     for (const key of ['theme', 'difficulty', 'lapsToWin', 'sessionMaxSeconds'] as const) {
       (form.elements.namedItem(key) as HTMLInputElement).value = String(value[key]);
@@ -93,5 +95,13 @@ form.addEventListener('submit', event => {
   void send({ action: 'settings', theme: data.get('theme'), difficulty: data.get('difficulty'),
     lapsToWin: Number(data.get('lapsToWin')), sessionMaxSeconds: Number(data.get('sessionMaxSeconds')) });
 });
+void readSession().then(session => {
+  const network = session.baseUrls[0];
+  if (!network) return;
+  const url = new URL('/play', network);
+  url.searchParams.set('room', session.room);
+  join.href = url.href;
+  join.hidden = false;
+}).catch(() => {});
 void refresh();
 window.setInterval(() => { if (!document.hidden) void refresh(); }, 1500);

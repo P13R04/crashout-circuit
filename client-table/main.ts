@@ -24,6 +24,7 @@ import { startRenderLoop } from './app/renderLoop.js';
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const statusEl = document.getElementById('status') as HTMLDivElement;
+const joinLink = document.querySelector<HTMLAnchorElement>('#player-join-link')!;
 setupCanvasSizing(canvas);
 const ctx = canvas.getContext('2d')!;
 
@@ -42,7 +43,14 @@ const conn = connectWs('/ws', {
   onOpen: () => {
     statusEl.hidden = true;
     tableAudio.connection(true);
-    void loadLobbyJoin().then(invite => { renderer.lobbyJoin = invite; }).catch(() => { renderer.lobbyJoin = null; });
+    void loadLobbyJoin().then(invite => {
+      renderer.lobbyJoin = invite;
+      joinLink.hidden = !invite;
+      if (invite) joinLink.href = invite.url;
+    }).catch(() => {
+      renderer.lobbyJoin = null;
+      joinLink.hidden = true;
+    });
   },
   /** Affiche la reconnexion, relâche les contacts et arrête les sons de la connexion perdue. */
   onClose: () => { tableAudio.connection(false); statusEl.textContent = 'Connexion perdue · Reconnexion…'; statusEl.hidden = false; gestures.releaseAll(); },
