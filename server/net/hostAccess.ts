@@ -18,7 +18,7 @@ export class HostAccess {
   private readonly key = randomBytes(24).toString('hex');
   private readonly cookie = 'crashout-host-' + this.key.slice(0, 10);
 
-  constructor(readonly enabled: boolean) {}
+  constructor(readonly enabled: boolean, private readonly directHost?: (req: IncomingMessage) => boolean) {}
 
   url(base: string, path = '/', required = this.enabled): string {
     return required ? base + path + '?host=' + this.key : base + path;
@@ -29,7 +29,7 @@ export class HostAccess {
   }
 
   allowPrivate(req: IncomingMessage): boolean {
-    return req.headers.cookie?.split(';').some(item => item.trim() === this.cookie + '=' + this.key) === true;
+    return this.directHost?.(req) === true || req.headers.cookie?.split(';').some(item => item.trim() === this.cookie + '=' + this.key) === true;
   }
 
   /** Initialise un accès hôte à partir du lien privé, puis retire la clé de l’adresse. */
@@ -44,8 +44,12 @@ export class HostAccess {
       return false;
     }
     if (!required || this.allowPrivate(req)) return true;
-    res.writeHead(401, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
-    res.end('Ouvre le lien privé de la table affiché dans Terminal.');
+    res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(`<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Accès hôte · Crashout Circuit</title><body style="font:1rem system-ui;max-width:34rem;margin:3rem auto;padding:1rem">
+<h1>Accès hôte</h1><p>Sur l’ordinateur qui héberge la session locale, ouvre l’adresse localhost annoncée dans Terminal.
+Sur un autre appareil, ouvre le lien privé fourni par l’hôte.</p>
+<p>Pour rejoindre l’équipe depuis un téléphone, ouvre <a href="/play">la page des joueurs</a>.</p></body></html>`);
     return false;
   }
 }

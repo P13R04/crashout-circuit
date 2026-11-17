@@ -151,3 +151,7 @@ body:has(.pilot-screen) #notice {
 .tutorial-lesson { border-left: 3px solid var(--accent); background: var(--card); padding: .6rem .75rem; margin: 0; }
 
 .pilot-screen:has(.pilot-viewport:not([data-camera='cockpit'])) .pilot-wheel { display: none; }
+
+.gyro-access { border: 1px solid #435569; border-radius: 10px; padding: .75rem; }
+.gyro-access summary { cursor: pointer; min-height: 40px; padding-block: .5rem; font-weight: 650; }
+.gyro-access a { display: block; color: var(--accent); padding: .5rem 0; }

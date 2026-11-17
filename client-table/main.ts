@@ -36,6 +36,23 @@ try{tableAudio.restore(window.localStorage);}catch{/* Audio preferences are opti
 const urlParams = new URLSearchParams(location.search);
 view.tutorialMode='table';
 
+let invitationPending = false;
+
+/** Actualise le QR si l’ordinateur change d’adresse pendant que le salon est ouvert. */
+async function refreshInvitation(): Promise<void> {
+  if (invitationPending) return;
+  invitationPending = true;
+  try {
+    const invite = await loadLobbyJoin(renderer.lobbyJoin);
+    renderer.lobbyJoin = invite;
+    joinLink.hidden = !invite;
+    if (invite) joinLink.href = invite.url;
+  } catch {
+    renderer.lobbyJoin = null;
+    joinLink.hidden = true;
+  } finally { invitationPending = false; }
+}
+
 /** Traite les messages du serveur ; remplacé par le vrai traitement une fois les menus branchés. */
 let handleServerMessage: (msg: ServerMessage) => void = () => {};
 const conn = connectWs('/ws', {
@@ -43,14 +60,7 @@ const conn = connectWs('/ws', {
   onOpen: () => {
     statusEl.hidden = true;
     tableAudio.connection(true);
-    void loadLobbyJoin().then(invite => {
-      renderer.lobbyJoin = invite;
-      joinLink.hidden = !invite;
-      if (invite) joinLink.href = invite.url;
-    }).catch(() => {
-      renderer.lobbyJoin = null;
-      joinLink.hidden = true;
-    });
+    void refreshInvitation();
   },
   /** Affiche la reconnexion, relâche les contacts et arrête les sons de la connexion perdue. */
   onClose: () => { tableAudio.connection(false); statusEl.textContent = 'Connexion perdue · Reconnexion…'; statusEl.hidden = false; gestures.releaseAll(); },
@@ -74,6 +84,9 @@ setupFullscreenControls(app, keyboard);
 // Round-trip time (server echo), used by the debug overlay (task 18)
 /** Mesure régulièrement le trajet aller-retour vers le serveur avec un Ping. */
 setInterval(() => conn.send({ type: 'Ping' }), 2000);
+setInterval(() => {
+  if (conn.isOpen() && (!view.state || view.state.phase === 'LOBBY')) void refreshInvitation();
+}, 3500);
 
 // ── Retours du serveur, puis boucle de rendu ──
 handleServerMessage = createMessageHandler(app, { selectTheme, simBar, testBar, syncDriveOptions, syncRaceOptions, syncTestBar });

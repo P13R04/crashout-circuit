@@ -130,7 +130,7 @@ function render(): void {
     activeSeat = null;
     screenKey = '';
   }
-  const key = JSON.stringify([room, team, online, seat, pending, state?.soloTest, state?.developerTools, seat ? state?.phase : state?.seats]);
+  const key = JSON.stringify([room, team, online, seat, pending, session.gyroUrl, state?.soloTest, state?.developerTools, seat ? state?.phase : state?.seats]);
   if (key === screenKey) return;
   screenKey = key;
   delete document.body.dataset.team;
@@ -162,6 +162,22 @@ function render(): void {
     title.textContent = 'Choisir une équipe';
     screen.replaceChildren(...teams(state.seats, online));
   }
+  if (room && !seat && !team && session.gyroUrl && params.get('keyboard') !== '1') {
+    const details = document.createElement('details');
+    details.className = 'gyro-access';
+    const label = document.createElement('summary');
+    label.textContent = 'Utiliser le gyroscope';
+    const description = document.createElement('p');
+    description.textContent = 'Ouvre le lien sécurisé avant de choisir ta place. Au premier accès, le téléphone doit approuver le certificat local.';
+    const cert = document.createElement('a');
+    cert.href = '/certificat-local.cer';
+    cert.textContent = 'Télécharger le certificat local';
+    const secure = document.createElement('a');
+    secure.href = session.gyroUrl;
+    secure.textContent = 'Ouvrir le jeu en HTTPS';
+    details.append(label, description, cert, secure);
+    screen.append(details);
+  }
   if (room && session.canWatch && !seat && !team) {
     const watch = document.createElement('a');
     watch.href = '/watch?room=' + room;
@@ -173,7 +189,7 @@ function render(): void {
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden) session.resume(); });
 render();
-if (initial) void session.open(initial);
+void session.open(initial);
 
 window.addEventListener('pagehide', () => session.suspend());
 window.addEventListener('pageshow', event => {

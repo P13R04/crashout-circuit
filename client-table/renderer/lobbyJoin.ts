@@ -15,11 +15,12 @@ export interface LobbyJoin {
 }
 
 /** Construit l'invitation à partir de l'adresse joignable annoncée par le serveur. */
-export async function loadLobbyJoin(): Promise<LobbyJoin | null> {
+export async function loadLobbyJoin(previous?: LobbyJoin | null): Promise<LobbyJoin | null> {
   const session = await readSession();
   if (!session.baseUrls.length) return null;
   const url = new URL('/play', session.baseUrls[0]);
   url.searchParams.set('room', session.room);
+  if (previous?.url === url.href) return previous;
   const { toCanvas } = await import('qrcode');
   const qr = document.createElement('canvas');
   await toCanvas(qr, url.toString(), { margin: 4, scale: 12, errorCorrectionLevel: 'M' });

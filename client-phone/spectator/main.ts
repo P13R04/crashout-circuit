@@ -88,7 +88,7 @@ function onFrame(message: MessageEvent<string>): void {
 async function open(): Promise<void> {
   const info = await readSession();
   const raw = new URLSearchParams(location.search).get('room');
-  const room = raw?.trim().toUpperCase() || info.room;
+  const room = info.localNetwork ? info.room : raw?.trim().toUpperCase() || info.room;
   if (!info.spectators || room !== info.room) {
     status.textContent = 'Séance spectateur indisponible. Vérifie le lien ou scanne le QR de la table.';
     return;

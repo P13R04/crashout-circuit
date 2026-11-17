@@ -30,16 +30,17 @@ export class PhoneSession {
   room = '';
   online = false;
   canWatch = false;
+  gyroUrl = '';
   pending: 'join' | 'leave' | null = null;
   notice = '';
 
   constructor(private readonly refresh: () => void) {}
 
   /** Valide un code, ouvre la connexion et reprend la réservation de cet onglet si possible. */
-  async open(raw: string): Promise<void> {
-    const room = raw.trim().toUpperCase();
+  async open(raw = ''): Promise<void> {
+    let room = raw.trim().toUpperCase();
     this.notice = '';
-    if (!/^[A-HJ-NP-Z2-9]{5}$/.test(room)) {
+    if (room && !/^[A-HJ-NP-Z2-9]{5}$/.test(room)) {
       this.notice = 'Saisissez le code à cinq caractères affiché sur la table.';
       this.refresh();
       return;
@@ -47,6 +48,9 @@ export class PhoneSession {
 
     const generation = ++this.generation;
     this.canWatch = false;
+    this.gyroUrl = '';
+    this.online = false;
+    this.confirmed = false;
     this.conn?.close();
     this.notice = 'Connexion à la séance…';
     this.refresh();
@@ -54,10 +58,16 @@ export class PhoneSession {
       const info = await readSession();
       if (generation !== this.generation) return;
       this.canWatch = info.spectators === true;
-      if (info.room !== room) {
+      if (room && info.room !== room && !info.localNetwork) {
         this.notice = REJECTION['unknown-room'];
         this.refresh();
         return;
+      }
+      room = info.room;
+      if (info.localNetwork && location.protocol === 'http:') {
+        const choices = info.secureBaseUrls ?? [];
+        const secure = choices.find(base => new URL(base).hostname === location.hostname) ?? choices[0];
+        if (secure) this.gyroUrl = new URL('/play?room=' + room, secure).href;
       }
     } catch {
       if (generation !== this.generation) return;
@@ -66,6 +76,11 @@ export class PhoneSession {
       return;
     }
 
+    if (this.room !== room) {
+      this.seat = null;
+      this.confirmed = false;
+      this.state = null;
+    }
     this.room = room;
     this.reservation = this.loadReservation();
     const next = new URL(location.href);

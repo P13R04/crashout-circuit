@@ -63,7 +63,7 @@ export class PilotScreen {
 
   constructor(private readonly session: PhoneSession, private readonly team: Team, private readonly solo: boolean, keyboard = false) {
     this.root.className = 'pilot-screen';
-    this.control = solo ? 'gyro' : 'touch';
+    this.control = solo && !keyboard && isSecureContext ? 'gyro' : 'touch';
     this.keyboard = keyboard ? new KeyboardDrive(this.release) : null;
     this.viewport = new PilotViewport(team, () => session.sync.now(), solo);
     this.steer = createControls(msg => this.session.send(msg)).steer;

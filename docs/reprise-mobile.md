@@ -92,3 +92,9 @@ Exemple de lancement sur deux ports HTTPS, après `npm run build` et avec les ch
 PORT=3444 CRASHOUT_SPECTATORS=1 npm start
 PORT=3443 CRASHOUT_SPECTATORS=1 CRASHOUT_SOLO_TEST=1 CRASHOUT_DEV_TOOLS=1 npm start
 ```
+
+### Lancement local avec QR tolérant aux changements de Wi-Fi
+
+Depuis le dossier du projet, reconstruire avec `npm run build`, puis lancer `npm run start:local` dans un terminal interactif. La table, Oz et l'administration sont accessibles depuis l'ordinateur hôte aux adresses `http://localhost:3001/`, `http://localhost:3001/oz` et `http://localhost:3001/admin`. Pour l'essai solo, `npm run start:local-solo` ouvre une autre session sur le port 3000, avec le menu `/test`.
+
+Le QR de la table pointe vers l'adresse HTTP du réseau courant. Les joueurs sur le même réseau rejoignent et peuvent utiliser les pédales directement. Pour le gyroscope, ouvrir **Utiliser le gyroscope** avant de réserver sa place, installer le certificat local si nécessaire, puis suivre **Ouvrir le jeu en HTTPS**. L'autorité locale est conservée sous `~/.local/share/crashout-circuit/authority`. Le certificat HTTPS s'adapte aux nouvelles adresses et la table actualise le QR sur l'accueil. En cas de changement de Wi-Fi, rescanner le QR affiché. Recharger une interface ou relancer une partie conserve le salon du serveur.

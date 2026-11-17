@@ -7,12 +7,13 @@
 import type { IncomingMessage, RequestListener, ServerResponse } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { readFileSync, statSync } from 'fs';
-import { resolve, dirname, extname } from 'path';
+import { resolve, dirname, extname, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { createSessionHttp, sessionAddresses } from './net/sessionHttp.js';
 import { GameServer } from './net/GameServer.js';
 import { audioByteRange } from './net/audioHttp.js';
 import { adminRequest } from './net/adminHttp.js';
+import { createLocalNetwork, isLoopback } from './net/localNetwork.js';
 import { HostAccess, socketRole } from './net/hostAccess.js';
 import { SpectatorStream } from './net/SpectatorStream.js';
 import { config } from './config.js';
@@ -34,14 +35,16 @@ const MIME: Record<string, string> = {
   '.ogg':  'audio/ogg',
 };
 
-const hostAccess = new HostAccess(process.env.CRASHOUT_SPECTATORS === '1');
+const localMode = process.env.CRASHOUT_LOCAL_NETWORK === '1';
+const hostAccess = new HostAccess(process.env.CRASHOUT_SPECTATORS === '1' || localMode, localMode ? isLoopback : undefined);
+let localNetwork: ReturnType<typeof createLocalNetwork> | undefined;
 
 const CLIENTS_ROOT = resolve(__dirname, '../../dist/clients');
 
 /** Envoie un fichier compilé et prend en charge les plages de lecture des fichiers audio. */
 function serveStatic(res: ServerResponse, filePath: string,range?:string): boolean {
   // Only regular files below dist/clients (no directories, no path traversal)
-  if (!filePath.startsWith(CLIENTS_ROOT)) return false;
+  if (!filePath.startsWith(CLIENTS_ROOT + sep)) return false;
   try { if (!statSync(filePath).isFile()) return false; } catch { return false; }
   const ext = extname(filePath);
   const mime = MIME[ext] ?? 'application/octet-stream';
@@ -55,7 +58,8 @@ function serveStatic(res: ServerResponse, filePath: string,range?:string): boole
     }
     res.writeHead(200,{...headers,'Content-Length':content.length});res.end(content);return true;
   }
-  res.writeHead(200, { 'Content-Type': mime,'Content-Length':content.length });
+  res.writeHead(200, { 'Content-Type': mime, 'Content-Length': content.length,
+    'Cache-Control': ext === '.html' ? 'no-store' : 'public, max-age=3600' });
   res.end(content);
   return true;
 }
@@ -63,12 +67,16 @@ function serveStatic(res: ServerResponse, filePath: string,range?:string): boole
 // ── HTTP server ────────────────────────────────────────────────────────────────
 /** Distribue les requêtes entre les API et les fichiers des interfaces compilées. */
 const handleRequest: RequestListener = (req, res) => {
-  const url = new URL(req.url ?? '/', `http://localhost`);
+  if (!req.url?.startsWith('/') || req.url.startsWith('//')) { res.writeHead(400).end(); return; }
+  const url = new URL(req.url, 'http://localhost');
 
-  if (url.pathname === '/api/session') {
-    const port = (httpServer.address() as { port: number }).port;
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    res.end(JSON.stringify({ ...sessionAddresses(port, protocol, publicUrl), room: gameServer.room, spectators: spectators.enabled }));
+  if (url.pathname === '/api/session') { sendSessionInfo(req, res); return; }
+
+  if (url.pathname === '/certificat-local.cer' && localNetwork) {
+    const certificate = localNetwork.certificate;
+    res.writeHead(200, { 'Content-Type': 'application/x-x509-ca-cert', 'Content-Length': certificate.length,
+      'Content-Disposition': 'attachment; filename="Crashout-Circuit-CA.cer"', 'Cache-Control': 'no-store' });
+    res.end(certificate);
     return;
   }
 
@@ -79,7 +87,7 @@ const handleRequest: RequestListener = (req, res) => {
 
   // Full server-side journal of pylon events (task 15)
   if (url.pathname === '/api/oz-log') {
-    if (!hostAccess.authorize(req, res, url, protocol === 'https')) return;
+    if (!hostAccess.authorize(req, res, url, encrypted(req))) return;
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(gameServer.rules.tangibleLog));
     return;
@@ -100,7 +108,7 @@ const handleRequest: RequestListener = (req, res) => {
   }
 
   if (url.pathname === '/admin' || url.pathname === '/admin/') {
-    if (!hostAccess.authorize(req, res, url, protocol === 'https', true)) return;
+    if (!hostAccess.authorize(req, res, url, encrypted(req), true)) return;
     if (!serveStatic(res, resolve(CLIENTS_ROOT, 'client-admin/index.html'))) res.writeHead(404).end();
     return;
   }
@@ -118,37 +126,74 @@ const handleRequest: RequestListener = (req, res) => {
     return;
   }
 
-  // Route to the correct client dist folder
-  const phone = url.pathname === '/play' || url.pathname.startsWith('/play/');
-  const prefix = phone ? '/play' : url.pathname.startsWith('/oz') ? '/oz' : '';
-  if (!phone && !hostAccess.authorize(req, res, url, protocol === 'https')) return;
-  const clientDir = resolve(CLIENTS_ROOT, phone ? 'client-phone' : prefix ? 'client-oz' : 'client-table');
-  const filePath = url.pathname.slice(prefix.length) || '/';
-
-  // Serve the file or fall back to index.html (SPA behaviour)
-  const candidate = resolve(clientDir, filePath === '/' ? 'index.html' : filePath.slice(1));
-  if (serveStatic(res, candidate,req.headers.range)) return;
-
-  const index = resolve(clientDir, 'index.html');
-  if (serveStatic(res, index,req.headers.range)) return;
-
-  res.writeHead(404);
-  res.end('Not found');
+  servePage(req, res, url);
 };
+
+function sendSessionInfo(req: IncomingMessage, res: ServerResponse): void {
+  const { port } = httpServer.address() as { port: number };
+  res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  const { baseUrls, ...connection } = announcedAddresses(port);
+  const direct = localMode && !isLoopback(req) ? baseUrls.find(base => req.headers.host?.split(':')[0] === new URL(base).hostname) : undefined;
+  const origins = direct ? [direct, ...baseUrls.filter(base => base !== direct)] : baseUrls;
+  res.end(JSON.stringify({ ...connection, baseUrls: origins, room: gameServer.room, spectators: spectators.enabled }));
+}
+
+function servePage(req: IncomingMessage, res: ServerResponse, url: URL): void {
+  const pathname = url.pathname.replace(/\/$/, '') || '/';
+  const page = pathname === '/' ? 'client-table' : pathname === '/play' ? 'client-phone' : pathname === '/oz' ? 'client-oz' : null;
+  if (!page) {
+    res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end('<!doctype html><meta charset="utf-8"><h1>Page introuvable</h1><a href="/play">Rejoindre la partie</a>');
+    return;
+  }
+  if (page !== 'client-phone' && !hostAccess.authorize(req, res, url, encrypted(req))) return;
+  if (serveStatic(res, resolve(CLIENTS_ROOT, page, 'index.html'))) return;
+  res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end('Interface indisponible. Reconstruisez le projet avec npm run build.');
+}
 
 // ── WebSocket server ───────────────────────────────────────────────────────────
 let transport: ReturnType<typeof createSessionHttp>;
 try {
-  transport = createSessionHttp(handleRequest);
+  transport = createSessionHttp(handleRequest, localMode ? {} : process.env);
 } catch (err) {
   console.error(`[Crashout] ${err instanceof Error ? err.message : err}`);
   process.exit(1);
 }
 const { server: httpServer, protocol, publicUrl } = transport;
-const wss = new WebSocketServer({ server: httpServer, verifyClient: ({ req }: { req: IncomingMessage }) => {
-  const role = socketRole(new URL(req.url ?? '/', 'http://localhost').pathname);
+const wss = new WebSocketServer({ noServer: true, verifyClient: ({ req }: { req: IncomingMessage }) => {
+  const role = socketRole(req.url?.split('?')[0] ?? '');
   return role === 'player' || (role !== null && hostAccess.allow(req));
 } });
+httpServer.on('upgrade', upgrade);
+if (localMode) {
+  try {
+    localNetwork = createLocalNetwork(handleRequest);
+    localNetwork.https.on('upgrade', upgrade);
+    localNetwork.https.once('error', error => {
+      console.error('[Crashout] HTTPS local indisponible. Le salon HTTP reste ouvert.', error);
+      localNetwork?.https.close();
+      localNetwork = undefined;
+    });
+    localNetwork.https.listen(Number(process.env.CRASHOUT_LOCAL_HTTPS_PORT ?? 3444));
+  } catch (error) {
+    console.error('[Crashout] HTTPS local indisponible. Le salon HTTP reste ouvert.', error);
+  }
+}
+
+function upgrade(req: IncomingMessage, socket: Parameters<typeof wss.handleUpgrade>[1], head: Buffer): void {
+  wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
+}
+
+function encrypted(req: IncomingMessage): boolean {
+  return 'encrypted' in req.socket && req.socket.encrypted === true;
+}
+
+function announcedAddresses(port: number) {
+  return localNetwork?.addresses(port) ?? {
+    ...sessionAddresses(port, protocol, publicUrl), localNetwork: localMode, secureBaseUrls: [],
+  };
+}
 const gameServer = new GameServer(wss, {
   developerTools: process.env.CRASHOUT_DEV_TOOLS === '1',
   soloTest: process.env.CRASHOUT_SOLO_TEST === '1',
@@ -164,10 +209,12 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 /** Affiche les adresses de connexion une fois le serveur effectivement lancé. */
 httpServer.listen(PORT, () => {
   const { port } = httpServer.address() as { port: number };
-  const { baseUrls, secure } = sessionAddresses(port, protocol, publicUrl);
+  const { baseUrls, secure } = announcedAddresses(port);
   console.log('\n🏎  Crashout Circuit server running');
-  console.log(`   Administration (privé) : ${hostAccess.url(`${protocol}://localhost:${port}`, '/admin', true)}`);
-  console.log(`   Local:   ${hostAccess.url(`${protocol}://localhost:${port}`)}`);
+  const base = `${protocol}://localhost:${port}`;
+  console.log(`   Administration (privé) : ${hostAccess.url(base, '/admin', !localMode)}`);
+  console.log(`   Local:   ${hostAccess.url(base, '/', !localMode && hostAccess.enabled)}`);
+  if (localMode) console.log(`   Oz (local) : ${base}/oz`);
 
   for (const baseUrl of baseUrls) {
     console.log(`   Network: ${baseUrl}`);
@@ -180,7 +227,8 @@ httpServer.listen(PORT, () => {
     console.log(`   Menu des essais : ${protocol}://localhost:${port}/test`);
     console.log(`   Pilote PC : ${protocol}://localhost:${port}/play?room=${gameServer.room}&keyboard=1`);
   }
-  if (!secure) console.log('   HTTP : capteurs iOS indisponibles. Utilisez une adresse HTTPS pour jouer au gyroscope.');
+  if (localNetwork) console.log('   QR en HTTP. Le lien gyroscope et le certificat sont disponibles sur la page joueurs.');
+  else if (!secure) console.log('   HTTP : capteurs iOS indisponibles. Utilisez une adresse HTTPS pour jouer au gyroscope.');
   console.log(`   Outils de test : ${gameServer.getState().developerTools?'activés':'désactivés'}`);
   console.log(`   Config:  lapsToWin=${config.lapsToWin}, physicsHz=${config.physicsHz}\n`);
 });
