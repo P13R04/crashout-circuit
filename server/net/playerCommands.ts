@@ -40,6 +40,12 @@ export function handlePlayerCommand(rules: GameRules, seat: SeatId, msg: ClientM
     case 'Power':
       if (!pilot) rules.onPower(team, { ...msg, team, role: 'copilot' });
       break;
+    case 'TangiblePrepare':
+    case 'TangiblePlacementCancel':
+    case 'TangibleControl':
+    case 'TangibleRemoved':
+      if (!pilot) applyCopilotTangible(rules, seat, msg);
+      break;
     case 'PadHold':
       if (typeof msg.on !== 'boolean') return false;
       rules.onPadHold({ ...msg, team, role: pilot ? 'pilot' : 'copilot' });
@@ -50,8 +56,30 @@ export function handlePlayerCommand(rules: GameRules, seat: SeatId, msg: ClientM
 
 /** Neutralise les entrées lors d'une déconnexion ou d'un transfert de place. */
 export function releasePlayerControls(rules: GameRules, seat: SeatId): void {
+  if (rules.state.tangiblePlacement?.by === seat) rules.cancelTangiblePlacement();
   const pad = rules.state.repairPads[seat];
   if (isPilotSeat(seat)) rules.inputs[pad.team] = { throttle: 0, steer: 0 };
   pad.held = false;
   pad.startedAt = 0;
+}
+
+/** Autorise la pose partagée sans annuler une annonce faite par un autre opérateur. */
+function applyCopilotTangible(rules: GameRules, seat: SeatId, msg: Extract<ClientMessage,
+  { type: 'TangiblePrepare' | 'TangiblePlacementCancel' | 'TangibleControl' | 'TangibleRemoved' }>): void {
+  const pending = rules.state.tangiblePlacement;
+  switch (msg.type) {
+    case 'TangiblePrepare':
+      if (!pending) rules.prepareTangiblePlacement(msg.id, seat);
+      break;
+    case 'TangiblePlacementCancel':
+      if (pending?.by === seat) rules.cancelTangiblePlacement();
+      break;
+    case 'TangibleControl':
+      if (pending?.id === msg.id && pending.by !== seat) return;
+      if (msg.action === 'activate' || msg.action === 'deactivate') rules.onTangibleControl(msg);
+      break;
+    case 'TangibleRemoved':
+      if (pending?.id !== msg.id || pending.by === seat) rules.onTangibleRemoved(msg);
+      break;
+  }
 }

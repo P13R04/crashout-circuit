@@ -35,7 +35,7 @@ export type DriveMode = 'auto' | 'pedal';
 /** Distingue la pose calculée par les contacts de la pose manuelle sur la carte Oz. */
 export type TangiblePlacementMode = 'manual' | 'touch';
 /** Décrit l’annonce de pose avec son objet, son jeton unique et son expiration. */
-export interface TangiblePlacementRequest { id: TangibleId; token: number; expiresAt: number }
+export interface TangiblePlacementRequest { id: TangibleId; token: number; expiresAt: number; by?: SeatId }
 
 /** Conserve la pose et l’activation d’un objet réel indépendamment des effets qu’il produit. */
 export interface Tangible {

@@ -4,6 +4,7 @@
  */
 import { TEAM_LABEL, playerTeam, roleLabel, SEAT_IDS } from '../client-shared/seatLabels.js';
 import type { Phase, Seat, SeatId, Team } from '../server/types.js';
+import { CopilotScreen } from './copilot/CopilotScreen.js';
 import { PilotScreen } from './pilot/PilotScreen.js';
 import { actionButton as button } from './ui/press.js';
 import { PhoneSession } from './session.js';
@@ -25,7 +26,8 @@ const WAITING: Record<Phase, string> = {
 let team: Team | null = null;
 let screenKey = '';
 
-let pilot: PilotScreen | null = null;
+let pilot: PilotScreen | CopilotScreen | null = null;
+let activeSeat: SeatId | null = null;
 
 /** Ajoute un pictogramme et un statut textuel à un choix d'équipe ou de rôle. */
 function choice(label: string, icon: string, detail: string, color: Team, action: () => void, disabled: boolean) {
@@ -107,11 +109,15 @@ function showSeat(seat: SeatId, state: Phase): void {
 function render(): void {
   if (notice.textContent !== session.notice) notice.textContent = session.notice;
   const { state, seat, room, online, pending } = session;
-  if (seat?.endsWith('-pilot') && state && (state.soloTest || state.phase === 'RACE' || state.phase === 'PAUSED' || state.phase === 'RESULT')) {
-    if (!pilot) {
+  if (seat && state && (state.soloTest || ['RACE', 'PAUSED'].includes(state.phase) || state.phase === 'RESULT' && seat.endsWith('-pilot'))) {
+    if (!pilot || activeSeat !== seat) {
+      pilot?.close();
+      activeSeat = seat;
       const team = playerTeam(seat);
-      pilot = new PilotScreen(session, team, state.soloTest, params.get('keyboard') === '1' && state.soloTest && state.developerTools);
-      title.textContent = state.soloTest ? 'Pilote solo' : `Pilote · Équipe ${TEAM_LABEL[team]}`;
+      pilot = seat.endsWith('-pilot')
+        ? new PilotScreen(session, team, state.soloTest, params.get('keyboard') === '1' && state.soloTest && state.developerTools)
+        : new CopilotScreen(session, seat);
+      title.textContent = state.soloTest ? 'Pilote solo' : `${roleLabel(seat)} · Équipe ${TEAM_LABEL[team]}`;
       document.body.dataset.team = team;
       screen.replaceChildren(pilot.root);
     }
@@ -121,6 +127,7 @@ function render(): void {
   if (pilot) {
     pilot.close();
     pilot = null;
+    activeSeat = null;
     screenKey = '';
   }
   const key = JSON.stringify([room, team, online, seat, pending, state?.soloTest, state?.developerTools, seat ? state?.phase : state?.seats]);

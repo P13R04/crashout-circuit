@@ -7,7 +7,7 @@
  * Façade : l'état de la partie et les points d'entrée restent ici ; la logique est découpée par responsabilité dans server/rules/ (chaque méthode délègue à une fonction du même nom).
  */
 import { startSoloRace } from './session/soloRace.js';
-import type { GameState, Team, Vec2, ItemKind, Car, Wall, TrackGeometry, Tangible, StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg, PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg, TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg, TrackPresentation } from '../types.js';
+import type { GameState, Team, SeatId, Vec2, ItemKind, Car, Wall, TrackGeometry, Tangible, StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg, PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg, TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg, TrackPresentation } from '../types.js';
 import { AutomaticPilot } from '../modes/AutomaticPilot.js';
 import { Tutorial } from '../modes/Tutorial.js';
 import type { RulesHost, TangibleLogEntry } from './session/rulesTypes.js';
@@ -160,7 +160,7 @@ export class GameRules {
   /** Construit la pose inactive de l’objet à sa place dans la réserve neutre. */
   parkedTangible(id:number): Tangible { return tangiblesRules.parkedTangible(this, id); }
   /** Retire l’ancien effet de l’objet et crée une autorisation unique pour ses prochains contacts. */
-  prepareTangiblePlacement(id: number): void { tangiblesRules.prepareTangiblePlacement(this, id); }
+  prepareTangiblePlacement(id: number, by?: SeatId): void { tangiblesRules.prepareTangiblePlacement(this, id, by); }
   /** Supprime l’annonce de pose sans modifier les objets déjà présents. */
   cancelTangiblePlacement(): void { tangiblesRules.cancelTangiblePlacement(this); }
   /** Annule une annonce périmée ou devenue incompatible avec la phase de jeu. */

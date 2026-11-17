@@ -142,3 +142,9 @@ body:has(.pilot-screen) #notice {
 .test-hub nav { display: grid; gap: .55rem; }
 .test-hub .spectator-link { gap: .25rem; }
 .test-hub small, #test-status { color: var(--muted); }
+
+.copilot-screen, .tangible-cards { display: grid; gap: .65rem; }
+.copilot-screen progress { width: 100%; accent-color: var(--accent); }
+.tangible-cards article { padding: .55rem .8rem; border: 1px solid #435569; border-radius: 10px; }
+.tangible-cards article h3, .tangible-cards article p { margin: .4rem 0; }
+.tangible-cards article div { display: flex; flex-wrap: wrap; gap: .4rem; }
