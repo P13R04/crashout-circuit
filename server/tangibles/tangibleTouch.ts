@@ -5,6 +5,7 @@
  * server/rules/GameRules.ts.
  */
 import type { GameParams, Tangible, Vec2 } from '../types.js';
+import type { PanelLayout } from '../layout.js';
 import { validTangiblePose } from './tangibles.js';
 import type { TangiblePose } from './tangibleGeometry.js';
 
@@ -13,7 +14,7 @@ export const TANGIBLE_SETTLE_MS = 90;
 export const TANGIBLE_CONTACT_GRACE_MS = 1600;
 
 /** Calcule et valide le centre du tangible et l’orientation du mur à partir des deux contacts. */
-export function tangibleTouchPose(kind: Tangible['kind'], a: Vec2, b: Vec2, p: GameParams): TangiblePose | null {
+export function tangibleTouchPose(kind: Tangible['kind'], a: Vec2, b: Vec2, p: GameParams, panels?: readonly PanelLayout[]): TangiblePose | null {
   if (!a || !b || ![a.x,a.y,b.x,b.y].every(Number.isFinite)) return null;
   // Les fenêtres HUD sont dessinées au-dessus de la piste : elles ne doivent pas interdire
   // une pose physique qui les recouvre partiellement. Seules les limites réelles de la table comptent.
@@ -23,5 +24,5 @@ export function tangibleTouchPose(kind: Tangible['kind'], a: Vec2, b: Vec2, p: G
   if(distance<10*pxPerMm||distance>180*pxPerMm)return null;
   const pose={x:(a.x+b.x)/2/p.logicalWidth,y:(a.y+b.y)/2/p.logicalHeight,
     angle:kind==='wall'?((Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI+90)%180+180)%180:0};
-  return validTangiblePose(kind,pose,p)?pose:null;
+  return validTangiblePose(kind,pose,p,panels)?pose:null;
 }

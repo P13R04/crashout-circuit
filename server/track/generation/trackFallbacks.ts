@@ -4,6 +4,7 @@
  * Réexporté par server/track/MapGenerator.ts, qui reste la façade de la génération du circuit.
  */
 import type { Vec2, TrackGeometry } from '../../types.js';
+import { PLAY_AREA } from '../../layout.js';
 import { LOOP_N } from './generationLimits.js';
 import { signedArea } from './vectorMath.js';
 import { computeGeometry } from './trackGeometry.js';
@@ -12,13 +13,14 @@ import { validateGeometry } from './trackValidation.js';
 import { buildFromCenterline } from './trackFitting.js';
 
 /** Construit le circuit prédéfini utilisé par le tutoriel et l’essai autonome. */
-export function generatePreset(): TrackGeometry {
+export function generatePreset(area = PLAY_AREA): TrackGeometry {
   const pts: Vec2[] = [];
-  const cx = 960, cy = 540;
+  const cx = 960, cy = (area.y0 + area.y1) / 2;
+  const extraHeight = Math.max(0, (area.y1 - area.y0 - (PLAY_AREA.y1 - PLAY_AREA.y0)) / 2);
   for (let i = 0; i < LOOP_N; i++) {
     const a = (i / LOOP_N) * Math.PI * 2;
     // Rounded bean: ellipse with a gentle dent
-    const rx = 720, ry = 250 + 15 * Math.cos(2 * a);
+    const rx = 720, ry = 250 + extraHeight + 15 * Math.cos(2 * a);
     pts.push({ x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a) * (1 - 0.08 * Math.cos(a)) });
   }
   const loop = signedArea(pts) < 0 ? pts.reverse() : pts;
@@ -27,9 +29,9 @@ export function generatePreset(): TrackGeometry {
 }
 
 /** Essaie plusieurs élargissements d’une boucle de secours avant de la retenir. */
-export function singleLoopTrack(loop: Vec2[], preferredStart?: Vec2): TrackGeometry | null {
+export function singleLoopTrack(loop: Vec2[], preferredStart?: Vec2, area = PLAY_AREA): TrackGeometry | null {
   for (const stretch of [1, 1.2, 1.5, 2, 2.8]) {
-    const geo = buildFromCenterline(loop, stretch, preferredStart);
+    const geo = buildFromCenterline(loop, stretch, preferredStart, area);
     if (validateGeometry(geo)) return geo;
   }
   return null;

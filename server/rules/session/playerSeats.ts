@@ -74,6 +74,13 @@ export class PlayerSeats {
     return seat;
   }
 
+  /** Révoque une place connectée ou réservée et renvoie la connexion qu’elle utilisait. */
+  revoke(seat: SeatId): symbol | null {
+    const owner = this.reservations.get(seat)?.owner ?? null;
+    this.free(seat);
+    return owner;
+  }
+
   /** Libère les réservations expirées et retire leurs noms de l'état public. */
   expire(now: number): void {
     for (const [seat, reservation] of this.reservations) {

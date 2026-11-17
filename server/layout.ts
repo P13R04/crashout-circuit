@@ -109,9 +109,9 @@ export function nearestStationTeam(p: Vec2): Team {
 }
 
 /** Vérifie qu’une position empiète sur un poste ou une zone de commande réservée. */
-export function insidePanel(p: Vec2, margin = 0): boolean {
+export function insidePanel(p: Vec2, margin = 0, panels: readonly PanelLayout[] = PANELS): boolean {
   if(inNeutralUi(p) || [NEUTRAL_CONTROLS,{x:900,y:12,w:120,h:140}].some(/* Inclut la marge demandée autour des commandes communes de l’interface. */ r=>rectContains({x:r.x-margin,y:r.y-margin,w:r.w+margin*2,h:r.h+margin*2},p)))return true;
-  for (const panel of PANELS) {
+  for (const panel of panels) {
     const l = worldToLocal(panel, p.x, p.y);
     if (Math.abs(l.x) <= panelWidth(panel.role, 'pedal') / 2 + margin && Math.abs(l.y) <= PANEL_H / 2 + margin) return true;
   }
@@ -141,16 +141,16 @@ export const PLAY_AREA = { x0: 230, y0: 270, x1: 1680, y1: 810 };
 export const MIN_DIVIDER_PX = 360;
 
 /** Vérifie qu’un point appartient à la surface réservée au dessin du circuit. */
-export function inPlayArea(p: Vec2): boolean {
-  return p.x >= PLAY_AREA.x0 && p.x <= PLAY_AREA.x1 && p.y >= PLAY_AREA.y0 && p.y <= PLAY_AREA.y1;
+export function inPlayArea(p: Vec2, area = PLAY_AREA): boolean {
+  return p.x >= area.x0 && p.x <= area.x1 && p.y >= area.y0 && p.y <= area.y1;
 }
 
 /** Nomme les motifs possibles de refus de la paire de raccords du circuit. */
 export type DividerCheck = 'ok' | 'tooShort' | 'outOfZone';
 
 /** Valide les points de raccord et leur écart avant d’accepter la création. */
-export function checkDivider(a: Vec2, b: Vec2): DividerCheck {
-  if (!inPlayArea(a) || !inPlayArea(b)) return 'outOfZone';
+export function checkDivider(a: Vec2, b: Vec2, area = PLAY_AREA): DividerCheck {
+  if (!inPlayArea(a, area) || !inPlayArea(b, area)) return 'outOfZone';
   if (Math.hypot(b.x - a.x, b.y - a.y) < MIN_DIVIDER_PX) return 'tooShort';
   return 'ok';
 }

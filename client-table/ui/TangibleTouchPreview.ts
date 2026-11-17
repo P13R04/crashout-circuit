@@ -4,6 +4,7 @@
  * Liens : client-table/view.ts, server/tangibles/tangibles.ts, server/tangibles/tangibleTouch.ts.
  * Référencé par client-table/renderer/Renderer.ts, scripts/rendering/visuals.ts.
  */
+import { tablePanels } from '../../server/tableStations.js';
 import type { View } from '../view.js';
 import { tangibleDefinition } from '../../server/tangibles/tangibles.js';
 import { tangibleTouchPose } from '../../server/tangibles/tangibleTouch.js';
@@ -22,7 +23,7 @@ export function drawTangibleTouchPreview(ctx: CanvasRenderingContext2D,view: Vie
     }
   if(points.length===2){
       ctx.setLineDash([5,6]);ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);ctx.lineTo(points[1].x,points[1].y);ctx.stroke();ctx.setLineDash([]);
-      const pose=tangibleTouchPose(definition.kind,points[0],points[1],s.params);
+      const pose=tangibleTouchPose(definition.kind,points[0],points[1],s.params, tablePanels(s));
       if(pose){
         ctx.translate(pose.x*s.params.logicalWidth,pose.y*s.params.logicalHeight);ctx.rotate(pose.angle*Math.PI/180);
         ctx.fillStyle='#9ef4ed25';

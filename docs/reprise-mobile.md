@@ -77,3 +77,18 @@ Le [menu des essais locaux](http://localhost:3000/test) réunit la table, le pil
 En mode **Avance auto**, le gyroscope dirige la voiture en paysage. **Mode pédale** donne accès à deux boutons de braquage et à une commande d’accélération. Le gyroscope reste utilisable dans ce mode. Le volant central suit la commande de direction et le cockpit occupe tout le cadre du navigateur. **Réglages** donne accès au plein écran natif quand le navigateur le propose, au recalibrage et, en essai solo, au choix de l’ambiance.
 
 Pour comparer les thèmes, change d’ambiance dans **Réglages** pendant une course, puis passe en poursuite pour regarder le décor. Les objets animés restent dans des emplacements extérieurs à la chaussée, les nuances de bordure suivent la géométrie du serveur et les effets d’ambiance s’atténuent avec la préférence de mouvement réduit ou la baisse de qualité.
+
+## Salon à plusieurs et accès hôte
+
+Au démarrage sans `CRASHOUT_SOLO_TEST`, la table présente **Tutoriel** et **Course**. Dans ses réglages, **Course rapide** lance le circuit prédéfini. Les téléphones rejoignent la même instance depuis le QR affiché par la table. Chacun choisit une équipe et un rôle. Seuls les postes physiques sans téléphone restent affichés en partie mixte. Quand les quatre postes sont connectés au moment de préparer le circuit, la table retire les panneaux et réserve une surface agrandie pour la manche.
+
+Le pilote mobile choisit **Direction · Pédales** ou **Direction · Gyroscope** dans ses réglages. Le volant s’affiche dans le cockpit. Le copilote arme le bonus et maintient son bouton de réparation. Les gestes de bonus et la pose annoncée des tangibles se font sur la table.
+
+Le lien privé **Administration** imprimé dans Terminal ouvre les réglages du salon desservi par cette adresse. **Retour à l’accueil** conserve les joueurs connectés. **Réinitialiser le salon** libère les places et conserve le QR. **Déconnecter** libère une place, y compris une réservation hors ligne. Les instances utilisent des accès hôte distincts.
+
+Exemple de lancement sur deux ports HTTPS, après `npm run build` et avec les chemins de certificats définis dans le terminal. La première instance est le salon à plusieurs et la deuxième est l’essai solo avec son menu `/test`.
+
+```bash
+PORT=3444 CRASHOUT_SPECTATORS=1 npm start
+PORT=3443 CRASHOUT_SPECTATORS=1 CRASHOUT_SOLO_TEST=1 CRASHOUT_DEV_TOOLS=1 npm start
+```

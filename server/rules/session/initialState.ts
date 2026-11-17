@@ -48,6 +48,7 @@ export function createInitialState(): GameState {
       'B-pilot': { taken: false, connected: false },
       'B-copilot': { taken: false, connected: false },
     },
+    wideTable: false,
     tick: 0,
     cars: { A: makeCar('A'), B: makeCar('B') },
     walls: [],

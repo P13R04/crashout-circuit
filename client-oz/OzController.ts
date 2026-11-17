@@ -4,6 +4,7 @@
  * Liens : server/layout.ts, server/types.ts, server/tangibles/tangibles.ts, client-shared/tangibleGeometry.ts.
  * Référencé par client-oz/main.ts, scripts/acceptance.ts, scripts/game/public-session.ts.
  */
+import { tablePanels } from '../server/tableStations.js';
 import type { GameState, Tangible, Team } from '../server/types.js';
 import { tangibleArc, tangibleDefinition, validTangiblePose, type TangibleId } from '../server/tangibles/tangibles.js';
 import { type TangiblePose } from '../client-shared/tangibleGeometry.js';
@@ -112,7 +113,7 @@ export class OzController {
     const definition = tangibleDefinition(id);
     if (!this.enabled || !this.state || !definition) return false;
     const before = this.state.tangibles[id];
-    if (!validTangiblePose(definition.kind, pose, this.state.params)) {
+    if (!validTangiblePose(definition.kind, pose, this.state.params, tablePanels(this.state))) {
       this.notice = 'Gardez l’objet hors des postes joueurs et des bords.';
       this.changed(); return false;
     }

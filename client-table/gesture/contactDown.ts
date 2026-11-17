@@ -3,8 +3,9 @@
  * Liens : client-table/gesture/gestureTypes.ts, server/layout.ts, client-table/renderer/Renderer.ts.
  * Fonctions appelées par les méthodes de GestureRecognizer (server/GestureRecognizer.ts), qui garde l'état et délègue ici.
  */
+import { tablePanels } from '../../server/tableStations.js';
 import { presentingTrack } from '../../server/track/trackPresentation.js';
-import { LOGICAL_W, PANELS, padLocal, panelWidth, PANEL_H, PEDAL_LOCAL, POWER_BTN_LOCAL, worldToLocal, steerArea as steerAreaForState, inTangibleDepot, inNeutralUi } from '../../server/layout.js';
+import { LOGICAL_W, padLocal, panelWidth, PANEL_H, PEDAL_LOCAL, POWER_BTN_LOCAL, worldToLocal, steerArea as steerAreaForState, inTangibleDepot, inNeutralUi } from '../../server/layout.js';
 import { trackTangent, nearestTrackEdge } from '../../server/geometry.js';
 import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON } from '../renderer/Renderer.js';
 import { inTutorialCard, tutorialButtonAt, tutorialIdentifying } from '../ui/TutorialOverlay.js';
@@ -110,7 +111,7 @@ export function onDown(recognizer: GestureRecognizer, e: PointerEvent): void {
   if(state.tutorial?.finished||inTutorialCard(state,p)){c.zone='rejected';return;}
 
   // 3 — pads and buttons of the corner panels
-  for (const panel of PANELS) {
+  for (const panel of tablePanels(state)) {
     const l = worldToLocal(panel, p.x, p.y);
     if (panel.role === 'pilot') {
       if (state.sessionMode === 'tangibles-test' && Math.abs(l.x) <= panelWidth('pilot',state.driveMode[panel.team]) / 2 && Math.abs(l.y) <= PANEL_H / 2) {
@@ -163,7 +164,7 @@ export function onDown(recognizer: GestureRecognizer, e: PointerEvent): void {
     if(e.pointerType==='mouse'){
       c.consumed=true;
       if(recognizer.placementMousePoint){
-        const valid=!!tangibleTouchPose(tangibleDefinition(pendingPlacement.id)!.kind,recognizer.placementMousePoint,p,state.params);
+        const valid=!!tangibleTouchPose(tangibleDefinition(pendingPlacement.id)!.kind,recognizer.placementMousePoint,p,state.params,tablePanels(state));
         recognizer.view.tangibleTouch={points:[recognizer.placementMousePoint,p],valid};
         recognizer.sendTangiblePlacement(recognizer.placementMousePoint,p);
         recognizer.placementMousePoint=null;

@@ -119,8 +119,8 @@ body:has(.pilot-screen) #notice {
 .pilot-screen button.pilot-throttle { right: var(--hud-right); bottom: calc(var(--hud-bottom) + 50px); }
 
 .pilot-wheel {
-  --size: clamp(64px, 32dvh, 148px);
-  position: absolute; z-index: 2; top: 50%; left: 50%; width: var(--size); height: var(--size);
+  --size: clamp(124px, 52dvh, 270px);
+  position: absolute; z-index: 2; top: 84%; left: 50%; width: var(--size); height: var(--size);
   transform: translate(-50%, -50%) rotate(var(--steer, 0deg)); pointer-events: none;
   transition: transform .055s linear; filter: drop-shadow(0 5px 6px #03070bbb);
 }
@@ -148,3 +148,6 @@ body:has(.pilot-screen) #notice {
 .tangible-cards article { padding: .55rem .8rem; border: 1px solid #435569; border-radius: 10px; }
 .tangible-cards article h3, .tangible-cards article p { margin: .4rem 0; }
 .tangible-cards article div { display: flex; flex-wrap: wrap; gap: .4rem; }
+.tutorial-lesson { border-left: 3px solid var(--accent); background: var(--card); padding: .6rem .75rem; margin: 0; }
+
+.pilot-screen:has(.pilot-viewport:not([data-camera='cockpit'])) .pilot-wheel { display: none; }

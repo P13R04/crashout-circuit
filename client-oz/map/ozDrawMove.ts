@@ -3,6 +3,7 @@
  * Liens : client-oz/ozView.ts, client-shared/trackVisibility.ts, server/layout.ts.
  * Fonctions appelées par draw() de client-oz/map/ozDraw.ts (client-oz/map/OzMap.ts garde l'état et délègue).
  */
+import { tablePanels } from '../../server/tableStations.js';
 import { wallEndpoints, wallCorners } from '../../client-shared/tangibleGeometry.js';
 import { validTangiblePose } from '../../server/tangibles/tangibles.js';
 import type { DrawContext } from './ozDrawContext.js';
@@ -18,7 +19,7 @@ export function drawMovePreview(dc: DrawContext): void {
       if (ozMap.movingWallStep === 0) {
         const angle = ozMap.movingWallDraftAngle ?? t.angle;
         const corners = wallCorners(p, angle, s.params.wallLengthPx, s.params.wallWidthPx);
-        const isValid = validTangiblePose('wall', { x: p.x / W, y: p.y / H, angle }, s.params);
+        const isValid = validTangiblePose('wall', { x: p.x / W, y: p.y / H, angle }, s.params, tablePanels(s));
         const strokeColor = isValid ? '#00e5ff' : '#f59e0b';
         const fillColor = isValid ? 'rgba(0, 229, 255, 0.35)' : 'rgba(245, 158, 11, 0.35)';
 
@@ -77,7 +78,7 @@ export function drawMovePreview(dc: DrawContext): void {
 
         // Wall preview rectangle (120 px length)
         const corners = wallCorners(center, angle, s.params.wallLengthPx, s.params.wallWidthPx);
-        const isValid = validTangiblePose('wall', { x: center.x / W, y: center.y / H, angle }, s.params);
+        const isValid = validTangiblePose('wall', { x: center.x / W, y: center.y / H, angle }, s.params, tablePanels(s));
         const wallStroke = isValid ? '#00e5ff' : '#f59e0b';
         const wallFill = isValid ? 'rgba(0, 229, 255, 0.45)' : 'rgba(245, 158, 11, 0.35)';
 

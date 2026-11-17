@@ -5,7 +5,7 @@
  * Référencé notamment par client-oz/OzController.ts, client-oz/map/OzMap.ts, client-oz/main.ts.
  */
 import type { ArcElectric, Tangible, Vec2 } from '../types.js';
-import { insidePanel, PANELS, PANEL_H, panelWidth, localToWorld } from '../layout.js';
+import { insidePanel, PANELS, PANEL_H, panelWidth, localToWorld, type PanelLayout } from '../layout.js';
 import { segmentsIntersect } from '../geometry.js';
 import { wallCorners, type TangibleDimensions, type TangiblePose } from './tangibleGeometry.js';
 
@@ -32,7 +32,7 @@ export function tangibleArc(tangibles: Record<number, Tangible>, params: {
 }
 
 /** Écarte les poses non finies ou incompatibles avec les postes des joueurs. */
-export function validTangiblePose(kind: Tangible['kind'], pose: TangiblePose, p: TangibleDimensions): boolean {
+export function validTangiblePose(kind: Tangible['kind'], pose: TangiblePose, p: TangibleDimensions, panels: readonly PanelLayout[] = PANELS): boolean {
   if (![pose.x, pose.y, pose.angle].every(Number.isFinite)) return false;
   const at = { x: pose.x * p.logicalWidth, y: pose.y * p.logicalHeight };
   // Allow objects anywhere on the table, including slightly outside the table/circuit edges
@@ -42,8 +42,8 @@ export function validTangiblePose(kind: Tangible['kind'], pose: TangiblePose, p:
   const length = kind === 'wall' ? p.wallLengthPx : p.pylonBasePx;
   const width = kind === 'wall' ? p.wallWidthPx : p.pylonBasePx;
   const corners = wallCorners(at, pose.angle, length, width);
-  if (insidePanel(at) || corners.some(/* Signale un coin du tangible qui empiète sur un poste joueur. */ v => insidePanel(v))) return false;
-  for (const panel of PANELS) {
+  if (insidePanel(at, 0, panels) || corners.some(/* Signale un coin du tangible qui empiète sur un poste joueur. */ v => insidePanel(v, 0, panels))) return false;
+  for (const panel of panels) {
     const panelCorners = [[-1,-1],[1,-1],[1,1],[-1,1]].map(/* Construit les coins du poste dans son orientation réelle pour tester le recouvrement. */ ([x,y]) => localToWorld(panel, x*panelWidth(panel.role)/2,y*PANEL_H/2));
     for (let i = 0; i < 4; i++) {
       for (let j = 0; j < 4; j++) {

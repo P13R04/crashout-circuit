@@ -4,6 +4,7 @@
  * Fonctions appelées par les méthodes de GestureRecognizer (server/GestureRecognizer.ts), qui garde l'état et délègue ici.
  */
 import type { GameState, Team, Vec2 } from '../../../server/types.js';
+import { playAreaFor } from '../../../server/tableStations.js';
 import { checkDivider, inPlayArea } from '../../../server/layout.js';
 import { showDividerRefusal, showMapError, showMapNotice } from '../../view.js';
 import { activeMapTeam, inMapAnchor } from '../../../server/track/mapCreation.js';
@@ -12,15 +13,16 @@ import type { GestureRecognizer } from '../GestureRecognizer.js';
 /** Enregistre les points P1 et P2 puis demande leur validation au serveur. */
 export function placeDividerPoint(recognizer: GestureRecognizer, p: Vec2): void {
   const view = recognizer.view;
-  if (view.dividerSubmitting) return;
-  if (!inPlayArea(p)) { showDividerRefusal(view, 'outOfZone'); return; }
+  if (view.dividerSubmitting || !recognizer.state) return;
+  const area = playAreaFor(recognizer.state);
+  if (!inPlayArea(p, area)) { showDividerRefusal(view, 'outOfZone'); return; }
   const first = view.pendingDivider[0];
   if (!first) {
     view.pendingDivider = [{ ...p }];
     view.mapNotice = null;
     return;
   }
-  const verdict = checkDivider(first, p);
+  const verdict = checkDivider(first, p, area);
   if (verdict !== 'ok') { showDividerRefusal(view, verdict); return; }
   view.dividerSubmitting = true;
   view.mapNotice = null;

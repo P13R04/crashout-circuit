@@ -13,6 +13,7 @@ export default defineConfig({
     outDir: 'dist/clients',
     rollupOptions: {
       input: {
+        admin: resolve(__dirname, 'client-admin/index.html'),
         table:  resolve(__dirname, 'client-table/index.html'),
         oz: resolve(__dirname, 'client-oz/index.html'),
         test: resolve(__dirname, 'client-phone/test.html'),

@@ -257,6 +257,8 @@ export interface GameState {
   /** Driving scheme selected independently by each pilot. */
   driveMode: Record<Team, DriveMode>;
   seats: Record<SeatId, Seat>;
+  /** Circuit élargi réservé au début de la manche lorsque les quatre joueurs sont sur téléphone. */
+  wideTable: boolean;
   tick: number;
   cars: Record<Team, Car>;
   walls: Wall[];

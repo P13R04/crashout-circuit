@@ -7,6 +7,7 @@ import type { Team, Vec2, TrackGeometry, BorderPullMsg } from '../../types.js';
 import { config } from '../../config.js';
 import { dist, nearestOnTrack, trackTangent, clampToTrackRibbon } from '../../geometry.js';
 import { rebuildEdges } from '../../track/MapGenerator.js';
+import { tablePanels } from '../../tableStations.js';
 import { nearestStationTeam, insidePanel, TANGIBLE_DEPOT, rectContains } from '../../layout.js';
 import { clamp } from '../session/rulesBasics.js';
 import type { GameRules } from '../GameRules.js';
@@ -51,12 +52,13 @@ function deformTrack(rules: GameRules, at: Vec2, drag: Vec2, team: Team, gesture
   let amount=Math.min(config.trackDeformMaxShiftPx,projected);
   // One uniform limit preserves the requested shape and clears the screen/UI.
   /** Vérifie que le déplacement proposé conserve toute la portion déformée hors des commandes et des bords. */
+  const panels = tablePanels(rules.state);
   const safe=(shift:number)=>{
     const n=track.baseCenterline.length,radius=config.trackDeformRadiusPoints;
     for(let offset=-radius;offset<=radius;offset++){
       const i=(index+offset+n)%n,base=track.baseCenterline[i],f=Math.cos(offset/(radius+1)*Math.PI/2);
       const p={x:base.x+outward.x*shift*f,y:base.y+outward.y*shift*f},margin=track.widths[i]/2+12;
-      if(p.x<margin||p.x>config.logicalWidth-margin||p.y<margin||p.y>config.logicalHeight-margin||insidePanel(p,margin)
+      if(p.x<margin||p.x>config.logicalWidth-margin||p.y<margin||p.y>config.logicalHeight-margin||insidePanel(p,margin,panels)
         ||rectContains({x:TANGIBLE_DEPOT.x-margin,y:TANGIBLE_DEPOT.y-margin,w:TANGIBLE_DEPOT.w+2*margin,h:TANGIBLE_DEPOT.h+2*margin},p))return false;
     }
     return true;

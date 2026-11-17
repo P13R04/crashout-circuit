@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import { createSessionHttp, sessionAddresses } from './net/sessionHttp.js';
 import { GameServer } from './net/GameServer.js';
 import { audioByteRange } from './net/audioHttp.js';
+import { adminRequest } from './net/adminHttp.js';
 import { HostAccess, socketRole } from './net/hostAccess.js';
 import { SpectatorStream } from './net/SpectatorStream.js';
 import { config } from './config.js';
@@ -92,6 +93,18 @@ const handleRequest: RequestListener = (req, res) => {
     return;
   }
 
+  if (url.pathname === '/api/admin') {
+    if (!hostAccess.allowPrivate(req)) { res.writeHead(401).end(); return; }
+    void adminRequest(req, res, gameServer);
+    return;
+  }
+
+  if (url.pathname === '/admin' || url.pathname === '/admin/') {
+    if (!hostAccess.authorize(req, res, url, protocol === 'https', true)) return;
+    if (!serveStatic(res, resolve(CLIENTS_ROOT, 'client-admin/index.html'))) res.writeHead(404).end();
+    return;
+  }
+
   if (url.pathname === '/test' || url.pathname === '/test/') {
     const { soloTest, developerTools } = gameServer.getState();
     if (soloTest && developerTools && serveStatic(res, resolve(CLIENTS_ROOT, 'client-phone/test.html'))) return;
@@ -153,6 +166,7 @@ httpServer.listen(PORT, () => {
   const { port } = httpServer.address() as { port: number };
   const { baseUrls, secure } = sessionAddresses(port, protocol, publicUrl);
   console.log('\n🏎  Crashout Circuit server running');
+  console.log(`   Administration (privé) : ${hostAccess.url(`${protocol}://localhost:${port}`, '/admin', true)}`);
   console.log(`   Local:   ${hostAccess.url(`${protocol}://localhost:${port}`)}`);
 
   for (const baseUrl of baseUrls) {

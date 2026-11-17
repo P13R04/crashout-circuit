@@ -5,9 +5,10 @@
  * client-table/themes/themes.ts et les utilitaires importés ci-dessous.
  * Référencé par client-table/themes/neon/NeonEffects.ts, client-table/themes/neon/NeonObjects.ts, client-table/renderer/Renderer.ts.
  */
+import { tablePanels } from '../../server/tableStations.js';
 import type { GameState, Team, Car } from '../../server/types.js';
 import {
-  PANELS, PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, ITEM_SLOT_LOCAL, steerArea,
+  PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, ITEM_SLOT_LOCAL, steerArea,
   type PanelLayout,
 } from '../../server/layout.js';
 import { TEAM_COLOR, type View } from '../view.js';
@@ -69,7 +70,7 @@ export class HUD {
   /** Dessine les quatre postes dans leur orientation avec les commandes de chaque rôle. */
   draw(ctx: Ctx, state: GameState, view: View): void {
     const now = state.phase === 'PAUSED' ? state.pausedAt : view.now();
-    for (const panel of PANELS) {
+    for (const panel of tablePanels(state)) {
       ctx.save();
       ctx.translate(panel.cx, panel.cy);
       ctx.rotate(panel.rot);

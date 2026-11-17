@@ -1,6 +1,7 @@
 /** Commandes simples de réparation, armement et pose du copilote. */
 import type { GameState, SeatId } from '../../server/types.js';
 import { playerTeam } from '../../client-shared/seatLabels.js';
+import { mobileLesson } from '../../client-shared/tutorialLessons.js';
 import { createControls } from '../../client-shared/controls.js';
 import { armedPickup } from '../../server/rules/armedPickup.js';
 import { actionButton, holdButton } from '../ui/press.js';
@@ -10,6 +11,7 @@ import { TangibleCards } from './TangibleCards.js';
 export class CopilotScreen {
   readonly root = document.createElement('section');
   private readonly stock = document.createElement('p');
+  private readonly lesson = document.createElement('p');
   private readonly progress = document.createElement('progress');
   private readonly power;
   private readonly repair;
@@ -23,10 +25,12 @@ export class CopilotScreen {
     this.power = actionButton('Armer le bonus', () => controls.power(team), 'primary power');
     this.repair = holdButton('Maintenir pour réparer', on => session.send({ type: 'PadHold', on, team, role: 'copilot' }));
     this.stock.setAttribute('role', 'status');
+    this.lesson.setAttribute('role', 'status');
+    this.lesson.className = 'tutorial-lesson';
     this.progress.max = 1;
     this.progress.setAttribute('aria-label', 'Progression de la réparation');
     this.tangibles = new TangibleCards(session, seat);
-    this.root.append(this.stock, this.power, this.repair.button, this.progress, this.tangibles.root);
+    this.root.append(this.lesson, this.stock, this.power, this.repair.button, this.progress, this.tangibles.root);
     document.addEventListener('visibilitychange', this.onVisibility);
     window.addEventListener('pagehide', this.repair.release);
   }
@@ -42,9 +46,10 @@ export class CopilotScreen {
     this.ready = ready;
     this.power.disabled = !ready;
     const item = car.heldItem === 'boost' ? '⚡ Boost' : car.heldItem === 'slingshot' ? '◈ Lance-pierre' : 'Réserve vide';
-    const identify = state.tutorial?.steps[state.tutorial.teams[team].step] === 'identify';
+    const lesson = mobileLesson(state, team, 'copilot');
+    if (lesson !== this.lesson.textContent) this.lesson.textContent = lesson;
+    this.lesson.hidden = !lesson;
     const info = state.phase === 'PAUSED' ? 'Partie en pause.'
-      : identify ? 'Maintiens Réparer pour confirmer ton poste.'
       : car.itemArmed ? `${item} armé · Réalise le geste sur la table.`
       : armed ? `${item} · Un bonus est déjà armé.` : item;
     if (info !== this.stock.textContent) this.stock.textContent = info;

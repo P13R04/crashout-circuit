@@ -277,6 +277,7 @@ export type ClientMessage =
   | StartSoloMsg
   | RaceSettingsMsg
   | SetThemeMsg
+  | (BaseMsg & { type: 'StartPreset' })
   | StrokeDrawMsg
   | GenerateTrackMsg
   | BeginRaceMsg

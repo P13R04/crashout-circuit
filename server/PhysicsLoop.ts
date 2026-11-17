@@ -5,6 +5,7 @@
  * server/rules/raceSettings.ts.
  * Référencé notamment par server/net/GameServer.ts, scripts/acceptance.ts, scripts/game/autopilot.ts.
  */
+import { isPhoneStation } from './tableStations.js';
 import type { GameState, Team, Car } from './types.js';
 import { config } from './config.js';
 import { speedScale } from './rules/raceSettings.js';
@@ -98,7 +99,7 @@ export class PhysicsLoop {
     const automatic = this.state.sessionMode === 'tangibles-test';
     const isPedal = !automatic && this.state.driveMode[car.team] === 'pedal';
     // Sur téléphone, l'avance auto est demandée par un volant prêt et cesse à sa neutralisation.
-    const phonePilot = this.state.seats?.[`${car.team}-pilot`]?.connected;
+    const phonePilot = isPhoneStation(this.state, car.team, 'pilot');
     const throttle = stunned ? 0 : (automatic || isPedal || phonePilot || this.state.soloTest) ? input.throttle : 1;
     const steer = stunned ? 0 : input.steer;
 

@@ -3,6 +3,7 @@
  * Liens : server/PhysicsLoop.ts, server/modes/AutomaticPilot.ts, server/track/trackPresentation.ts.
  * Fonctions appelées par les méthodes de GameRules (server/rules/GameRules.ts), qui garde l'état et délègue ici.
  */
+import { isPhoneStation } from '../../tableStations.js';
 import type { TrackPresentation } from '../../types.js';
 import { presentingTrack } from '../../track/trackPresentation.js';
 import { clampToTrackRibbon } from '../../geometry.js';
@@ -30,7 +31,7 @@ export function startRace(rules: GameRules, track = generatePreset(), waitForPla
     car.pos = { x: sp.x, y: sp.y };
     car.angle = Math.atan2(tan.y, tan.x);
     s.cars[team] = car;
-    const phonePilot = s.seats?.[`${team}-pilot`]?.connected;
+    const phonePilot = isPhoneStation(s, team, 'pilot');
     rules.inputs[team] = { throttle: s.soloTest || phonePilot || s.driveMode[team] === 'pedal' ? 0 : 1, steer: 0 };
     rules.lastPilotInputAt[team] = rules.now;
     s.repairProgress[team] = 0;

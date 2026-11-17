@@ -3,6 +3,7 @@
  * Liens : server/PhysicsLoop.ts, server/rules/raceSettings.ts.
  * Fonctions appelées par les méthodes de GameRules (server/rules/GameRules.ts), qui garde l'état et délègue ici.
  */
+import { isPhoneStation } from '../../tableStations.js';
 import type { Team, PilotInputMsg, RaceSettingsMsg } from '../../types.js';
 import { config } from '../../config.js';
 import { TEAMS, clamp } from '../session/rulesBasics.js';
@@ -60,7 +61,7 @@ export function expirePilotInputs(rules: GameRules, now: number): void {
   for (const team of TEAMS) {
     if (now - rules.lastPilotInputAt[team] <= config.pilotInputTimeoutMs) continue;
     rules.inputs[team].steer = 0;
-    if (rules.state.soloTest || rules.state.seats?.[`${team}-pilot`]?.connected) {
+    if (rules.state.soloTest || isPhoneStation(rules.state, team, 'pilot')) {
       rules.inputs[team].throttle = 0;
     }
   }

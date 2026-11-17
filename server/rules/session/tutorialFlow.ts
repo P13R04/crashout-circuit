@@ -5,6 +5,7 @@
  */
 import type { Team } from '../../types.js';
 import { config } from '../../config.js';
+import { lockTableFormat, playAreaFor } from '../../tableStations.js';
 import { generatePreset } from '../../track/MapGenerator.js';
 import { Tutorial, TUTORIAL_ARM_WINDOW_S } from '../../modes/Tutorial.js';
 import { COUNTDOWN_MS, TEAMS } from './rulesBasics.js';
@@ -47,7 +48,8 @@ export function startTutorial(rules: GameRules, mode: 'table' | 'pc' = 'table'):
     /** Transmet le retour de jeu au serveur et à la validation du tutoriel. */
     feedback: (kind, x, y, team) => rules.host.feedback(kind, x, y, team),
   }, mode);
-  rules.startRace(generatePreset());
+  lockTableFormat(rules.state);
+  rules.startRace(generatePreset(playAreaFor(rules.state)));
 }
 
 /** Fait avancer l’équipe demandée lorsqu’une étape du tutoriel doit être débloquée. */

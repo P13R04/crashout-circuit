@@ -4,6 +4,7 @@
  * Fonctions appelées par les méthodes de GameRules (server/rules/GameRules.ts), qui garde l'état et délègue ici.
  */
 import type { Vec2, Wall, Tangible, SeatId, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TangiblePlacementMode, TangibleTouchPlacedMsg } from '../../types.js';
+import { tablePanels } from '../../tableStations.js';
 import { config } from '../../config.js';
 import { inTangibleDepot, depotPose } from '../../layout.js';
 import { TUTORIAL_OBSTACLE_PREFIX } from '../../modes/Tutorial.js';
@@ -53,7 +54,7 @@ export function onTangibleTouchPlaced(rules: GameRules, msg: TangibleTouchPlaced
   const s=rules.state, pending=s.tangiblePlacement, definition=tangibleDefinition(msg.id);
   if(s.tangiblePlacementMode!=='touch'||!pending||!definition||pending.id!==msg.id||pending.token!==msg.token
 )return;
-  const pose=tangibleTouchPose(definition.kind,msg.a,msg.b,s.params);
+  const pose=tangibleTouchPose(definition.kind,msg.a,msg.b,s.params,tablePanels(s));
   if(!pose)return;
   // The single-use grant is consumed atomically; delayed/replayed packets cannot move it.
   s.tangiblePlacement=null;
@@ -91,7 +92,7 @@ export function onTangibleMoved(rules: GameRules, msg: TangibleMovedMsg): void {
   if (!definition || !['READY', 'RACE', 'PAUSED'].includes(rules.state.phase)
     || ![msg.x, msg.y, msg.angle].every(Number.isFinite) || msg.x<0 || msg.x>1 || msg.y<0 || msg.y>1
     || (msg.active !== undefined && typeof msg.active !== 'boolean')) return;
-  if (!validTangiblePose(definition.kind, msg, config)) return;
+  if (!validTangiblePose(definition.kind, msg, config, tablePanels(rules.state))) return;
   const old = rules.state.tangibles[id];
   const { x, y } = msg, angle = ((msg.angle % 360) + 360) % 360;
   const parked=inTangibleDepot({x:x*config.logicalWidth,y:y*config.logicalHeight});

@@ -14,21 +14,21 @@ import { placeFeatures } from './trackFeatures.js';
  * Replace et réduit si nécessaire le circuit pour le maintenir dans la surface de jeu.
  * La mise à l’échelle est uniforme et ne fait que réduire la boucle, ce qui conserve ses intersections.
  */
-export function fitToPlayArea(pts: Vec2[]): Vec2[] {
+export function fitToPlayArea(pts: Vec2[], area = PLAY_AREA): Vec2[] {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of pts) {
     minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
     minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
   }
-  if (minX >= PLAY_AREA.x0 && maxX <= PLAY_AREA.x1 && minY >= PLAY_AREA.y0 && maxY <= PLAY_AREA.y1) return pts;
+  if (minX >= area.x0 && maxX <= area.x1 && minY >= area.y0 && maxY <= area.y1) return pts;
   const w = Math.max(maxX - minX, 1);
   const h = Math.max(maxY - minY, 1);
-  const s = Math.min(1, (PLAY_AREA.x1 - PLAY_AREA.x0) / w, (PLAY_AREA.y1 - PLAY_AREA.y0) / h);
+  const s = Math.min(1, (area.x1 - area.x0) / w, (area.y1 - area.y0) / h);
   const cx = (minX + maxX) / 2;
   const cy = (minY + maxY) / 2;
   const nw = w * s, nh = h * s;
-  const tx = Math.min(Math.max(cx, PLAY_AREA.x0 + nw / 2), PLAY_AREA.x1 - nw / 2);
-  const ty = Math.min(Math.max(cy, PLAY_AREA.y0 + nh / 2), PLAY_AREA.y1 - nh / 2);
+  const tx = Math.min(Math.max(cx, area.x0 + nw / 2), area.x1 - nw / 2);
+  const ty = Math.min(Math.max(cy, area.y0 + nh / 2), area.y1 - nh / 2);
   return pts.map(/* Recentre et redimensionne chaque point dans la surface de jeu. */ p => ({ x: tx + (p.x - cx) * s, y: ty + (p.y - cy) * s }));
 }
 
@@ -74,8 +74,8 @@ export function stretchMinorAxis(pts: Vec2[], factor: number): Vec2[] {
 }
 
 /** Lisse et ajuste une ligne centrale avant d’en accepter la géométrie. */
-export function buildFromCenterline(raw: Vec2[], stretch = 1, preferredStart?: Vec2): TrackGeometry {
+export function buildFromCenterline(raw: Vec2[], stretch = 1, preferredStart?: Vec2, area = PLAY_AREA): TrackGeometry {
   let loop = relax(catmullRom(raw), 40);
   if (stretch !== 1) loop = stretchMinorAxis(loop, stretch);
-  return placeFeatures(computeGeometry(fitToPlayArea(loop)), false, preferredStart);
+  return placeFeatures(computeGeometry(fitToPlayArea(loop, area)), false, preferredStart);
 }

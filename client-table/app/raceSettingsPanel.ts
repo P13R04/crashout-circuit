@@ -15,6 +15,8 @@ export function setupRaceSettingsPanel(app: TableApp): { syncRaceOptions: () => 
   const timerInput=document.getElementById('race-timer') as HTMLInputElement;
   const minutesInput=document.getElementById('race-minutes') as HTMLInputElement;
   const timerDuration=document.getElementById('timer-duration')!;
+  const quickRace = document.querySelector<HTMLButtonElement>('#quick-race')!;
+  quickRace.addEventListener('click', () => { conn.send({ type: 'StartPreset' }); pcTools.open = false; });
   const raceOptions=document.getElementById('race-options')!;
   /** Envoie le niveau de difficulté sélectionné au serveur. */
   difficultyInput.addEventListener('change',()=>conn.send({type:'RaceSettings',difficulty:difficultyInput.value}));
@@ -27,6 +29,7 @@ export function setupRaceSettingsPanel(app: TableApp): { syncRaceOptions: () => 
   /** Répercute les réglages du serveur dans le menu sans écraser un champ en cours de saisie. */
   function syncRaceOptions(): void {
     const s=view.state;if(!s)return;
+    quickRace.hidden = s.phase !== 'LOBBY' || s.soloTest;
     raceOptions.hidden=!!s.tutorial||s.phase==='RESULT';
     const editable=!s.tutorial&&s.phase!=='RESULT';
     difficultyInput.disabled=!editable;lapsInput.disabled=!editable||s.sessionMode==='tangibles-test';timerInput.disabled=lapsInput.disabled;

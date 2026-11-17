@@ -109,7 +109,7 @@ function showSeat(seat: SeatId, state: Phase): void {
 function render(): void {
   if (notice.textContent !== session.notice) notice.textContent = session.notice;
   const { state, seat, room, online, pending } = session;
-  if (seat && state && (state.soloTest || ['RACE', 'PAUSED'].includes(state.phase) || state.phase === 'RESULT' && seat.endsWith('-pilot'))) {
+  if (seat && state && (state.soloTest || ['RACE', 'PAUSED'].includes(state.phase) || ['READY', 'RESULT'].includes(state.phase) && seat.endsWith('-pilot'))) {
     if (!pilot || activeSeat !== seat) {
       pilot?.close();
       activeSeat = seat;

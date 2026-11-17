@@ -153,10 +153,6 @@ export class GameServer {
       return;
     }
     if (client.role === 'table') {
-      if (msg.type === 'PadHold') {
-        const seat = `${msg.team}-${msg.role}`;
-        if (isSeatId(seat)) this.mobilePads.delete(seat);
-      }
       handleTableSession(this.rules, msg);
       handleTableGameplay(this.rules, msg);
       return;
@@ -221,6 +217,30 @@ export class GameServer {
     }
     this.broadcastTick();
   }
+
+  kickSeat(seat: SeatId): void {
+    this.revokeSeat(seat);
+    this.afterPlayerDeparture();
+  }
+
+  resetLobby(): void {
+    for (const key of Object.keys(this.state.seats)) if (isSeatId(key)) this.revokeSeat(key);
+    if (this.state.soloTest) this.state.driveMode.A = 'auto';
+    this.rules.resetToLobby();
+  }
+
+  private revokeSeat(seat: SeatId): void {
+    const owner = this.playerSeats.revoke(seat);
+    this.mobilePads.delete(seat);
+    releasePlayerControls(this.rules, seat);
+    const client = [...this.clients].find(candidate => candidate.id === owner);
+    if (client) {
+      this.sendTo(client.ws, { type: 'Left', t: Date.now() });
+      client.ws.close(1000, 'Place libérée par l’administration');
+    }
+  }
+
+  applyHostCommand(msg: ClientMessage): void { handleTableSession(this.rules, msg); }
 
   /** Change la phase et avertit tous les clients de la transition. */
   transitionTo(phase: Phase, data?: unknown): void {

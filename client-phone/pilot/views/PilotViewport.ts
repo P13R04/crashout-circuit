@@ -82,6 +82,7 @@ export class PilotViewport {
 
   private switchView(mode: PilotView): void {
     this.mode = mode;
+    this.root.dataset.camera = mode;
     this.view.textContent = 'Vue · ' + viewLabel[mode];
     this.mapOptions.hidden = mode !== 'map';
     if (mode === 'map') this.scene.hide();

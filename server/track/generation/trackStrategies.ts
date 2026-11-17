@@ -4,6 +4,7 @@
  * Réexporté par server/track/MapGenerator.ts, qui reste la façade de la génération du circuit.
  */
 import type { Vec2, TrackGeometry } from '../../types.js';
+import { PLAY_AREA } from '../../layout.js';
 import { LOOP_N, MIN_AMPLITUDE, MIN_CURVATURE_RADIUS } from './generationLimits.js';
 import { signedArea } from './vectorMath.js';
 import { computeGeometry } from './trackGeometry.js';
@@ -20,7 +21,7 @@ import { AMPLITUDE_BOOSTS, EXTRA_SMOOTHING, TREMOR_SIGMA, RADIUS_MARGINS, gaussi
  * still not a valid circuit (halves pinching, a bean thinner than a lane) the halves
  * are bulged further; null when even that fails.
  */
-export function faithfulTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackGeometry | null {
+export function faithfulTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2, area = PLAY_AREA): TrackGeometry | null {
   // First the drawing as it is (a deep dip across the divider is a deliberate crossing),
   // then with every dip folded back (the classic bean).
   // Preserve the drawn shape; fit only when it overflows the safe table area.
@@ -37,7 +38,7 @@ export function faithfulTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackGe
           for (const sigma of EXTRA_SMOOTHING) {
             const loop = sigma === 0 ? rounded : evenRing(gaussianClosed(rounded, sigma));
             if (tightestRadius(loop) < MIN_CURVATURE_RADIUS) continue;
-            const geo = placeFeatures(computeGeometry(fitToPlayArea(loop)), false, P1);
+            const geo = placeFeatures(computeGeometry(fitToPlayArea(loop, area)), false, P1);
             if (validateGeometry(geo)) return geo;
             break; // drivable bends but invalid loop: more amplitude, not more smoothing
           }
@@ -60,16 +61,16 @@ const HEAVY_STRETCH = [1, 1.2, 1.5, 2, 2.8, 3.6];
  * to its drawn size, until the loop is simple and drivable. The result is the drawing
  * with its details ironed out rather than a predefined circuit.
  */
-export function smoothestTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackGeometry | null {
+export function smoothestTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2, area = PLAY_AREA): TrackGeometry | null {
   for (const minAmp of [0, MIN_AMPLITUDE]) {
     const dense = denseRing(a, b, P1, P2, 1, false, minAmp);
     const area0 = Math.abs(signedArea(dense));
     for (const sigma of HEAVY_SIGMAS) {
       let loop = evenRing(gaussianClosed(dense, sigma));
       // smoothing shrinks a shape towards its centre: give it back its drawn size
-      const area = Math.abs(signedArea(loop));
-      if (area > 1) {
-        const k = Math.min(1.6, Math.max(1, Math.sqrt(area0 / area)));
+      const loopArea = Math.abs(signedArea(loop));
+      if (loopArea > 1) {
+        const k = Math.min(1.6, Math.max(1, Math.sqrt(area0 / loopArea)));
         const cx = loop.reduce(/* Additionne les abscisses de la boucle pour en retrouver le centre. */ (s, p) => s + p.x, 0) / loop.length;
         const cy = loop.reduce(/* Additionne les ordonnées de la boucle pour en retrouver le centre. */ (s, p) => s + p.y, 0) / loop.length;
         loop = loop.map(/* Élargit la boucle autour de son centre dans la tentative de lissage courante. */ p => ({ x: cx + (p.x - cx) * k, y: cy + (p.y - cy) * k }));
@@ -77,7 +78,7 @@ export function smoothestTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackG
       for (const stretch of HEAVY_STRETCH) {
         const rounded = roundCorners(stretch === 1 ? loop : evenRing(stretchMinorAxis(loop, stretch)));
         if (tightestRadius(rounded) < MIN_CURVATURE_RADIUS) continue;
-        const geo = placeFeatures(computeGeometry(fitToPlayArea(rounded)), false, P1);
+        const geo = placeFeatures(computeGeometry(fitToPlayArea(rounded, area)), false, P1);
         if (validateGeometry(geo)) return geo;
       }
     }
@@ -101,6 +102,6 @@ export function smoothestTrack(a: Vec2[], b: Vec2[], P1: Vec2, P2: Vec2): TrackG
     const u = semiMajor * Math.cos(t), v = semiMinor * Math.sin(t);
     return { x: cx + u * mx - v * my, y: cy + u * my + v * mx };
   });
-  const geo = placeFeatures(computeGeometry(fitToPlayArea(signedArea(ellipse) < 0 ? ellipse.reverse() : ellipse)), false, P1);
+  const geo = placeFeatures(computeGeometry(fitToPlayArea(signedArea(ellipse) < 0 ? ellipse.reverse() : ellipse, area)), false, P1);
   return validateGeometry(geo) ? geo : null;
 }

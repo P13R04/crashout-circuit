@@ -6,6 +6,7 @@
  * Découpé par responsabilité dans server/track/generation/ : ce fichier garde l'API publique (generate, validateStroke, rebuildEdges, generationInfo) et réexporte les autres noms publics.
  */
 import type { Vec2, TrackGeometry } from '../types.js';
+import { PLAY_AREA } from '../layout.js';
 import { RESAMPLE_STEP } from './generation/generationLimits.js';
 import { validate, resample, oneEuroFilter, autofill, makeLoop } from './generation/strokeCleanup.js';
 import { mergeLoops } from './generation/loopMerge.js';
@@ -51,6 +52,7 @@ export function generate(
   p2A?: Vec2,
   p1B?: Vec2,
   p2B?: Vec2,
+  area = PLAY_AREA,
 ): TrackGeometry {
   const P1A = p1A ?? strokeA[0];
   const P2A = p2A ?? strokeA[strokeA.length - 1];
@@ -59,19 +61,19 @@ export function generate(
 
   const aValid = strokeA.length >= 2 && validate(strokeA, P1A, P2A);
   const bValid = strokeB.length >= 2 && validate(strokeB, P1B, P2B);
-  if (!aValid && !bValid) { generationInfo.method = 'preset'; return generatePreset(); }
+  if (!aValid && !bValid) { generationInfo.method = 'preset'; return generatePreset(area); }
 
   // 1. The circuit is the drawing: stroke A (P1→P2) and stroke B (P2→P1) joined at
   // the two shared anchors form the closed loop (see faithfulTrack).
   if (aValid && bValid) {
     const { a, b } = alignHalves(strokeA, strokeB, P1A, P2A);
-    const geo = faithfulTrack(a, b, P1A, P2A);
+    const geo = faithfulTrack(a, b, P1A, P2A, area);
     if (geo) {
       generationInfo.method = 'closed loop union';
       return geo;
     }
     // Still the drawing, but ironed out as much as it takes (never the preset first)
-    const smooth = smoothestTrack(a, b, P1A, P2A);
+    const smooth = smoothestTrack(a, b, P1A, P2A, area);
     if (smooth) {
       generationInfo.method = 'smoothed drawing';
       return smooth;
@@ -84,17 +86,17 @@ export function generate(
 
   if (loopA && loopB) {
     for (const [wA, wB] of [[0.5, 0.5], [0.4, 0.6]] as const) {
-      const geo = singleLoopTrack(mergeLoops(loopA, loopB, wA, wB), P1A);
+      const geo = singleLoopTrack(mergeLoops(loopA, loopB, wA, wB), P1A, area);
       if (geo) { generationInfo.method = `merge ${wA}/${wB}`; return geo; }
     }
   }
   for (const [name, loop] of [['loop A', loopA], ['loop B', loopB]] as const) {
     if (!loop) continue;
-    const geo = singleLoopTrack(loop, P1A);
+    const geo = singleLoopTrack(loop, P1A, area);
     if (geo) { generationInfo.method = name; return geo; }
   }
   generationInfo.method = 'preset';
-  return generatePreset();
+  return generatePreset(area);
 }
 
 /** Recalcule les bordures après une modification de la ligne centrale ou de ses largeurs. */

@@ -4,16 +4,18 @@
  * client-table/themes/themes.ts et les utilitaires importés ci-dessous.
  * Référencé par client-table/gesture/GestureRecognizer.ts, client-table/renderer/Renderer.ts, scripts/acceptance.ts.
  */
-import type { GameState, Team, Vec2, TutorialStepId } from '../../server/types.js';
+import type { GameState, Team, Vec2 } from '../../server/types.js';
 import {
-  LOGICAL_W, LOGICAL_H, PANELS, panelOf, localToWorld, worldToLocal, padLocal,
+  LOGICAL_W, LOGICAL_H, panelOf, localToWorld, worldToLocal, padLocal,
   TANGIBLE_DEPOT, steerArea, PEDAL_LOCAL, POWER_BTN_LOCAL, type PanelLayout,
 } from '../../server/layout.js';
 import { icon } from './icons.js';
 import { TEAM_COLOR, TEAM_NAME } from '../view.js';
 import { themeLook, type ThemeId } from '../themes/themes.js';
 import { armedPickup } from '../../server/rules/armedPickup.js';
-import { drawGestureDemo, type GestureDemoId } from './TutorialGestures.js';
+import { drawGestureDemo } from './TutorialGestures.js';
+import { lessonOf, type Lesson } from '../../client-shared/tutorialLessons.js';
+import { isPhoneStation, tablePanels } from '../../server/tableStations.js';
 
 /** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
@@ -42,7 +44,12 @@ export function tutorialButtonAt(state: GameState,p:Vec2):TutorialButton|null {
   const hit=(p:Vec2,r:Rect,margin=0)=>p.x>=r.x-margin&&p.x<=r.x+r.w+margin&&p.y>=r.y-margin&&p.y<=r.y+r.h+margin;
   if(tut.finished)return hit(p,TUTORIAL_END_BUTTON)?{kind:'end'}:null;
   for(const team of ['A','B'] as const){
-    if(tut.steps[tut.teams[team].step]&&hit(worldToLocal(cardAt(team,'pilot'),p.x,p.y),SKIP,5))return{kind:'skip',team};
+    if (!tut.steps[tut.teams[team].step]) continue;
+    if (isPhoneStation(state, team, 'pilot')) {
+      if (hit(p, sharedSkip(team))) return {kind:'skip',team};
+    } else if (hit(worldToLocal(cardAt(team,'pilot'),p.x,p.y),SKIP,5)) {
+      return {kind:'skip',team};
+    }
   }
   return null;
 }
@@ -51,46 +58,16 @@ export function tutorialSkipCenter(team:Team):Vec2 {return localToWorld(cardAt(t
 /** Signale qu’un contact se situe sur une démonstration et ne doit pas devenir un geste de jeu. */
 export function inTutorialCard(state:GameState,p:Vec2):boolean {
   if(!state.tutorial||state.tutorial.finished)return false;
-  return PANELS.some(/* Vérifie si le point touche l’une des cartes orientées des quatre rôles. */ panel=>{const l=worldToLocal(cardAt(panel.team,panel.role),p.x,p.y);return Math.abs(l.x)<=CARD.w/2&&Math.abs(l.y)<=CARD.h/2;});
+  return tablePanels(state).some(/* Vérifie si le point touche l’une des cartes orientées des quatre rôles. */ panel=>{const l=worldToLocal(cardAt(panel.team,panel.role),p.x,p.y);return Math.abs(l.x)<=CARD.w/2&&Math.abs(l.y)<=CARD.h/2;});
 }
 
-/** Réunit la consigne courte, son complément et l’animation demandée à un rôle. */
-interface Lesson { text:string; hint?:string; demo?:GestureDemoId }
-/** Choisit la consigne et la démonstration selon le rôle, l’équipe et son étape actuelle. */
-function lessonOf(state:GameState,id:TutorialStepId,sub:number,team:Team,role:Role):Lesson {
-  const pilot=role==='pilot',pc=state.mapMode==='pc',name=TEAM_NAME[team].toLowerCase();
-  const stock=armedPickup(state),otherArmed=stock&&stock.team!==team;
-  if((id==='power'||id==='boostPower')&&otherArmed)return{text:pilot?'Gardez votre voiture en piste.':`Le bonus ${TEAM_NAME[stock.team].toLowerCase()} est armé.`,hint:pilot?undefined:'Un seul bonus à la fois. Vous pouvez l’utiliser.',demo:pilot?'steer':stock.kind==='boost'?'boost':'sling'};
-  switch(id){
-    case 'identify':return{text:sub&(pilot?1:2)?'Votre poste est prêt.':'Touchez votre clé de réparation.',hint:`Voiture ${name} · coéquipier en diagonale`,demo:'identify'};
-    case 'steer':return pilot?{text:'Essayez gauche, puis droite.',hint:`${sub&1?'✓':'○'} gauche   ${sub&2?'✓':'○'} droite${state.driveMode[team]==='pedal'?' · maintenez la pédale':''}`,demo:id}:{text:`Suivez la voiture ${name}.`,hint:'Votre pilote essaie les commandes.',demo:'watch'};
-    case 'pedal':return !pilot?{text:'Votre pilote essaie la pédale.',demo:id}:sub===0?{text:'Paramètres → Conduite → PÉDALE.',demo:id}:sub===1?{text:'Maintenez la pédale.',hint:team==='A'?'Clavier : Z':'Clavier : ↑',demo:id}:{text:'Repassez en AUTO dans les paramètres.',demo:id};
-    case 'pickup':case 'boostPickup':return pilot?{text:id==='pickup'?'Ramassez un lance-pierre.':'Ramassez une accélération.',hint:'Le bonus arrive chez votre copilote.',demo:id}:{text:'Votre pilote ramasse un bonus.',hint:'Il apparaîtra au-dessus de ⏻.',demo:id};
-    case 'power':case 'boostPower':return pilot?{text:'Gardez votre voiture en piste.',hint:'Votre copilote prépare le bonus.',demo:'steer'}:{text:'Armez votre bonus avec ⏻.',hint:'Une fois armé, chacun peut l’utiliser.',demo:id};
-    case 'sling':return pilot?{text:'Évitez la zone d’impact.',hint:'Une pierre peut toucher les deux voitures.',demo:'impact'}:{text:pc?'Cliquez, tirez, relâchez.':'Deux doigts fixes. Tirez avec le troisième.',hint:'Relâchez le doigt qui tire pour lancer.',demo:id};
-    case 'boost':return pilot?{text:'Visez la zone d’accélération.',hint:'Votre copilote la pose sur la piste.',demo:'boostCross'}:{text:pc?'Paramètres → Accélération, puis deux clics.':'Posez deux doigts sur la piste.',hint:'Ensemble ou l’un après l’autre.',demo:id};
-    case 'boostCross':return pilot?{text:'Traversez les chevrons jaunes.',demo:id}:{text:'Guidez votre pilote vers la zone.',hint:'Votre voiture accélère en la traversant.',demo:id};
-    case 'borderPull':return pilot?{text:'Suivez la piste qui se déforme.',demo:'watch'}:{text:'À deux doigts, maintenez puis tirez le bord.',hint:'Saisissez le même bord, même en virage.',demo:id};
-    case 'repair':return{text:'Maintenez vos deux clés ensemble.',hint:'Gardez le contact jusqu’au remplissage.',demo:id};
-    case 'wall':
-      if(pc)return{text:pilot?'Touchez le mur.':'Le mur bloque les deux voitures.',hint:'Entraînement : aucun dégât.',demo:pilot?'deflect':id};
-      return pilot?{text:sub?'Touchez le mur avec votre voiture.':'Restez en piste pendant la pose.',hint:'Entraînement : aucun dégât.',demo:'deflect'}:{text:sub?'Le mur bloque les deux voitures.':'Posez le mur avec un doigt de chaque côté.',hint:'Les doigts touchent la table à la pose.',demo:id};
-    case 'arc':return{text:pilot?'Traversez l’arc électrique.':'Les piliers électrisent les deux voitures.',hint:'En course : dégâts et ralentissement.',demo:id};
-    case 'depot': {
-      const otherStep=state.tutorial!.steps[state.tutorial!.teams[team==='A'?'B':'A'].step];
-      const both=!otherStep||otherStep==='depot';
-      return !both?{text:'L’autre équipe termine ses essais.',hint:'Vous rangerez ensuite les trois obstacles.',demo:'depot'}:pilot?{text:'Vos copilotes rangent les obstacles.',hint:'La course commence ensuite sur votre circuit.',demo:id}:{text:'Rangez les trois obstacles dans la réserve.',hint:'Entre les deux postes de copilote.',demo:id};
-    }
-    case 'pylon':return pilot?{text:'Continuez à conduire.',hint:'Vos copilotes essaient les piliers.',demo:'arc'}:{text:sub===3?'Rapprochez les deux piliers.':'Encadrez la piste avec les deux piliers.',hint:sub===3?'Un arc les relie lorsqu’ils sont assez proches.':'Un doigt de chaque côté de chaque pilier.',demo:id};
-  }
-}
 /** Répartit les mots sur plusieurs lignes sans dépasser la largeur disponible. */
 function wrap(ctx:Ctx,text:string,width:number):string[]{const lines:string[]=[];let line='';for(const word of text.split(' ')){const next=line?`${line} ${word}`:word;if(line&&ctx.measureText(next).width>width){lines.push(line);line=word;}else line=next;}if(line)lines.push(line);return lines;}
 
 /** Affiche les repères de couleur et de rôle aux quatre places pendant la création. */
-export function drawStationLabels(ctx:Ctx,theme:ThemeId):void {
+export function drawStationLabels(ctx:Ctx,theme:ThemeId,state:GameState):void {
   const look=themeLook(theme);
-  for(const panel of PANELS){
+  for(const panel of tablePanels(state)){
     ctx.save();ctx.translate(panel.cx,panel.cy);ctx.rotate(panel.rot);
     ctx.fillStyle=look.panel+'f5';ctx.strokeStyle=TEAM_COLOR[panel.team];ctx.lineWidth=2;
     ctx.beginPath();ctx.roundRect(-118,-48,236,96,14);ctx.fill();ctx.stroke();
@@ -107,10 +84,35 @@ export function drawTutorial(ctx:Ctx,state:GameState,now:number,driveMode:Record
   const pulse=now===0?.5:.5+.5*Math.sin(now/280);
   for(const team of ['A','B'] as const){
     drawHighlights(ctx,state,team,pulse,driveMode[team]);
-    for(const role of ['pilot','copilot'] as const)drawCard(ctx,state,team,role,now);
+    for (const role of ['pilot', 'copilot'] as const) {
+      if (!isPhoneStation(state, team, role)) drawCard(ctx, state, team, role, now);
+    }
+    if (isPhoneStation(state, team, 'pilot') && tut.steps[tut.teams[team].step]) drawSharedSkip(ctx, team);
     if(tutorialIdentifying(state)||['steer','pickup','boostPickup'].includes(tut.steps[tut.teams[team].step]))drawCarIdentity(ctx,state,team,pulse);
   }
 }
+/** Donne la position du contrôle d'étape lorsqu'aucun poste pilote n'est affiché. */
+function sharedSkip(team: Team): Rect {
+  return { x: 12, y: team === 'A' ? 770 : 250, w: 108, h: 46 };
+}
+
+/** Laisse l'animateur débloquer une étape depuis le bord de la table. */
+function drawSharedSkip(ctx: Ctx, team: Team): void {
+  const { x, y, w, h } = sharedSkip(team);
+  ctx.save();
+  ctx.fillStyle = '#08141dee';
+  ctx.strokeStyle = TEAM_COLOR[team];
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 7);
+  ctx.fill();
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.font = '600 15px system-ui';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(`Passer ${TEAM_NAME[team].toLowerCase()}`, x + w / 2, y + 29);
+  ctx.restore();
+}
+
 /** Dessine la consigne orientée vers son lecteur avec l’animation et le bouton pour passer l’étape. */
 function drawCard(ctx:Ctx,state:GameState,team:Team,role:Role,now:number):void {
   const tut=state.tutorial!,progress=tut.teams[team],id=tut.steps[progress.step],color=TEAM_COLOR[team],at=cardAt(team,role);
@@ -149,7 +151,7 @@ function drawHighlights(ctx:Ctx,state:GameState,team:Team,pulse:number,driveMode
   const tut=state.tutorial!,p=tut.teams[team],id=tut.steps[p.step];if(!id)return;
   ctx.save();ctx.strokeStyle=TEAM_COLOR[team];ctx.shadowColor=TEAM_COLOR[team];ctx.shadowBlur=8+8*pulse;ctx.lineWidth=3;
   /** Ramène le dessin de surbrillance dans le repère du poste concerné. */
-  const panel=(role:Role,draw:()=>void)=>{const at=panelOf(team,role);ctx.save();ctx.translate(at.cx,at.cy);ctx.rotate(at.rot);draw();ctx.restore();};
+  const panel=(role:Role,draw:()=>void)=>{if(isPhoneStation(state,team,role))return;const at=panelOf(team,role);ctx.save();ctx.translate(at.cx,at.cy);ctx.rotate(at.rot);draw();ctx.restore();};
   /** Entoure une commande rectangulaire utile à la leçon. */
   const box=(r:Rect)=>{ctx.beginPath();ctx.roundRect(r.x-5,r.y-5,r.w+10,r.h+10,12);ctx.stroke();};
   /** Entoure une commande circulaire avec la pulsation de l’aide visuelle. */

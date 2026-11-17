@@ -4,11 +4,9 @@
  * Liens : server/types.ts, client-table/ui/icons.ts.
  * Référencé par client-table/ui/TutorialOverlay.ts.
  */
-import type { TutorialStepId } from '../../server/types.js';
+import type { GestureDemoId } from '../../client-shared/tutorialLessons.js';
 import { icon } from './icons.js';
 
-/** Nomme les démonstrations disponibles pour les cartes du tutoriel. */
-export type GestureDemoId = TutorialStepId | 'watch' | 'impact' | 'deflect';
 /** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
 /** Borne la valeur dans l’intervalle autorisé. */

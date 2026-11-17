@@ -4,7 +4,8 @@
  * Fonctions appelées par les méthodes de Renderer (server/Renderer.ts), qui garde l'état et délègue ici.
  */
 import type { GameState, Team, Vec2 } from '../../server/types.js';
-import { LOGICAL_W, LOGICAL_H, PLAY_AREA } from '../../server/layout.js';
+import { LOGICAL_W, LOGICAL_H } from '../../server/layout.js';
+import { playAreaFor } from '../../server/tableStations.js';
 import { TEAM_COLOR, type View } from '../view.js';
 import { icon } from '../ui/icons.js';
 import { drawStationLabels } from '../ui/TutorialOverlay.js';
@@ -24,7 +25,8 @@ export function drawMap(renderer: Renderer, ctx: Ctx, state: GameState, view: Vi
   if (!state.mapTargets || !state.mapDivider) {
     ctx.strokeStyle = view.pendingDivider.length ? TEAM_COLOR.B : TEAM_COLOR.A;
     ctx.lineWidth = 2; ctx.setLineDash([12, 10]);
-    ctx.strokeRect(PLAY_AREA.x0, PLAY_AREA.y0, PLAY_AREA.x1 - PLAY_AREA.x0, PLAY_AREA.y1 - PLAY_AREA.y0);
+    const area = playAreaFor(state);
+    ctx.strokeRect(area.x0, area.y0, area.x1 - area.x0, area.y1 - area.y0);
     ctx.setLineDash([]);
     const first = view.pendingDivider[0];
     if (first) drawMapAnchor(renderer, ctx, first, 'P1', 'POINT CYAN', TEAM_COLOR.A, 'A', false, t);
@@ -89,7 +91,7 @@ export function drawMap(renderer: Renderer, ctx: Ctx, state: GameState, view: Vi
     }
   }
 
-  drawStationLabels(ctx, renderer.theme);
+  drawStationLabels(ctx, renderer.theme, state);
   // Stable instruction bands outside the drawing area, facing both long edges.
   drawMapInstructions(renderer, ctx, state, view, t);
   ctx.restore();

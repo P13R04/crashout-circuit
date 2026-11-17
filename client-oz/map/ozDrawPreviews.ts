@@ -3,6 +3,7 @@
  * Liens : client-oz/ozView.ts, client-shared/trackVisibility.ts, server/layout.ts.
  * Fonctions appelées par draw() de client-oz/map/ozDraw.ts (client-oz/map/OzMap.ts garde l'état et délègue).
  */
+import { tablePanels } from '../../server/tableStations.js';
 import { wallEndpoints, wallCorners } from '../../client-shared/tangibleGeometry.js';
 import { validTangiblePose } from '../../server/tangibles/tangibles.js';
 import type { DrawContext } from './ozDrawContext.js';
@@ -139,7 +140,7 @@ export function drawWallPreview(dc: DrawContext): void {
 
         // Wall preview rectangle (120 px length)
         const corners = wallCorners(center, angle, s.params.wallLengthPx, s.params.wallWidthPx);
-        const isValid = validTangiblePose('wall', { x: center.x / s.params.logicalWidth, y: center.y / s.params.logicalHeight, angle }, s.params);
+        const isValid = validTangiblePose('wall', { x: center.x / s.params.logicalWidth, y: center.y / s.params.logicalHeight, angle }, s.params, tablePanels(s));
         const wallStroke = isValid ? '#ff3b3b' : '#f59e0b';
         const wallFill = isValid ? 'rgba(255, 59, 59, 0.45)' : 'rgba(245, 158, 11, 0.35)';
 
@@ -183,7 +184,7 @@ export function drawPreparingPreview(dc: DrawContext): void {
     const angle = ozMap.drag?.mode === 'place' ? ozMap.drag.pose.angle : ozMap.h.draftAngle();
     const pose = { x: p.x / W, y: p.y / H, angle };
     const kind = ozMap.h.selectedKind();
-    ctx.strokeStyle = validTangiblePose(kind, pose, s.params) ? '#9be5bb' : '#ff6f7b';
+    ctx.strokeStyle = validTangiblePose(kind, pose, s.params, tablePanels(s)) ? '#9be5bb' : '#ff6f7b';
     ctx.lineWidth = 3 * unit;
     ctx.setLineDash([7 * unit, 5 * unit]);
     ctx.beginPath();

@@ -99,6 +99,7 @@
       </div>
       <!-- Réglages partagés de vitesse, de tours et de durée, envoyés par RaceSettings. -->
       <div id="race-options" role="group" aria-label="Course">
+        <button type="button" id="quick-race" hidden>Course rapide</button>
         <p class="setting-label">Course</p>
         <label>Difficulté <select id="race-difficulty"><option value="easy">Facile</option><option value="medium">Moyen</option><option value="hard">Difficile</option></select></label>
         <label>Tours <input id="race-laps" type="number" min="1" max="99" step="1" value="3" /></label>
@@ -127,6 +128,7 @@
         <button id="test-invincible" aria-label="Invincibles" aria-pressed="false" title="Rendre les deux véhicules invincibles">Invincibles</button>
         <button id="test-items" aria-label="Objets libres" aria-pressed="false" title="Utiliser les deux gestes sans limite de stock">Objets libres</button>
       </div>
+      <a href="/admin" target="_blank" rel="noopener" style="color:#a6e9f0">Administration</a>
       <button type="button" id="settings-home">⌂ Accueil</button>
     </div>
   </details>

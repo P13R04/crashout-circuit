@@ -6,6 +6,7 @@
 import type { Team, Vec2, StrokeDrawMsg, MapDividerMsg } from '../../types.js';
 import { nearestOnTrack } from '../../geometry.js';
 import { generate, randomizeRaceStart, validateStroke } from '../../track/MapGenerator.js';
+import { lockTableFormat, playAreaFor } from '../../tableStations.js';
 import { checkDivider } from '../../layout.js';
 import { activeMapTeam, mapEndpointError, mapStrokeEndpoints } from '../../track/mapCreation.js';
 import { MAX_STROKE_POINTS } from './rulesBasics.js';
@@ -14,6 +15,7 @@ import type { GameRules } from '../GameRules.js';
 /** Prépare la création à deux équipes et réinitialise les points, les tracés et les objets de session. */
 export function enterMap(rules: GameRules, mode: 'table' | 'pc' = 'table'): void {
   const s = rules.state;
+  lockTableFormat(s);
   s.mapTargets = null;
   s.mapDivider = null;
   s.mapStrokes = { A: false, B: false };
@@ -44,7 +46,7 @@ export function onMapDivider(rules: GameRules, msg: MapDividerMsg): void {
   if (![a?.x, a?.y, b?.x, b?.y].every(Number.isFinite)) return;
   // Same rule as the table's immediate check (layout.checkDivider): too short, or
   // outside the free area of the table. The refusal is shown, never silent.
-  const verdict = checkDivider(a, b);
+  const verdict = checkDivider(a, b, playAreaFor(s));
   if (verdict !== 'ok') {
     rules.host.feedback(verdict === 'tooShort' ? 'dividerTooShort' : 'dividerOutOfZone', a.x, a.y, 'A');
     return;
@@ -124,7 +126,7 @@ async function buildTrack(rules: GameRules): Promise<void> {
   const a = rules.strokes.A ?? [];
   const b = rules.strokes.B ?? [];
   const started = Date.now();
-  const track = generate(a, b, t.A[0], t.A[1], t.B[0], t.B[1]);
+  const track = generate(a, b, t.A[0], t.A[1], t.B[0], t.B[1], playAreaFor(rules.state));
   console.log(`[GameRules] Track generated in ${Date.now() - started} ms`);
   const originIndex=nearestOnTrack(t.A[0],track).index;
   rules.startRace(randomizeRaceStart(track,rules.rng), true, {startedAt:rules.now+120,originIndex});
