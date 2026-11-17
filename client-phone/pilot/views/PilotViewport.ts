@@ -30,7 +30,7 @@ export class PilotViewport {
   private state: GameState | null = null;
   private readonly reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
-  constructor(private readonly team: Team, private readonly now: () => number) {
+  constructor(private readonly team: Team, private readonly now: () => number, private readonly showEmptyBonus = false) {
     this.root.className = 'pilot-viewport';
     this.canvas.setAttribute('aria-label', 'Circuit vu de dessus');
     const framing = actionButton('Circuit entier', () => {
@@ -70,7 +70,7 @@ export class PilotViewport {
     this.hp.value = car.hp;
     const stock = car.heldItem === 'slingshot' ? 'Lance-pierre' : car.heldItem === 'boost' ? 'Boost' : '';
     const info = `PV ${car.hp}/${state.params.hpMax} · Tour ${Math.min(car.lap + 1, state.params.lapsToWin)}/${state.params.lapsToWin}`
-      + (stock ? ` · ${stock}${car.itemArmed ? ' armé' : ' en réserve'}` : '');
+      + (stock ? ` · ${stock}${car.itemArmed ? ' armé' : ' en réserve'}` : this.showEmptyBonus ? ' · Bonus vide' : '');
     if (this.info.textContent !== info) this.info.textContent = info;
   }
 

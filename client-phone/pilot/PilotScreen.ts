@@ -65,7 +65,7 @@ export class PilotScreen {
     this.root.className = 'pilot-screen';
     this.control = solo ? 'gyro' : 'touch';
     this.keyboard = keyboard ? new KeyboardDrive(this.release) : null;
-    this.viewport = new PilotViewport(team, () => session.sync.now());
+    this.viewport = new PilotViewport(team, () => session.sync.now(), solo);
     this.steer = createControls(msg => this.session.send(msg)).steer;
     this.sensor = actionButton('Activer le volant', this.activate, 'primary');
     this.fullscreen = actionButton('Plein écran', () => { void this.lockLandscape(true); });
@@ -83,6 +83,7 @@ export class PilotScreen {
     this.right = holdButton('Droite →', held => { this.rightHeld = held; });
     this.theme = themeControl(theme => this.session.send({ type: 'SetTheme', theme }));
     this.repair = holdButton('Réparer', on => this.session.send({ type: 'PadHold', team, role: 'pilot', on }));
+    if (solo) this.repair.button.title = 'La réparation se fait à deux en équipe.';
     this.phase.setAttribute('role', 'status');
     this.hint.setAttribute('role', 'status');
     this.phase.className = 'pilot-phase';
@@ -210,16 +211,17 @@ export class PilotScreen {
     this.start.disabled = !ready;
     this.mode.disabled = !this.session.canPlay || (!this.solo && this.state?.phase !== 'RACE');
     this.wheelGraphic.hidden = !this.state?.track || (!landscape && !this.keyboard);
-    this.left.button.hidden = this.right.button.hidden = !sideControls || !!this.keyboard || !landscape || !racing;
-    this.left.button.disabled = this.right.button.disabled = !this.driving;
+    const preview = this.solo && this.keyboard !== null && Boolean(this.state?.track);
+    this.left.button.hidden = this.right.button.hidden = !preview && (!sideControls || !landscape || !racing);
+    this.left.button.disabled = this.right.button.disabled = preview || !this.driving;
     if (!sideControls) { this.left.release(); this.right.release(); }
-    const canRepair = this.session.canPlay && this.state?.phase === 'RACE' && !document.hidden;
+    const canRepair = !this.solo && this.session.canPlay && this.state?.phase === 'RACE' && !document.hidden;
     if (!canRepair) this.repair.release();
     this.repair.button.disabled = !canRepair;
-    this.repair.button.hidden = this.solo;
+    this.repair.button.hidden = !this.state?.track;
     if (!pedal) this.pedal.release();
-    this.pedal.button.hidden = !pedal || !racing || !!this.keyboard;
-    this.pedal.button.disabled = !this.driving;
+    this.pedal.button.hidden = !preview && (!pedal || !racing);
+    this.pedal.button.disabled = preview || !this.driving;
   }
 
   /** Demande la permission dans le geste utilisateur et tente le verrouillage en paysage. */

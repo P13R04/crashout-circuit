@@ -119,8 +119,8 @@ body:has(.pilot-screen) #notice {
 .pilot-screen button.pilot-throttle { right: var(--hud-right); bottom: calc(var(--hud-bottom) + 50px); }
 
 .pilot-wheel {
-  --size: clamp(124px, 52dvh, 270px);
-  position: absolute; z-index: 2; top: 84%; left: 50%; width: var(--size); height: var(--size);
+  --size: clamp(248px, 104dvh, 540px);
+  position: absolute; z-index: 2; top: 92%; left: 50%; width: var(--size); height: var(--size);
   transform: translate(-50%, -50%) rotate(var(--steer, 0deg)); pointer-events: none;
   transition: transform .055s linear; filter: drop-shadow(0 5px 6px #03070bbb);
 }
