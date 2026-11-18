@@ -43,6 +43,12 @@
     #race-options input,#race-options select { font:inherit; background:#122044; color:#fff;border:1px solid #64748b;border-radius:6px;padding:7px; }
     #race-options input[type=checkbox] { width:18px;height:18px;vertical-align:middle; }
     #race-options :disabled { opacity:.4; }
+    #spectator-options { margin:14px 0; padding-top:12px; border-top:1px solid #ffffff18; }
+    #spectators-share { display:flex; flex-direction:column; align-items:center; gap:8px; margin-top:12px; }
+    #spectators-qr { position:static; inset:auto; transform:none; flex:none; width:180px; height:180px; background:#fff; border-radius:8px; image-rendering:pixelated; }
+    #spectators-count { font-size:13px; margin:0; }
+    #spectators-link { font-size:11px; color:#b9cbd0; margin:0; word-break:break-all; text-align:center; user-select:all; }
+    #spectators-notice { color:#ffca8b; font-size:12px; margin:10px 0 0; }
     .setting-label { font-size: 12px; color: #b9cbd0; margin-bottom: 10px; }
     #audio-options { margin:14px 0; padding-top:12px; border-top:1px solid #ffffff18; }
     #audio-options label { display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0; }
@@ -112,6 +118,17 @@
         <label>Ambiance <input id="audio-ambience" aria-label="Volume de l’ambiance" type="range" min="0" max="100" step="1" value="22" /></label>
         <label>Musique <input id="audio-music" aria-label="Volume de la musique" type="range" min="0" max="100" step="1" value="12" /></label>
         <button id="audio-test" type="button">Écouter</button></details>
+      </div>
+      <!-- Ouverture de la séance aux spectateurs, pilotée par spectatorSettings.ts : QR code et nombre de spectateurs. -->
+      <div id="spectator-options" role="group" aria-label="Spectateurs">
+        <p class="setting-label">Spectateurs</p>
+        <button id="spectators-toggle" type="button" aria-pressed="false">Ajouter des spectateurs</button>
+        <div id="spectators-share" hidden>
+          <canvas id="spectators-qr" width="180" height="180" role="img" aria-label="QR code de la page des spectateurs"></canvas>
+          <p id="spectators-count" role="status"></p>
+          <p id="spectators-link"></p>
+        </div>
+        <p id="spectators-notice" role="status" hidden></p>
       </div>
       <!-- Catalogue visuel de themes.ts, masqué pendant une séance publique. -->
       <div id="theme-settings" hidden><p class="setting-label">Ambiance</p>

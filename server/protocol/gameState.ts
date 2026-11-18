@@ -24,8 +24,10 @@ export interface Seat {
   connected: boolean;
   name?: string;
 }
+/** Choisit l'appareil avec lequel un poste est joué : la table, un téléphone ou une manette Wii (pilote seulement). */
+export type SeatDevice = 'table' | 'phone' | 'wiimote';
 /** Nomme les écrans et les états de session partagés par les clients. */
-export type Phase = 'LOBBY' | 'MAP' | 'READY' | 'RACE' | 'PAUSED' | 'RESULT';
+export type Phase = 'LOBBY' | 'SETUP' | 'MAP' | 'READY' | 'RACE' | 'PAUSED' | 'RESULT';
 /** Distingue les deux bonus ramassables du jeu. */
 export type ItemKind = 'slingshot' | 'boost';
 /** Nomme le niveau de vitesse choisi pour les voitures. */
@@ -257,6 +259,10 @@ export interface GameState {
   /** Driving scheme selected independently by each pilot. */
   driveMode: Record<Team, DriveMode>;
   seats: Record<SeatId, Seat>;
+  /** Appareil annoncé pour chaque poste sur l'écran de préparation ; l'occupation réelle reste dans `seats`. */
+  seatDevices: Record<SeatId, SeatDevice>;
+  /** Numéro (1 à 4, selon l'ordre de connexion) de la manette Wii branchée à la table pour le pilote de l'équipe ; null sans manette. */
+  wiimotes: Record<Team, number | null>;
   tick: number;
   cars: Record<Team, Car>;
   walls: Wall[];

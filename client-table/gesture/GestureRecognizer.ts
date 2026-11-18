@@ -31,6 +31,9 @@ export class GestureRecognizer {
 
   contacts = new Map<number, Contact>();
 
+  /** Ouvre la manette Wii du pilote de l'équipe ; branché par main.ts, à appeler dans un toucher. */
+  connectWiimote: (team: Team) => void = () => {};
+
   strokeSeq = 0;
 
   padTouches = new Map<string, Set<number>>();

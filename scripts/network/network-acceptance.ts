@@ -60,6 +60,8 @@ async function client(role: 'table' | 'oz') {
 try {
   const table = await client('table'), oz = await client('oz');
   table.send({ type: 'StartGame', mode: 'table' });
+  await oz.until(/* Reconnaît l’écran de préparation des postes dans l’état reçu par Oz. */ s => s.phase === 'SETUP');
+  table.send({ type: 'ConfirmSetup' });
   await oz.until(/* Reconnaît l’ouverture de la création dans l’état reçu par Oz. */ s => s.phase === 'MAP');
   game.rules.startRace(undefined, true); // fixture: table track generation is covered by rule tests
   await table.until(/* Reconnaît le circuit prêt à être lancé sur la table. */ s => s.phase === 'READY');

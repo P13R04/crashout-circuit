@@ -51,7 +51,8 @@ export function drawLobby(renderer: Renderer, ctx: Ctx, developerTools = false, 
   ] as const) drawLobbyButton(ctx, button, glyph, label, color);
   drawLobbyButton(ctx, START_WIIMOTE_BUTTON, 'wheel', 'MANETTE WII', '#b388ff');
   ctx.restore();
-  if (renderer.lobbyJoin && seats) drawLobbyJoin(ctx, renderer.lobbyJoin, seats, soloTest);
+  // Le QR de l'accueil ne sert plus qu'à l'essai solo : en course normale, chaque poste a le sien dans la préparation.
+  if (renderer.lobbyJoin && seats && soloTest) drawLobbyJoin(ctx, renderer.lobbyJoin, seats, soloTest);
 }
 
 // ─── Overlays ─────────────────────────────────────────────────────────────

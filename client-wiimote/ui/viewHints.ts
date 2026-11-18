@@ -59,6 +59,7 @@ export function sessionHint(view: Pick<WiimoteView, 'room' | 'online' | 'seat' |
   if (!view.room) return 'Lance une partie solo, ou saisis le code de séance affiché sur la table.';
   if (!view.online) return 'Serveur injoignable. Reconnexion en cours…';
   if (!view.seat) return 'Choisis ta place de pilote.';
+  if (view.phase === 'SETUP') return 'Place réservée. Connecte la manette, puis attends le départ sur la table.';
   if (view.phase === 'LOBBY' || view.solo && view.phase !== 'RACE') return 'Appuie sur « Lancer une partie solo », ou attends le départ sur la table.';
   if (view.phase === 'RACE' && view.carDisabled) return 'Voiture en panne : maintiens A avec ton copilote pour réparer.';
   if (view.driving) return view.driveMode === 'pedal' ? 'Course : tiens B pour accélérer.' : 'Course : la voiture avance seule.';

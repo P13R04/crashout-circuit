@@ -62,11 +62,19 @@ export class PlayerSeats {
 
   /** Libère immédiatement la place de la connexion avant le départ de la course. */
   leave(owner: symbol, phase: Phase): SeatId | undefined {
-    if (phase !== 'LOBBY' && phase !== 'MAP' && phase !== 'READY') return;
+    if (phase !== 'LOBBY' && phase !== 'SETUP' && phase !== 'MAP' && phase !== 'READY') return;
     const seat = this.seatOf(owner);
     if (!seat) return;
     this.free(seat);
     return seat;
+  }
+
+  /** Libère un poste à la demande de la table et renvoie la connexion qui le tenait, s'il y en avait une. */
+  evict(seat: SeatId): symbol | null | undefined {
+    const reservation = this.reservations.get(seat);
+    if (!reservation) return undefined;
+    this.free(seat);
+    return reservation.owner;
   }
 
   /** Libère les réservations expirées et retire leurs noms de l'état public. */

@@ -48,6 +48,8 @@ export function createInitialState(): GameState {
       'B-pilot': { taken: false, connected: false },
       'B-copilot': { taken: false, connected: false },
     },
+    wiimotes: { A: null, B: null },
+    seatDevices: { 'A-pilot': 'table', 'A-copilot': 'table', 'B-pilot': 'table', 'B-copilot': 'table' },
     tick: 0,
     cars: { A: makeCar('A'), B: makeCar('B') },
     walls: [],

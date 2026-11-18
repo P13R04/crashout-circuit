@@ -57,7 +57,7 @@ export class OzController {
   /** Réconcilie les modifications locales avec l’état reçu et réinitialise la sélection au retour aux menus. */
   applyState(state: GameState): void {
     this.synchronized = true;
-    if (state.phase === 'LOBBY' || state.phase === 'MAP') {
+    if (state.phase === 'LOBBY' || state.phase === 'SETUP' || state.phase === 'MAP') {
       this.pending.clear(); this.history = []; this.preparing = false; this.firstPylonPlaced = false; this.endGesture();
       this.selectedId = 1; this.draftAngle = 0; this.notice = '';
     }

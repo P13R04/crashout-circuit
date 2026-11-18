@@ -22,9 +22,19 @@ export function handleTableSession(rules: GameRules, msg: ClientMessage): void {
       rules.updateRaceSettings(msg);
       break;
     case 'StartGame':
-      if (phase === 'LOBBY' && (msg.mode === undefined || msg.mode === 'table' || msg.mode === 'pc' && developerTools)) {
-        rules.enterMap(msg.mode);
-      }
+      // La course à la table passe par la préparation des postes ; le clavier de développement l'ignore.
+      if (phase !== 'LOBBY') break;
+      if (msg.mode === undefined || msg.mode === 'table') rules.enterSetup();
+      else if (msg.mode === 'pc' && developerTools) rules.enterMap('pc');
+      break;
+    case 'SetSeatDevice':
+      rules.setSeatDevice(msg);
+      break;
+    case 'SetWiimote':
+      rules.setWiimote(msg);
+      break;
+    case 'ConfirmSetup':
+      rules.confirmSetup();
       break;
     case 'StartTangibleTest':
       if (developerTools) rules.startTangibleTest();
@@ -81,7 +91,8 @@ export function handleTableGameplay(rules: GameRules, msg: ClientMessage): void 
       rules.toggleDriveMode(msg.team);
       break;
     case 'PadHold':
-      rules.onPadHold(msg);
+      // Le bouton de réparation d'un pilote connecté par téléphone se trouve sur son téléphone, pas sur la table.
+      if (!(msg.role === 'pilot' && (msg.team === 'A' || msg.team === 'B') && rules.state.seats[`${msg.team}-pilot`].connected)) rules.onPadHold(msg);
       break;
     case 'Slingshot':
       rules.onSlingshot(msg);

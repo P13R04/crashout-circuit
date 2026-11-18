@@ -57,7 +57,7 @@ Cette section résume tout ce qui a été décidé, construit et dit en conversa
 | Modes | TABLE/PC | TABLE, PC (dev), **TUTORIEL** (à quatre, circuit prédéfini, sans dégâts), **TEST TANGIBLES** (pilotes automatiques, dev) ; tous passent par `startRace()` |
 | Table | iiyama 65" 4K | Les LEGO sont calibrés pour une **dalle 55"** (`tableDiagonalInches`) ; `docs/seuils-tactiles.md` raisonne en 65" (0,75 mm/px). **À aligner avec la dalle réellement utilisée** |
 
-Phases serveur : `LOBBY → MAP → READY → RACE ⇄ PAUSED → RESULT`. Boucle physique 60 Hz, diffusion 30 Hz, repère logique 1920×1080.
+Phases serveur : `LOBBY → SETUP → MAP → READY → RACE ⇄ PAUSED → RESULT` (`SETUP` : choix de l’appareil par poste, table / téléphone / manette Wii, QR individuels ; le mode clavier de développement, le tutoriel et l’essai solo l’ignorent). Pilote téléphone : direction tactile par défaut, gyroscope optionnel ; pilote manette Wii : manette ouverte par la table (WebHID), numéro par ordre de connexion, `state.wiimotes`. Boucle physique 60 Hz, diffusion 30 Hz, repère logique 1920×1080.
 
 ### D. Tutoriel (issue #32)
 

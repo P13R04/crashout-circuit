@@ -5,6 +5,9 @@ export interface SessionInfo {
   ozUrls: string[];
   secure: boolean;
   spectators?: boolean;
+  /** Spectateurs connectés et nombre maximal admis. */
+  viewers?: number;
+  viewerLimit?: number;
 }
 
 /** Renvoie les informations actuelles de la séance. */

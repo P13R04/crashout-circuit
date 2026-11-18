@@ -10,10 +10,12 @@ import { readFileSync, statSync } from 'fs';
 import { resolve, dirname, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { createSessionHttp, sessionAddresses } from './net/sessionHttp.js';
+import { startupLines } from './net/startupBanner.js';
 import { GameServer } from './net/GameServer.js';
 import { audioByteRange } from './net/audioHttp.js';
 import { HostAccess, socketRole } from './net/hostAccess.js';
 import { SpectatorStream } from './net/SpectatorStream.js';
+import { handleSpectatorSwitch } from './net/spectatorSwitch.js';
 import { config } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -67,7 +69,12 @@ const handleRequest: RequestListener = (req, res) => {
   if (url.pathname === '/api/session') {
     const port = (httpServer.address() as { port: number }).port;
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    res.end(JSON.stringify({ ...sessionAddresses(port, protocol, publicUrl), room: gameServer.room, spectators: spectators.enabled }));
+    res.end(JSON.stringify({ ...sessionAddresses(port, protocol, publicUrl), room: gameServer.room, spectators: spectators.enabled, viewers: spectators.count, viewerLimit: spectators.limit }));
+    return;
+  }
+
+  if (url.pathname === '/api/spectators') {
+    void handleSpectatorSwitch(req, res, { hostAccess, spectators, secure: protocol === 'https', onChange: announceSpectators });
     return;
   }
 
@@ -141,26 +148,31 @@ const spectators = new SpectatorStream(hostAccess.enabled, () => gameServer.getS
 // Export for use by PhysicsLoop and other modules (added in later tasks)
 export { gameServer };
 
+/** Rappelle dans le terminal les liens à utiliser après l'ouverture ou la fermeture des spectateurs depuis la table. */
+function announceSpectators(enabled: boolean): void {
+  const { port } = httpServer.address() as { port: number };
+  const { baseUrls } = sessionAddresses(port, protocol, publicUrl);
+  console.log('');
+  if (!enabled) {
+    console.log('   Spectateurs fermés : la table et Oz sont de nouveau accessibles sans lien privé.');
+    return;
+  }
+  console.log('   Spectateurs ouverts : la table et Oz exigent désormais le lien privé de l’hôte.');
+  console.log(`   Local:      ${hostAccess.url(`${protocol}://localhost:${port}`)}`);
+  if (baseUrls[0]) console.log(`   Oz:         ${hostAccess.url(baseUrls[0], '/oz')}`);
+}
+
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
 /** Affiche les adresses de connexion une fois le serveur effectivement lancé. */
 httpServer.listen(PORT, () => {
   const { port } = httpServer.address() as { port: number };
   const { baseUrls, secure } = sessionAddresses(port, protocol, publicUrl);
-  console.log('\n🏎  Crashout Circuit server running');
-  console.log(`   Local:   ${hostAccess.url(`${protocol}://localhost:${port}`)}`);
-
-  for (const baseUrl of baseUrls) {
-    console.log(`   Network: ${baseUrl}`);
-    console.log(`   Oz:      ${hostAccess.url(baseUrl, '/oz')}`);
-    if (spectators.enabled) console.log(`   Spectateur: ${baseUrl}/watch?room=${gameServer.room}`);
-    console.log(`   Joueurs: ${baseUrl}/play?room=${gameServer.room}`);
-  }
-  if (gameServer.getState().soloTest) console.log('   Essai pilote solo : scannez le QR sur la table.');
-  if (gameServer.getState().soloTest && gameServer.getState().developerTools) {
-    console.log(`   Pilote PC : ${protocol}://localhost:${port}/play?room=${gameServer.room}&keyboard=1`);
-  }
-  if (!secure) console.log('   HTTP : capteurs iOS indisponibles. Utilisez une adresse HTTPS pour jouer au gyroscope.');
-  console.log(`   Outils de test : ${gameServer.getState().developerTools?'activés':'désactivés'}`);
-  console.log(`   Config:  lapsToWin=${config.lapsToWin}, physicsHz=${config.physicsHz}\n`);
+  const state = gameServer.getState();
+  console.log(startupLines({
+    port, protocol, baseUrls, secure, room: gameServer.room, spectators: spectators.enabled,
+    developerTools: state.developerTools, soloTest: state.soloTest,
+    lapsToWin: config.lapsToWin, physicsHz: config.physicsHz,
+    hostUrl: (base, path) => hostAccess.url(base, path),
+  }).join('\n'));
 });

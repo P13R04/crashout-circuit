@@ -10,6 +10,10 @@ import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTT
 import { inTutorialCard, tutorialButtonAt, tutorialIdentifying } from '../ui/TutorialOverlay.js';
 import { tangibleTouchPose, TANGIBLE_CONTACT_GRACE_MS } from '../../server/tangibles/tangibleTouch.js';
 import { tangibleDefinition } from '../../server/tangibles/tangibles.js';
+import { setupHit } from '../setup/setupLayout.js';
+import { remotePilot } from '../ui/remotePilot.js';
+import { wiimoteConnected } from '../wiimote/wiimoteView.js';
+import { seatsWaiting } from '../../server/rules/session/seatSetup.js';
 import { tuning } from './gestureTuning.js';
 import { MAX_CONTACTS } from './gestureConstants.js';
 import type { Contact } from './gestureTypes.js';
@@ -49,6 +53,21 @@ export function onDown(recognizer: GestureRecognizer, e: PointerEvent): void {
       c.zone = 'result';
       recognizer.send({ type: 'StartTutorial', mode: recognizer.view.tutorialMode });
     } else c.zone = 'rejected';
+    return;
+  }
+
+  // 0b — préparation : appareil de chaque poste, départ de la création du circuit, retour à l'accueil
+  if (state.phase === 'SETUP') {
+    const missing = (['A-pilot', 'B-pilot'] as const).filter(seat => state.seatDevices?.[seat] === 'wiimote' && !wiimoteConnected(recognizer.view.wiimotes[seat[0] as 'A' | 'B']));
+    const target = setupHit(p, missing);
+    c.zone = target ? 'result' : 'rejected';
+    if (target?.kind === 'connect' || (target?.kind === 'device' && target.device === 'wiimote')) {
+      c.zone = 'wiimoteConnect';
+      c.connectTeam = target.seat.startsWith('A-') ? 'A' : 'B';
+    }
+    if (target?.kind === 'device') recognizer.send({ type: 'SetSeatDevice', seat: target.seat, device: target.device });
+    else if (target?.kind === 'start' && !seatsWaiting(state).length) recognizer.send({ type: 'ConfirmSetup' });
+    else if (target?.kind === 'back') recognizer.send({ type: 'Reset' });
     return;
   }
 
@@ -114,6 +133,10 @@ export function onDown(recognizer: GestureRecognizer, e: PointerEvent): void {
   // 3 — pads and buttons of the corner panels
   for (const panel of PANELS) {
     const l = worldToLocal(panel, p.x, p.y);
+    // Un pilote qui conduit au téléphone ou à la manette n'a ni direction, ni pédale, ni réparation sur la table.
+    if (panel.role === 'pilot' && remotePilot(state, panel.team) && Math.abs(l.x) <= panelWidth('pilot', state.driveMode[panel.team]) / 2 && Math.abs(l.y) <= PANEL_H / 2) {
+      c.zone = 'rejected'; return;
+    }
     if (panel.role === 'pilot') {
       if (state.sessionMode === 'tangibles-test' && Math.abs(l.x) <= panelWidth('pilot',state.driveMode[panel.team]) / 2 && Math.abs(l.y) <= PANEL_H / 2) {
         c.zone = 'rejected'; return;

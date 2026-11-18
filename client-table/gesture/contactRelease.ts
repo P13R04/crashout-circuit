@@ -59,6 +59,8 @@ export function onUp(recognizer: GestureRecognizer, e: PointerEvent): void {
     const at = toLogical(recognizer, e), b = START_WIIMOTE_BUTTON;
     if (at.x >= b.x && at.x <= b.x + b.w && at.y >= b.y && at.y <= b.y + b.h) openWiimotePanel();
   }
+  // Le navigateur n'ouvre le choix d'une manette qu'au relâchement d'un toucher complet.
+  if (c.zone === 'wiimoteConnect' && e.type === 'pointerup' && c.connectTeam) recognizer.connectWiimote(c.connectTeam);
   recognizer.contacts.delete(c.id);
   recognizer.view.debug.contacts = recognizer.contacts.size;
   if(c.zone==='tangible'){

@@ -16,7 +16,10 @@ const REJECTION: Record<JoinRejectedMsg['reason'], string> = {
   'unknown-room': 'Ce code de séance est inconnu.',
   'solo-seat': 'Cet essai est réservé à un seul pilote.',
   'room-full': 'Les quatre places de cette séance sont prises.',
+  'seat-on-table': 'Ce poste se joue sur la table. Scannez le code de votre poste.',
+  'seat-wiimote': 'Ce poste se joue avec une manette Wii branchée à la table.',
 };
+const PRE_RACE = ['LOBBY', 'SETUP', 'MAP', 'READY'];
 
 type Reservation = { room: string; seat: SeatId; token: string };
 
@@ -35,7 +38,8 @@ export class PhoneSession {
   pending: 'join' | 'leave' | null = null;
   notice = '';
 
-  constructor(private readonly refresh: () => void) {}
+  /** `wantedSeat` : poste annoncé par le QR code de la table, pris dès que la connexion est ouverte. */
+  constructor(private readonly refresh: () => void, private wantedSeat: SeatId | null = null) {}
 
   /** Valide un code, ouvre la connexion et reprend la réservation de cet onglet si possible. */
   async open(raw: string): Promise<void> {
@@ -105,6 +109,8 @@ export class PhoneSession {
   resume(): void {
     if (this.online && this.reservation && this.pending !== 'leave') {
       this.conn?.send({ type: 'Join', room: this.room, token: this.reservation.token });
+    } else if (this.online && this.wantedSeat && !this.seat && !this.pending) {
+      this.join(this.wantedSeat);
     }
   }
 
@@ -138,11 +144,12 @@ export class PhoneSession {
       case 'State':
         this.state = this.sync.apply(msg.state, msg.t);
         this.stateTime = msg.t;
-        if (this.pending === 'leave' && !['LOBBY', 'MAP', 'READY'].includes(msg.state.phase)) {
+        if (this.pending === 'leave' && !PRE_RACE.includes(msg.state.phase)) {
           this.pending = null;
         }
         break;
       case 'Joined':
+        this.wantedSeat = null;
         this.confirmed = true;
         this.pending = null;
         this.seat = msg.seat;
@@ -150,12 +157,16 @@ export class PhoneSession {
         this.saveReservation({ room: this.room, seat: msg.seat, token: msg.token });
         break;
       case 'Left':
+        this.wantedSeat = null;
         this.confirmed = false;
         this.pending = null;
         this.seat = null;
         this.saveReservation(null);
         break;
-      case 'JoinRejected':
+      case 'JoinRejected': {
+        // Le poste du QR code n'est tenté qu'une fois de plus, après l'abandon d'une réservation périmée.
+        const retry = msg.reason === 'bad-token' ? this.wantedSeat : null;
+        this.wantedSeat = null;
         this.pending = null;
         this.notice = REJECTION[msg.reason];
         if (msg.reason === 'bad-token' || msg.reason === 'unknown-room') {
@@ -164,7 +175,9 @@ export class PhoneSession {
           this.saveReservation(null);
         }
         if (msg.reason === 'unknown-room') this.closeSession();
+        if (retry) this.join(retry);
         break;
+      }
       default:
         return;
     }

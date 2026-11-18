@@ -19,7 +19,20 @@ const COOKIE = 'crashout-host';
 export class HostAccess {
   private readonly key = randomBytes(24).toString('hex');
 
-  constructor(readonly enabled: boolean) {}
+  private on: boolean;
+
+  constructor(enabled: boolean) { this.on = enabled; }
+
+  /** Indique si la table et Oz exigent le lien privé de l'hôte, ce qui accompagne l'ouverture aux spectateurs. */
+  get enabled(): boolean { return this.on; }
+
+  /** Active ou coupe la protection ; la clé reste la même pendant toute la vie du serveur. */
+  set(on: boolean): void { this.on = on; }
+
+  /** Cookie qui prouve l'accès hôte ; renvoyé à la table quand elle active les spectateurs. */
+  cookie(secure: boolean): string {
+    return COOKIE + '=' + this.key + '; Path=/; HttpOnly; SameSite=Strict' + (secure ? '; Secure' : '');
+  }
 
   url(base: string, path = '/'): string {
     return this.enabled ? base + path + '?host=' + this.key : base + path;
@@ -35,7 +48,7 @@ export class HostAccess {
       url.searchParams.delete('host');
       res.writeHead(303, {
         Location: url.pathname + url.search,
-        'Set-Cookie': COOKIE + '=' + this.key + '; Path=/; HttpOnly; SameSite=Strict' + (secure ? '; Secure' : ''),
+        'Set-Cookie': this.cookie(secure),
         'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
       }).end();
       return false;

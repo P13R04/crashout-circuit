@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { createServer as createHttpServer, type RequestListener } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { networkInterfaces } from 'node:os';
+import { lanAddresses, type InterfaceTable } from './networkAddresses.js';
 
 /** Ouvre le transport configuré et valide les réglages fournis au démarrage. */
 export function createSessionHttp(handler: RequestListener, env = process.env) {
@@ -37,9 +38,8 @@ function parsePublicUrl(address: string): URL {
 }
 
 /** Prépare les adresses annoncées au démarrage et renvoyées aux interfaces. */
-export function sessionAddresses(port: number, protocol: 'http' | 'https', publicUrl: URL | null) {
-  const local = Object.values(networkInterfaces()).flat().flatMap(iface =>
-    iface?.family === 'IPv4' && !iface.internal ? [`${protocol}://${iface.address}:${port}`] : []);
+export function sessionAddresses(port: number, protocol: 'http' | 'https', publicUrl: URL | null, interfaces: InterfaceTable = networkInterfaces()) {
+  const local = lanAddresses(interfaces).map(address => `${protocol}://${address}:${port}`);
   const baseUrls = [...new Set(publicUrl ? [publicUrl.origin, ...local] : local)];
   return {
     baseUrls,

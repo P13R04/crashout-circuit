@@ -4,7 +4,7 @@
  * Réexporté par server/types.ts, qui reste le point d'import unique des types partagés.
  */
 import type { TangibleId } from '../tangibles/tangibles.js';
-import type { Vec2, Team, Phase, ItemKind, Difficulty, TangiblePlacementMode, Tangible, GameState, SeatId } from './gameState.js';
+import type { Vec2, Team, Phase, ItemKind, Difficulty, TangiblePlacementMode, Tangible, GameState, SeatId, SeatDevice } from './gameState.js';
 
 /** Associe un type de commande à son horodatage réseau. */
 export interface BaseMsg {
@@ -114,6 +114,23 @@ export interface StartGameMsg extends BaseMsg {
   mode?: 'table' | 'pc';
 }
 
+/** Décrit le choix de l'appareil d'un poste sur l'écran de préparation. */
+export interface SetSeatDeviceMsg extends BaseMsg {
+  type: 'SetSeatDevice';
+  seat: SeatId;
+  device: SeatDevice;
+}
+
+/** Signale qu'une manette Wii est connectée à l'ordinateur de la table pour le pilote d'une équipe, avec son numéro. */
+export interface SetWiimoteMsg extends BaseMsg {
+  type: 'SetWiimote';
+  team: Team;
+  number: number | null;
+}
+
+/** Décrit la validation de l'écran de préparation, qui ouvre la création du circuit. */
+export interface ConfirmSetupMsg extends BaseMsg { type: 'ConfirmSetup' }
+
 /** Décrit l’essai autonome des tangibles dans le protocole partagé. */
 export interface StartTangibleTestMsg extends BaseMsg { type: 'StartTangibleTest' }
 
@@ -222,7 +239,7 @@ export interface JoinedMsg extends BaseMsg {
 /** Explique pourquoi une demande de place a été refusée. */
 export interface JoinRejectedMsg extends BaseMsg {
   type: 'JoinRejected';
-  reason: 'seat-taken' | 'bad-token' | 'unknown-room' | 'room-full' | 'solo-seat';
+  reason: 'seat-taken' | 'bad-token' | 'unknown-room' | 'room-full' | 'solo-seat' | 'seat-on-table' | 'seat-wiimote';
 }
 
 /** Lance ou recommence une course du banc de test solo. */
@@ -289,6 +306,9 @@ export type ClientMessage =
   | PilotInputMsg
   | PowerMsg
   | StartGameMsg
+  | SetSeatDeviceMsg
+  | SetWiimoteMsg
+  | ConfirmSetupMsg
   | StartTangibleTestMsg
   | StartTutorialMsg
   | TutorialSkipMsg
