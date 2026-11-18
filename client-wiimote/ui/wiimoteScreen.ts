@@ -181,7 +181,7 @@ export class WiimoteScreen {
       node.disabled = !view.online || view.pending || view.seat !== null || view.seatsTaken[seat];
       node.classList.toggle('chosen', view.seat === seat);
     }
-    const preRace = view.phase === null || ['LOBBY', 'MAP', 'READY'].includes(view.phase);
+    const preRace = view.phase === null || ['LOBBY', 'SETUP', 'MAP', 'READY'].includes(view.phase);
     this.leaveButton.hidden = view.seat === null;
     this.leaveButton.disabled = !preRace || view.pending;
     this.join.disabled = view.pending || view.seat !== null;

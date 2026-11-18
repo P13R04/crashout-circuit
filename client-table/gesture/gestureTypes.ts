@@ -7,7 +7,7 @@ import type { Team, Vec2 } from '../../server/types.js';
 import { type PanelLayout } from '../../server/layout.js';
 
 /** Décrit l’usage réservé à un contact afin de ne pas mélanger commandes et gestes libres. */
-type Zone = 'tangible' | 'simsling' | 'steer' | 'pedal' | 'item' | 'pad' | 'stroke' | 'target' | 'result' | 'wiimote' | 'pause' | 'mode' | 'free' | 'rejected';
+type Zone = 'tangible' | 'simsling' | 'steer' | 'pedal' | 'item' | 'pad' | 'stroke' | 'target' | 'result' | 'wiimote' | 'wiimoteConnect' | 'pause' | 'mode' | 'free' | 'rejected';
 
 /** Suit un doigt, sa zone et son déplacement depuis sa pose jusqu’à sa consommation. */
 export interface Contact {
@@ -17,6 +17,8 @@ export interface Contact {
   zone: Zone;
   consumed: boolean;
   padKey?: string;
+  /** Équipe dont la manette Wii s'ouvre quand ce contact se lève (écran de préparation). */
+  connectTeam?: Team;
   panel?: PanelLayout;
   steer?: number;
   strokeTeam?: Team;

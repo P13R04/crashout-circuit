@@ -7,7 +7,7 @@
  * Façade : l'état de la partie et les points d'entrée restent ici ; la logique est découpée par responsabilité dans server/rules/ (chaque méthode délègue à une fonction du même nom).
  */
 import { startSoloRace } from './session/soloRace.js';
-import type { GameState, Team, Vec2, ItemKind, Car, Wall, TrackGeometry, Tangible, StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg, PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg, TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg, TrackPresentation } from '../types.js';
+import type { GameState, Team, Vec2, ItemKind, Car, Wall, TrackGeometry, Tangible, StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg, PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg, TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg, TrackPresentation, SetSeatDeviceMsg, SetWiimoteMsg } from '../types.js';
 import { AutomaticPilot } from '../modes/AutomaticPilot.js';
 import { Tutorial } from '../modes/Tutorial.js';
 import type { RulesHost, TangibleLogEntry } from './session/rulesTypes.js';
@@ -15,6 +15,7 @@ import * as trackCreation from './session/trackCreation.js';
 import * as raceStart from './session/raceStart.js';
 import * as tutorialFlow from './session/tutorialFlow.js';
 import * as sessionControl from './session/sessionControl.js';
+import * as seatSetup from './session/seatSetup.js';
 import * as driving from './gameplay/driving.js';
 import * as armedItems from './gameplay/armedItems.js';
 import * as legacyAbilities from './gameplay/legacyAbilities.js';
@@ -84,6 +85,14 @@ export class GameRules {
     return `${prefix}${++this.idCounter}`;
   }
 
+  /** Ouvre l'écran de préparation où chaque poste choisit son appareil. */
+  enterSetup(): void { seatSetup.enterSetup(this); }
+  /** Enregistre l'appareil choisi pour un poste pendant la préparation. */
+  setSeatDevice(msg: SetSeatDeviceMsg): void { seatSetup.setSeatDevice(this, msg); }
+  /** Enregistre la manette Wii ouverte par la table pour le pilote d'une équipe. */
+  setWiimote(msg: SetWiimoteMsg): void { seatSetup.setWiimote(this, msg); }
+  /** Quitte la préparation pour la création du circuit lorsque tous les joueurs annoncés sont connectés. */
+  confirmSetup(): void { seatSetup.confirmSetup(this); }
   /** Prépare la création à deux équipes et réinitialise les points, les tracés et les objets de session. */
   enterMap(mode?: 'table' | 'pc'): void { trackCreation.enterMap(this, mode); }
   /** Valide les deux points de raccord et attribue les demi-tracés aux équipes. */

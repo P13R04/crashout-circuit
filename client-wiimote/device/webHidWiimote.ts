@@ -23,6 +23,8 @@ export interface WiimoteOptions {
   heartbeatMs?: number;
   /** Horloge en millisecondes ; performance.now() par défaut. */
   clock?: () => number;
+  /** Manettes déjà prises par une autre instance : plusieurs pilotes partagent ce registre pour ne jamais ouvrir la même. */
+  claimed?: Set<HidDeviceLike>;
 }
 
 export class WebHidWiimote {
@@ -34,6 +36,7 @@ export class WebHidWiimote {
   private readonly continuous: boolean;
   private readonly heartbeatMs: number;
   private readonly clock: () => number;
+  private readonly claimed: Set<HidDeviceLike>;
 
   constructor(
     private readonly api: HidApiLike | null,
@@ -43,6 +46,7 @@ export class WebHidWiimote {
     this.continuous = options.continuous ?? false;
     this.heartbeatMs = options.heartbeatMs ?? 5000;
     this.clock = options.clock ?? (() => performance.now());
+    this.claimed = options.claimed ?? new Set();
     api?.addEventListener('disconnect', this.onDisconnect);
     api?.addEventListener('connect', this.onConnect);
   }
@@ -55,7 +59,7 @@ export class WebHidWiimote {
 
   /** Rouvre sans geste une manette déjà autorisée ; renvoie faux si aucune n'est connue. */
   async reopenKnown(): Promise<boolean> {
-    const known = this.api ? (await this.api.getDevices()).find(isWiimote) : undefined;
+    const known = this.api ? (await this.api.getDevices()).find(device => isWiimote(device) && !this.claimed.has(device)) : undefined;
     if (!known) return false;
     await this.attach(known);
     return true;
@@ -66,7 +70,9 @@ export class WebHidWiimote {
     if (!this.api) throw new Error('WebHID indisponible');
     if (await this.reopenKnown().catch(() => false)) return;
     const [chosen] = await this.api.requestDevice({ filters: WIIMOTE_FILTERS });
-    if (chosen) await this.attach(chosen);
+    if (!chosen) return;
+    if (this.claimed.has(chosen)) throw new Error('Cette manette est déjà utilisée par un autre pilote.');
+    await this.attach(chosen);
   }
 
   /** Allume la LED du joueur (1 à 4) ; null les éteint. */
@@ -98,7 +104,13 @@ export class WebHidWiimote {
   private async attach(device: HidDeviceLike): Promise<void> {
     if (this.device === device && device.opened) return;
     this.detach();
-    if (!device.opened) await device.open();
+    this.claimed.add(device);
+    try {
+      if (!device.opened) await device.open();
+    } catch (error) {
+      this.claimed.delete(device);
+      throw error;
+    }
     this.device = device;
     device.addEventListener('inputreport', this.onInput);
     this.handlers.onConnected(device.productName || 'Wiimote');
@@ -113,6 +125,7 @@ export class WebHidWiimote {
     if (this.heartbeat) clearInterval(this.heartbeat);
     this.heartbeat = null;
     this.device?.removeEventListener('inputreport', this.onInput);
+    if (this.device) this.claimed.delete(this.device);
     this.device = null;
     this.queue = Promise.resolve();
   }
@@ -141,7 +154,7 @@ export class WebHidWiimote {
 
   /** Rouvre automatiquement une manette autorisée qui se reconnecte après un appui sur un bouton. */
   private onConnect = (event: HidConnectionEventLike): void => {
-    if (!this.device && isWiimote(event.device)) {
+    if (!this.device && isWiimote(event.device) && !this.claimed.has(event.device)) {
       this.attach(event.device).catch(error => this.handlers.onError(`Réouverture impossible : ${String(error)}`));
     }
   };

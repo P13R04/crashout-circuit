@@ -13,9 +13,12 @@ const notice = document.querySelector<HTMLParagraphElement>('#notice')!;
 const screen = document.querySelector<HTMLElement>('#screen')!;
 const params = new URLSearchParams(location.search);
 const initial = params.get('room') ?? '';
-const session = new PhoneSession(render);
+/** Poste annoncé par le QR code de la table (`?seat=A-pilot`) ; toute autre valeur est ignorée. */
+const wanted = SEAT_IDS.find(id => id === params.get('seat')) ?? null;
+const session = new PhoneSession(render, wanted);
 const WAITING: Record<Phase, string> = {
   LOBBY: 'En attente du départ sur la table.',
+  SETUP: 'Votre poste est réservé. Attendez le départ sur la table.',
   MAP: 'Les équipes dessinent le circuit sur la table.',
   READY: 'Le circuit est prêt. Attendez le départ sur la table.',
   RACE: 'Partie en cours.',
@@ -96,7 +99,7 @@ function showSeat(seat: SeatId, state: Phase): void {
   info.className = 'detail';
   info.textContent = WAITING[state];
   screen.replaceChildren(info);
-  if (['LOBBY', 'MAP', 'READY'].includes(state)) {
+  if (['LOBBY', 'SETUP', 'MAP', 'READY'].includes(state)) {
     const change = button('Changer de place', () => session.leave());
     change.disabled = !session.online || session.pending === 'leave';
     screen.append(change);
@@ -107,7 +110,8 @@ function showSeat(seat: SeatId, state: Phase): void {
 function render(): void {
   if (notice.textContent !== session.notice) notice.textContent = session.notice;
   const { state, seat, room, online, pending } = session;
-  if (seat?.endsWith('-pilot') && state && (state.soloTest || state.phase === 'RACE' || state.phase === 'PAUSED' || state.phase === 'RESULT')) {
+  // Le pilote a ses commandes dès qu'il a scanné son QR code : il peut essayer la direction avant le départ.
+  if (seat?.endsWith('-pilot') && state) {
     if (!pilot) {
       const team = playerTeam(seat);
       pilot = new PilotScreen(session, team, state.soloTest, params.get('keyboard') === '1' && state.soloTest && state.developerTools);
@@ -132,6 +136,9 @@ function render(): void {
     screen.replaceChildren(codeForm());
   } else if (!state) {
     title.textContent = 'Connexion à la séance';
+    screen.replaceChildren();
+  } else if (!seat && wanted && pending === 'join') {
+    title.textContent = 'Connexion à votre poste…';
     screen.replaceChildren();
   } else if (seat) {
     showSeat(seat, state.phase);

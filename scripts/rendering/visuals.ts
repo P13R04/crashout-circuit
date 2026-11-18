@@ -24,6 +24,8 @@ import { TRACK_PRESENTATION_MS,TRACK_REVEAL_MS,FINISH_ROULETTE_MS } from '../../
 import { tutorialSteps } from '../../server/modes/Tutorial.js';
 import { drawTangibleTouchPreview } from '../../client-table/ui/TangibleTouchPreview.js';
 import { createView } from '../../client-table/view.js';
+import { allSetupUrls } from '../../client-table/setup/setupLinks.js';
+import { SEAT_IDS } from '../../client-shared/seatLabels.js';
 import type { TrackGeometry, Vec2 } from '../../server/types.js';
 
 let passed = 0;
@@ -318,7 +320,7 @@ test('every phase, both motion preferences and all feedback effects render witho
   for (const theme of THEMES) for (const track of [generatePreset(), eight]) for (const reduced of [false, true]) {
     view.theme = theme.id; state.track = track; state.trackVersion++;
     view.reducedMotion = reduced;
-    for (const phase of ['LOBBY', 'MAP', 'READY', 'RACE', 'PAUSED', 'RESULT'] as const) {
+    for (const phase of ['LOBBY', 'SETUP', 'MAP', 'READY', 'RACE', 'PAUSED', 'RESULT'] as const) {
       state.phase = phase; state.winner = 'A'; state.pausedAt = 1_000_000;
       view.effects = ['pickup', 'itemArmed', 'itemUsed', 'itemLost', 'stoneImpact', 'stoneHit', 'hit', 'electricHit', 'wallDestroyed', 'repairDone', 'boostHit', 'boostGate', 'fall', 'carDisabled', 'checkpoint', 'trackDeformed']
         .map(/* Construit un exemple de chaque retour d’action pour les vérifier dans tous les thèmes. */ kind => ({ kind, itemKind:'slingshot', x: 900, y: 600, team: 'A', start: 0, dur: 900 }));
@@ -456,6 +458,27 @@ test('the public lobby has only the tutorial and race; test tools require the ho
  const {view,state,renderer}=scene();state.phase='LOBBY';state.developerTools=false;recordedText=[];renderer.render(view);
  assert.ok(recordedText.includes('TUTORIEL'));assert.ok(recordedText.includes('COURSE'));assert.ok(!recordedText.some(/* Détecte un intitulé de développement qui ne doit pas apparaître dans le menu public. */ t=>/ESSAI|CLAVIER|TEST TANGIBLES/.test(t)));
  state.developerTools=true;recordedText=[];renderer.render(view);assert.ok(recordedText.includes('ESSAI OBJETS'));recordedText=null;
+});
+/** Vérifie que l’écran de préparation ne montre un QR individuel que pour les postes joués hors de la table. */
+test('the setup screen draws one QR card per phone or Wii seat, the spectator QR, and a start button that waits for them', () => {
+  const { view, state, renderer } = scene(); state.phase = 'SETUP';
+  const links = { room: 'ABCDE', base: 'http://192.168.1.20:3000', spectators: true, qr: new Map<string, HTMLCanvasElement>() };
+  for (const url of allSetupUrls(links, SEAT_IDS)) links.qr.set(url, canvas() as never);
+  renderer.setupLinks = links;
+  const text = () => { recordedText = []; renderer.render(view); const seen = recordedText; recordedText = null; return seen; };
+  const count = (seen: string[], wanted: string) => seen.filter(t => t === wanted).length;
+  let seen = text();
+  assert.equal(seen.filter(t => t.startsWith('Code ')).length, 0, 'seats left on the table show no QR');
+  assert.equal(count(seen, 'CRÉER LE CIRCUIT') + count(seen, 'SPECTATEURS'), 4, 'start button and spectators read from both long sides');
+  Object.assign(state.seatDevices, { 'A-pilot': 'wiimote', 'B-pilot': 'phone', 'A-copilot': 'phone' }); seen = text();
+  assert.equal(count(seen, 'Code ABCDE') + 10 * count(seen, 'CONNECTER LA MANETTE'), 12, 'two phone QR cards; the Wii seat asks to connect instead of showing a QR');
+  assert.ok(seen.includes('En attente : Pilote Cyan, Copilote Cyan, Pilote Rose'));
+  state.wiimotes.A = 2; view.wiimotes.A = { status: 'ready', number: 2, battery: 80, lowBattery: false, notice: '' }; seen = text();
+  assert.ok(seen.includes('Manette n° 2') && seen.includes('La LED 2 est allumée dessus.') && !seen.includes('CONNECTER LA MANETTE'), 'the controller number is shown');
+  for (const seat of ['A-pilot', 'B-pilot', 'A-copilot'] as const) state.seats[seat] = { taken: true, connected: true }; seen = text();
+  assert.ok(!seen.some(t => t.startsWith('En attente :')), 'everyone is connected: the start button is live');
+  renderer.setupLinks = { ...links, spectators: false };
+  assert.equal(count(text(), 'SPECTATEURS : INACTIF'), 2, 'a server without spectators says so instead of hiding the card');
 });
 /** Vérifie que les repères des postes apparaissent à la création et jamais sur l’accueil. */
 test('seat labels appear during circuit creation and never on the home screen',()=>{
