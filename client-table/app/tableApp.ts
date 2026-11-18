@@ -8,6 +8,7 @@ import { createControls } from '../../client-shared/controls.js';
 import type { View } from '../view.js';
 import type { Renderer } from '../renderer/Renderer.js';
 import type { GestureRecognizer } from '../gesture/GestureRecognizer.js';
+import type { TableWiimotes } from '../wiimote/TableWiimotes.js';
 
 /** Largeur logique de la table, en pixels de jeu. */
 export const LOGICAL_W = 1920;
@@ -27,4 +28,5 @@ export interface TableApp {
   controls: ReturnType<typeof createControls>;
   gestures: GestureRecognizer;
   pcTools: HTMLDetailsElement;
+  wiimotes: TableWiimotes;
 }

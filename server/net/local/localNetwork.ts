@@ -2,6 +2,7 @@
 import { createServer as createHttpsServer } from 'node:https';
 import type { IncomingMessage, RequestListener } from 'node:http';
 import { networkInterfaces } from 'node:os';
+import { lanAddresses } from '../networkAddresses.js';
 import type { AddressInfo } from 'node:net';
 import { localAuthority, signLocalCertificate } from './localCertificates.js';
 
@@ -17,16 +18,7 @@ export function isLoopback(req: IncomingMessage): boolean {
 }
 
 export function localIPv4(interfaces = networkInterfaces()): string[] {
-  const order = Object.entries(interfaces).sort(([a], [b]) => priority(a) - priority(b));
-  const addresses = order.flatMap(([, items]) => (items ?? []).filter(i => i.family === 'IPv4'
-    && !i.internal && !i.address.startsWith('169.254.')).map(i => i.address));
-  return [...new Set(addresses)];
-}
-
-function priority(name: string): number {
-  if (/^(en0|wi-fi|wlan\d*)$/i.test(name)) return 0;
-  if (/^(utun|tun|wg|tailscale|docker|veth)/i.test(name)) return 2;
-  return 1;
+  return lanAddresses(interfaces);
 }
 
 export function createLocalNetwork(handler: RequestListener, scan = localIPv4) {

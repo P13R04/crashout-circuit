@@ -27,3 +27,10 @@ Avant de modifier ou de remplacer une mécanique, lire le `README.md` du prototy
 - Le contrôle est automatique : `npm run check:sizes` (dans `check` et `verify`) refuse un fichier de plus de 500 lignes ou un dossier de plus de 12 fichiers, et lit `scripts/quality/file-sizes.baseline.json`, qui liste les fichiers encore trop grands et ne doit jamais grossir.
 - Skills du projet, dans `.claude/skills/` : `limiter-taille-fichiers` (seuils chiffrés, à appliquer avant de créer ou d’allonger un fichier et avant de conclure une tâche) et `clean-architecture` (règle de dépendance et frontières, copié de wondelai/skills, voir son `SOURCE.md`).
 - Un découpage est un déplacement pur : mêmes noms publics, mêmes tests. Un fichier déplacé voit ses imports et les chemins cités dans la documentation mis à jour dans le même commit.
+
+## Dépôt Git : tout va sur le fork
+
+- Le dépôt de travail est le **fork `QuentinELLEON/crashout-circuit`**, remote `origin`. Tout `git push`, toute branche et toute pull request se font sur `origin`.
+- **Ne jamais pousser ni ouvrir de PR sur `P13R04/crashout-circuit`** (remote `upstream`, dépôt d’origine) : il sert seulement à récupérer des changements (`git fetch upstream`). Une PR créée là par erreur doit être fermée.
+- « Rebaser sur main » veut dire `origin/main` (le `main` du fork, plus avancé que celui de P13R04), après un `git fetch origin`.
+- Avant un push ou une PR, vérifier la cible : `git remote -v`, et `--repo QuentinELLEON/crashout-circuit` pour `gh`.

@@ -61,7 +61,7 @@ export class TangibleTransitions {
   update(state: GameState, now: number): void {
     this.now = now;
     this.pendingCue = null;
-    if (state.phase === 'LOBBY' || state.phase === 'MAP') {
+    if (state.phase === 'LOBBY' || state.phase === 'SETUP' || state.phase === 'MAP') {
       this.trackedWalls.clear();
       this.trackedPylons.clear();
       this.trackedArcs.clear();

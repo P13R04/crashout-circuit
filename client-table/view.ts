@@ -6,6 +6,7 @@
  * Référencé notamment par client-table/gesture/GestureRecognizer.ts, client-table/ui/HUD.ts,
  * client-table/themes/neon/NeonEffects.ts.
  */
+import { noWiimote, type WiimoteView } from './wiimote/wiimoteView.js';
 import type { GameState, Team, Vec2, ItemKind } from '../server/types.js';
 import type { DividerCheck } from '../server/layout.js';
 import type { ThemeId } from './themes/themes.js';
@@ -64,6 +65,8 @@ export interface View {
   tangibleTouch: { points: Vec2[]; valid: boolean } | null;
   /** Joystick knob per team, normalized to the base radius (x right, y down), as drawn. */
   sticks: Record<Team, { x: number; y: number; active: boolean }>;
+  /** Manettes Wii branchées à l'ordinateur de la table, une par équipe ; écrites par TableWiimotes seulement. */
+  wiimotes: Record<Team, WiimoteView>;
   /** Smoothed HP shown on the bars. */
   hpShown: Record<Team, number>;
   /** Last mapError per team (performance.now()). */
@@ -117,7 +120,7 @@ export function createView(now: () => number): View {
     state: null,
     reducedMotion: false,
     tutorialMode: 'table',
-    theme: 'scrap',
+    theme: 'classic',
     visualTime: 0,
     now,
     effects: [],
@@ -127,6 +130,7 @@ export function createView(now: () => number): View {
     sling: null,
     tangibleTouch: null,
     sticks: { A: { x: 0, y: 0, active: false }, B: { x: 0, y: 0, active: false } },
+    wiimotes: { A: noWiimote(), B: noWiimote() },
     hpShown: { A: 100, B: 100 },
     mapErrorAt: { A: -1e9, B: -1e9 },
     pendingDivider: [],

@@ -18,16 +18,16 @@ export function isPilotSeat(seat: SeatId): boolean {
 
 /** Applique une commande mobile autorisée et signale un éventuel appui de réparation. */
 export function handlePlayerCommand(rules: GameRules, seat: SeatId, msg: ClientMessage): boolean {
-  if (rules.state.soloTest && msg.type !== 'PilotInput' && msg.type !== 'ToggleDriveMode') {
-    if (seat === 'A-pilot') {
-      if (msg.type === 'StartSolo') rules.startSolo();
-      if (msg.type === 'SetTheme' && rules.state.developerTools && isThemeId(msg.theme)) {
-        rules.state.theme = msg.theme;
-        rules.host.broadcastFull();
-      }
-    }
+  if (msg.type === 'StartSolo') {
+    if (seat === 'A-pilot') rules.startSolo();
     return false;
   }
+  if (rules.state.soloTest && seat === 'A-pilot' && msg.type === 'SetTheme' && rules.state.developerTools && isThemeId(msg.theme)) {
+    rules.state.theme = msg.theme;
+    rules.host.broadcastFull();
+    return false;
+  }
+  if (rules.state.soloTest && msg.type !== 'PilotInput' && msg.type !== 'ToggleDriveMode') return false;
   const team = seatTeam(seat);
   const pilot = isPilotSeat(seat);
   switch (msg.type) {

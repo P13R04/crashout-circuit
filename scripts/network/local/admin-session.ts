@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { setTimeout as wait } from 'node:timers/promises';
 import { WebSocket } from 'ws';
-import type { SeatId, ServerMessage } from '../../server/types.js';
+import type { SeatId, ServerMessage } from '../../../server/types.js';
 
 const child = spawn(process.execPath, ['dist/server/index.js'], { env: {
   ...process.env, PORT: '0', CRASHOUT_SOLO_TEST: '0', CRASHOUT_DEV_TOOLS: '0', CRASHOUT_SPECTATORS: '1',

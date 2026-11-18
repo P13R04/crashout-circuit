@@ -10,11 +10,11 @@ export { THEMES, type ThemeId };
 /** Distingue les trois thèmes qui utilisent le même moteur de chaussée et de décor. */
 export type CircuitTheme = Exclude<ThemeId, 'neon' | 'scrap'>;
 export const THEME_STORAGE_KEY = 'crashout.visual-theme.v2';
-/** Retrouve un identifiant de thème valide et choisit Ferraille en cas de valeur inconnue. */
-export function themeId(value: unknown): ThemeId { return THEMES.find(/* Retrouve la définition dont l’identifiant correspond à la préférence enregistrée. */ t => t.id === value)?.id ?? 'scrap'; }
+/** Retrouve un identifiant de thème valide et choisit Grand Prix en cas de valeur inconnue. */
+export function themeId(value: unknown): ThemeId { return THEMES.find(/* Retrouve la définition dont l’identifiant correspond à la préférence enregistrée. */ t => t.id === value)?.id ?? 'classic'; }
 /** Lit la préférence visuelle locale en tolérant un stockage absent ou inaccessible. */
 export function loadTheme(storage: Pick<Storage, 'getItem'>): ThemeId {
-  try { return themeId(storage.getItem(THEME_STORAGE_KEY)); } catch { return 'scrap'; }
+  try { return themeId(storage.getItem(THEME_STORAGE_KEY)); } catch { return 'classic'; }
 }
 /** Conserve le thème choisi localement sans bloquer le jeu si le stockage est refusé. */
 export function saveTheme(storage: Pick<Storage, 'setItem'>, id: ThemeId): void {

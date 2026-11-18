@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect } from 'node:tls';
 import { setTimeout as wait } from 'node:timers/promises';
-import { createLocalNetwork } from '../../server/net/localNetwork.js';
+import { createLocalNetwork } from '../../../server/net/local/localNetwork.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'crashout-local-test-'));
 const child = spawn(process.execPath, ['dist/server/index.js'], {

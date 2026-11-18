@@ -16,10 +16,15 @@ import { setupDisplayPreferences } from './app/displayPreferences.js';
 import { setupRaceSettingsPanel } from './app/raceSettingsPanel.js';
 import { setupSimulationTools } from './app/simulationTools.js';
 import { setupAudioSettings } from './app/audioSettings.js';
+import { setupSpectatorSettings } from './app/spectatorSettings.js';
 import { setupKeyboardControls } from './app/keyboardControls.js';
 import { setupFullscreenControls } from './app/fullscreenControls.js';
 import { createMessageHandler } from './app/serverMessages.js';
 import { loadLobbyJoin } from './renderer/lobbyJoin.js';
+import { loadSetupLinks } from './setup/setupLinks.js';
+import { SEAT_IDS } from '../client-shared/seatLabels.js';
+import { TableWiimotes } from './wiimote/TableWiimotes.js';
+import { browserHid } from '../client-wiimote/device/hidTypes.js';
 import { startRenderLoop } from './app/renderLoop.js';
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -47,6 +52,7 @@ async function refreshInvitation(): Promise<void> {
     renderer.lobbyJoin = invite;
     joinLink.hidden = !invite;
     if (invite) joinLink.href = invite.url;
+    refreshSetupLinks();
   } catch {
     renderer.lobbyJoin = null;
     joinLink.hidden = true;
@@ -61,23 +67,31 @@ const conn = connectWs('/ws', {
     statusEl.hidden = true;
     tableAudio.connection(true);
     void refreshInvitation();
+    refreshSetupLinks();
   },
   /** Affiche la reconnexion, relâche les contacts et arrête les sons de la connexion perdue. */
   onClose: () => { tableAudio.connection(false); statusEl.textContent = 'Connexion perdue · Reconnexion…'; statusEl.hidden = false; gestures.releaseAll(); },
   onMessage: (msg) => handleServerMessage(msg),
 });
+/** Recharge les adresses et QR de l'écran de préparation, par exemple après l'ouverture aux spectateurs. */
+function refreshSetupLinks(): void {
+  void loadSetupLinks(SEAT_IDS).then(links => { renderer.setupLinks = links; }).catch(() => { renderer.setupLinks = null; });
+}
 /** Signale l’action locale à l’audio puis transmet la commande au serveur. */
 const sendTable=(m:{type:string}&Record<string,unknown>)=>{tableAudio.uiCommand(m);conn.send(m);};
 const controls = createControls(sendTable);
 const gestures = new GestureRecognizer(canvas, view, sendTable);
 const pcTools = document.getElementById('pc-tools') as HTMLDetailsElement;
-const app: TableApp = { canvas, ctx, view, sync, renderer, urlParams, conn, sendTable, controls, gestures, pcTools };
+const wiimotes = new TableWiimotes(browserHid(), { state: () => view.state, now: () => sync.now(), send: m => conn.send(m) }, view.wiimotes);
+gestures.connectWiimote = team => { void wiimotes.connect(team); };
+const app: TableApp = { canvas, ctx, view, sync, renderer, urlParams, conn, sendTable, controls, gestures, pcTools, wiimotes };
 
 // ── Menus HTML, clavier et plein écran ──
 const { selectTheme } = setupDisplayPreferences(app);
 const { syncRaceOptions, syncDriveOptions } = setupRaceSettingsPanel(app);
 const { simBar, testBar, syncTestBar } = setupSimulationTools(app);
 setupAudioSettings();
+setupSpectatorSettings(app, refreshSetupLinks);
 const keyboard = setupKeyboardControls(app);
 setupFullscreenControls(app, keyboard);
 
@@ -85,7 +99,7 @@ setupFullscreenControls(app, keyboard);
 /** Mesure régulièrement le trajet aller-retour vers le serveur avec un Ping. */
 setInterval(() => conn.send({ type: 'Ping' }), 2000);
 setInterval(() => {
-  if (conn.isOpen() && (!view.state || view.state.phase === 'LOBBY')) void refreshInvitation();
+  if (conn.isOpen() && (!view.state || ['LOBBY', 'SETUP'].includes(view.state.phase))) void refreshInvitation();
 }, 3500);
 
 // ── Retours du serveur, puis boucle de rendu ──

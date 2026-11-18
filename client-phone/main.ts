@@ -14,8 +14,10 @@ const notice = document.querySelector<HTMLParagraphElement>('#notice')!;
 const screen = document.querySelector<HTMLElement>('#screen')!;
 const params = new URLSearchParams(location.search);
 const initial = params.get('room') ?? '';
-const session = new PhoneSession(render);
+const wanted = SEAT_IDS.find(id => id === params.get('seat')) ?? null;
+const session = new PhoneSession(render, wanted);
 const WAITING: Record<Phase, string> = {
+  SETUP: 'Votre poste est réservé. Attendez le départ sur la table.',
   LOBBY: 'En attente du départ sur la table.',
   MAP: 'Les équipes dessinent le circuit sur la table.',
   READY: 'Le circuit est prêt. Attendez le départ sur la table.',
@@ -84,7 +86,7 @@ function roles(seats: Record<SeatId, Seat>, selected: Team, enabled: boolean): H
   const choices = SEAT_IDS.filter(id => playerTeam(id) === selected).map(id => {
     const detail = seats[id].connected ? 'Pris' : seats[id].taken ? 'Réservé' : 'Libre';
     return choice(roleLabel(id), id.endsWith('-pilot') ? '◈' : '✚', detail, selected,
-      () => session.join(id), !enabled || seats[id].taken);
+      () => session.join(id), !enabled || seats[id].taken || session.state?.phase === 'SETUP' && session.state.seatDevices[id] !== 'phone');
   });
   return [...choices, button('Changer d’équipe', () => { team = null; render(); })];
 }
@@ -98,7 +100,7 @@ function showSeat(seat: SeatId, state: Phase): void {
   info.className = 'detail';
   info.textContent = WAITING[state];
   screen.replaceChildren(info);
-  if (['LOBBY', 'MAP', 'READY'].includes(state)) {
+  if (['LOBBY', 'SETUP', 'MAP', 'READY'].includes(state)) {
     const change = button('Changer de place', () => session.leave());
     change.disabled = !session.online || session.pending === 'leave';
     screen.append(change);
@@ -109,7 +111,7 @@ function showSeat(seat: SeatId, state: Phase): void {
 function render(): void {
   if (notice.textContent !== session.notice) notice.textContent = session.notice;
   const { state, seat, room, online, pending } = session;
-  if (seat && state && (state.soloTest || ['RACE', 'PAUSED'].includes(state.phase) || ['READY', 'RESULT'].includes(state.phase) && seat.endsWith('-pilot'))) {
+  if (seat && state && (seat.endsWith('-pilot') || ['RACE', 'PAUSED'].includes(state.phase))) {
     if (!pilot || activeSeat !== seat) {
       pilot?.close();
       activeSeat = seat;
@@ -130,7 +132,7 @@ function render(): void {
     activeSeat = null;
     screenKey = '';
   }
-  const key = JSON.stringify([room, team, online, seat, pending, session.gyroUrl, state?.soloTest, state?.developerTools, seat ? state?.phase : state?.seats]);
+  const key = JSON.stringify([room, team, online, seat, pending, session.gyroUrl, state?.soloTest, state?.developerTools, state?.seatDevices, seat ? state?.phase : state?.seats]);
   if (key === screenKey) return;
   screenKey = key;
   delete document.body.dataset.team;

@@ -6,6 +6,7 @@ import type { PhoneSession } from '../session.js';
 import { actionButton, holdButton } from '../ui/press.js';
 import { driveSample, shouldSendInput, WHEEL, type SentInput } from './gyro.js';
 import { settingsMenu, steeringWheel, themeControl } from './pilotPanel.js';
+import { SteerStrip } from './SteerStrip.js';
 import { KeyboardDrive } from './KeyboardDrive.js';
 import { PilotViewport } from './views/PilotViewport.js';
 import { WheelSensor, type WheelStatus } from './wheelSensor.js';
@@ -35,12 +36,14 @@ export class PilotScreen {
   private readonly calibrate;
   private readonly mode;
   private readonly inputChoice;
+  private readonly secureLink = document.createElement('a');
   private readonly quit;
   private control: 'gyro' | 'touch';
   private readonly start;
   private readonly pedal;
   private readonly left;
   private readonly right;
+  private readonly strip = new SteerStrip();
   private readonly wheelGraphic = steeringWheel();
   private readonly theme;
   private readonly settings: HTMLDetailsElement;
@@ -63,7 +66,8 @@ export class PilotScreen {
 
   constructor(private readonly session: PhoneSession, private readonly team: Team, private readonly solo: boolean, keyboard = false) {
     this.root.className = 'pilot-screen';
-    this.control = solo && !keyboard && isSecureContext ? 'gyro' : 'touch';
+    const gyroscope = solo || new URLSearchParams(location.search).get('input') === 'gyro';
+    this.control = gyroscope && !keyboard && isSecureContext ? 'gyro' : 'touch';
     this.keyboard = keyboard ? new KeyboardDrive(this.release) : null;
     this.viewport = new PilotViewport(team, () => session.sync.now(), solo);
     this.steer = createControls(msg => this.session.send(msg)).steer;
@@ -93,14 +97,17 @@ export class PilotScreen {
     this.pedal.button.classList.add('pilot-throttle');
     this.repair.button.classList.add('pilot-repair');
     this.quit = actionButton(solo ? 'Quitter l’essai' : 'Changer de place', () => this.session.leave());
-    this.settings = settingsMenu(this.inputChoice, this.fullscreen, this.calibrate, this.theme, this.quit);
+    this.secureLink.textContent = 'Activer le gyroscope en HTTPS';
+    this.secureLink.className = 'spectator-link';
+    this.secureLink.rel = 'noreferrer';
+    this.settings = settingsMenu(this.inputChoice, this.secureLink, this.fullscreen, this.calibrate, this.theme, this.quit);
     const actions = document.createElement('div');
     actions.className = 'pilot-actions';
     actions.append(this.mode, this.settings);
     const instructions = document.createElement('div');
     instructions.className = 'pilot-instructions';
     instructions.append(this.phase, this.hint, this.sensor, this.start);
-    this.root.append(this.viewport.root, this.wheelGraphic, actions, instructions, this.left.button,
+    this.root.append(this.strip.root, this.viewport.root, this.wheelGraphic, actions, instructions, this.left.button,
       this.right.button, this.pedal.button, this.repair.button);
     if (!this.keyboard) this.wheel.start();
     this.timer = window.setInterval(this.tick, WHEEL.pollMs);
@@ -113,7 +120,9 @@ export class PilotScreen {
   /** Actualise la phase et les commandes sans remplacer les boutons maintenus. */
   update(state: GameState): void {
     this.state = state;
-    this.quit.hidden = !this.solo && state.phase !== 'READY';
+    this.secureLink.hidden = !this.session.gyroUrl || Boolean(this.keyboard);
+    if (this.session.gyroUrl) this.secureLink.href = this.session.secureJoinUrl;
+    this.quit.hidden = !this.solo && !['LOBBY', 'SETUP', 'MAP', 'READY'].includes(state.phase);
     this.root.classList.toggle('has-track', Boolean(state.track));
     this.root.classList.toggle('portrait', !this.keyboard && !this.landscape.matches);
     this.theme.hidden = !this.solo || !state.developerTools;
@@ -146,6 +155,7 @@ export class PilotScreen {
     clearInterval(this.timer);
     this.landscape.removeEventListener('change', this.onRotation);
     this.keyboard?.close();
+    this.strip.release();
     this.wheel.close();
     this.viewport.close();
     if (this.orientationLocked) screen.orientation?.unlock?.();
@@ -163,7 +173,7 @@ export class PilotScreen {
     if (!state) return;
     const now = performance.now();
     const pedal = state.driveMode[this.team] === 'pedal';
-    const sensor = this.keyboard ? this.keyboard.read() : this.control === 'gyro' ? this.wheel.read(now) : null;
+    const sensor = this.keyboard ? this.keyboard.read() : this.control === 'gyro' ? this.wheel.read(now) : this.strip.read();
     const touch = !this.keyboard && (this.control === 'touch' || this.solo && pedal) && this.landscape.matches;
     const ready = (sensor !== null || touch) && this.session.canPlay && !document.hidden;
     const racing = ready && state.phase === 'RACE';
@@ -189,19 +199,20 @@ export class PilotScreen {
     const status = this.wheel.status;
     const landscape = this.landscape.matches;
     const touch = this.control === 'touch';
-    const sideControls = touch || this.solo && this.state?.driveMode[this.team] === 'pedal';
+    const sideControls = this.solo && this.keyboard !== null;
     const calibrating = status === 'calibrating' || status === 'waiting';
     const pedal = this.state?.driveMode[this.team] === 'pedal';
     const hint = this.keyboard ? '← / → pour tourner. ↑ en mode pédale.' : !landscape && status !== 'http'
       ? 'Tourne le téléphone en paysage. Désactive le verrouillage de la rotation si nécessaire.'
-      : this.driving ? '' : touch || pedal ? 'Braque au volant ou avec les pédales latérales.' : wheelHints[status];
+      : this.driving ? '' : touch || pedal ? touch ? 'Glisse le pouce sur la bande pour tourner.' : 'Incline le téléphone pour tourner.' : wheelHints[status];
     const sensorLabel = status === 'inactive' ? 'Activer le volant' : 'Réessayer le capteur';
     const modeLabel = pedal ? 'Mode pédale' : 'Avance auto';
     if (this.hint.textContent !== hint) this.hint.textContent = hint;
     if (this.sensor.textContent !== sensorLabel) this.sensor.textContent = sensorLabel;
     if (this.mode.textContent !== modeLabel) this.mode.textContent = modeLabel;
+    this.strip.root.hidden = !touch || Boolean(this.keyboard) || !landscape;
     this.inputChoice.hidden = Boolean(this.keyboard);
-    const label = touch ? 'Direction · Pédales' : 'Direction · Gyroscope';
+    const label = touch ? 'Direction · Joystick' : 'Direction · Gyroscope';
     if (this.inputChoice.textContent !== label) this.inputChoice.textContent = label;
     this.sensor.hidden = touch || !!this.keyboard || status === 'ready' || status === 'http' || calibrating || (pedal && this.driving);
     this.sensor.disabled = status === 'permission';
@@ -209,7 +220,7 @@ export class PilotScreen {
     this.calibrate.hidden = touch || !!this.keyboard || !landscape || status !== 'ready';
     this.start.hidden = !this.solo;
     this.start.disabled = !ready;
-    this.mode.disabled = !this.session.canPlay || (!this.solo && this.state?.phase !== 'RACE');
+    this.mode.disabled = !this.session.canPlay || (!this.solo && this.state?.phase !== 'RACE' && this.state?.phase !== 'SETUP');
     this.wheelGraphic.hidden = !this.state?.track || (!landscape && !this.keyboard);
     const preview = this.solo && this.keyboard !== null && Boolean(this.state?.track);
     this.left.button.hidden = this.right.button.hidden = !preview && (!sideControls || !landscape || !racing);
@@ -267,6 +278,7 @@ export class PilotScreen {
     const wasDriving = this.driving;
     this.driving = false;
     this.pedal.release();
+    this.strip.release();
     this.left.release();
     this.right.release();
     if (wasDriving) this.steer(this.team, 0, 0);

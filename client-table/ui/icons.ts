@@ -6,7 +6,7 @@
 /** Limite les pictogrammes dessinables aux formes définies dans le module. */
 export type Icon = 'power' | 'play' | 'pause' | 'home' | 'replay' | 'touch' | 'mouse'
   | 'track' | 'draw' | 'check' | 'target' | 'wrench' | 'wheel' | 'pedal' | 'flag'
-  | 'clock' | 'trophy' | 'wait' | 'bolt' | 'heart';
+  | 'clock' | 'trophy' | 'wait' | 'bolt' | 'heart' | 'phone' | 'remote' | 'eye';
 
 /** Dessine le pictogramme demandé dans le repère et la couleur fournis. */
 export function icon(ctx: CanvasRenderingContext2D, name: Icon, x: number, y: number, size: number, color = '#fff'): void {
@@ -65,6 +65,15 @@ export function icon(ctx: CanvasRenderingContext2D, name: Icon, x: number, y: nu
       ctx.moveTo(-8, -10); ctx.lineTo(8, -10); ctx.lineTo(8, -7); ctx.lineTo(-8, 7); ctx.lineTo(-8, 10);
       ctx.lineTo(8, 10); ctx.lineTo(8, 7); ctx.lineTo(-8, -7); ctx.closePath(); break;
     case 'bolt': ctx.moveTo(2, -12); ctx.lineTo(-8, 2); ctx.lineTo(0, 2); ctx.lineTo(-2, 12); ctx.lineTo(8, -2); ctx.lineTo(0, -2); ctx.closePath(); break;
+    case 'phone':
+      ctx.roundRect(-6.5, -11, 13, 22, 3); ctx.moveTo(-2, 7.5); ctx.lineTo(2, 7.5); break;
+    case 'remote':
+      ctx.roundRect(-4.5, -11.5, 9, 23, 3); ctx.moveTo(1.8, -5); ctx.arc(0, -5, 1.8, 0, Math.PI * 2);
+      ctx.moveTo(-2.5, 0); ctx.lineTo(2.5, 0); ctx.moveTo(1.5, 5); ctx.arc(0, 5, 1.5, 0, Math.PI * 2);
+      ctx.moveTo(1.5, 9); ctx.arc(0, 9, 1.5, 0, Math.PI * 2); break;
+    case 'eye':
+      ctx.moveTo(-11, 0); ctx.quadraticCurveTo(0, -12, 11, 0); ctx.quadraticCurveTo(0, 12, -11, 0);
+      ctx.moveTo(3.5, 0); ctx.arc(0, 0, 3.5, 0, Math.PI * 2); break;
     case 'heart':
       ctx.moveTo(0, 10); ctx.bezierCurveTo(-22, -5, -5, -17, 0, -6); ctx.bezierCurveTo(5, -17, 22, -5, 0, 10); break;
   }

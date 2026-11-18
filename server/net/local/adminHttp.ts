@@ -1,8 +1,8 @@
 /** Expose à l’hôte les réglages et les commandes d’un seul salon. */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { GameServer } from './GameServer.js';
-import { isSeatId } from '../rules/session/playerSeats.js';
-import { isThemeId } from '../protocol/theme.js';
+import type { GameServer } from '../GameServer.js';
+import { isSeatId } from '../../rules/session/playerSeats.js';
+import { isThemeId } from '../../protocol/theme.js';
 
 function respond(res: ServerResponse, code: number, value: object): void {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });

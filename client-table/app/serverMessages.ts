@@ -35,6 +35,7 @@ export function createMessageHandler(app: TableApp, hooks: MessageHooks): (msg: 
         view.state = sync.apply(msg.state, msg.t);
         gestures.syncState();
         document.getElementById('oz-link')!.hidden = view.state.soloTest;
+        app.wiimotes.sync(view.state);
         // L'ambiance est une préférence locale sûre : elle reste disponible pendant les séances publiques.
         document.getElementById('theme-settings')!.hidden=false;
         if (view.theme !== view.state.theme) selectTheme(view.state.theme, false);

@@ -16,6 +16,7 @@ import { icon, contacts } from './icons.js';
 import { themeLook, type ThemeId } from '../themes/themes.js';
 import { armedPickup } from '../../server/rules/armedPickup.js';
 import { glow, NEON } from '../themes/neon/neon.js';
+import { drawRemotePilot, remotePilot } from './remotePilot.js';
 
 /** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
@@ -138,6 +139,19 @@ export class HUD {
     for(let i=1;i<10;i++){ctx.beginPath();ctx.moveTo(x+w*i/10,y);ctx.lineTo(x+w*i/10,y+h);ctx.stroke();}
     ctx.strokeStyle=color+'66';ctx.lineWidth=1;ctx.strokeRect(x,y,w,h);
     ctx.fillStyle=health;ctx.font='bold 14px monospace';ctx.textAlign='right';ctx.fillText(`${Math.round(car.hp)}`,x+area.w,y+13);
+    const remote=remotePilot(state,team);
+    if(remote){drawRemotePilot(ctx,area,remote,state.wiimotes?.[team]??null,color,look.button,look.line,look.ink);}
+    else this.drawControls(ctx,state,view,team,color,look);
+    if(!state.tutorial){
+      icon(ctx,'flag',55,-60,15,color);ctx.fillStyle=look.ink;ctx.font='bold 14px monospace';ctx.textAlign='left';
+      ctx.fillText(state.sessionMode==='tangibles-test'?`${car.lap+1}`:`${Math.min(state.params.lapsToWin,car.lap+1)}/${state.params.lapsToWin}`,68,-55);
+    }
+    void now;
+  }
+
+  /** Dessine la direction et la pédale tactiles du pilote qui conduit sur la table. */
+  private drawControls(ctx: Ctx, state: GameState, view: View, team: Team, color: string, look: ReturnType<typeof themeLook>): void {
+    const mode=state.driveMode[team],area=steerArea(mode);
     const stick=view.sticks[team],automatic=state.sessionMode==='tangibles-test';
     ctx.fillStyle=stick.active?color+'29':look.button;ctx.strokeStyle=stick.active?color:look.line;ctx.lineWidth=stick.active?3:2;
     ctx.beginPath();ctx.roundRect(area.x-area.w/2,area.y-area.h/2,area.w,area.h,Math.min(18,look.radius));ctx.fill();ctx.stroke();
@@ -154,11 +168,6 @@ export class HUD {
       const p=PEDAL_LOCAL,active=view.localPedals[team];ctx.fillStyle=active?color+'55':'#ffffff09';ctx.strokeStyle=active?'#fff':color;ctx.lineWidth=active?3:2;
       ctx.beginPath();ctx.roundRect(p.x-p.w/2,p.y-p.h/2,p.w,p.h,12);ctx.fill();ctx.stroke();icon(ctx,'pedal',p.x,p.y,32,active?'#fff':color);
     }
-    if(!state.tutorial){
-      icon(ctx,'flag',55,-60,15,color);ctx.fillStyle=look.ink;ctx.font='bold 14px monospace';ctx.textAlign='left';
-      ctx.fillText(state.sessionMode==='tangibles-test'?`${car.lap+1}`:`${Math.min(state.params.lapsToWin,car.lap+1)}/${state.params.lapsToWin}`,68,-55);
-    }
-    void now;
   }
 
   /** Affiche POWER, le stock et l’état d’armement du copilote. */

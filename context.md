@@ -52,12 +52,12 @@ Cette section résume tout ce qui a été décidé, construit et dit en conversa
 | Fin de course | 3 tours ou 300 s | 3 tours par défaut (réglable 1–99), chrono **désactivé** (`sessionMaxSeconds` = 0) |
 | Réparation | 2 s à deux pads | + **3 feux rouges (3 s)** au point de reprise avant le vert ; pause/physique/dégâts respectent ce délai |
 | Création de circuit | Ancres P1 puis P2, cyan puis rose | + dessin dans les deux sens, **révélation 1,8 s puis roulette du damier** (décélération 3,4 s, fixation 0,45 s), départ tiré parmi les portions peu courbées ; **4 ramassables à positions aléatoires** à chaque circuit humain |
-| Thèmes | Néon seul | 5 thèmes (Néon, Ferraille, Toy Circuit, F1 Classic, Mayhem) ; **la séance impose Ferraille** et cache le choix |
+| Thèmes | Néon seul | 5 thèmes (Néon, Ferraille, Toy Circuit, F1 Classic, Mayhem) ; **la séance impose Grand Prix** (Ferraille jusqu'au 18 nov. 2026) et cache le choix |
 | Paramètres | — | Engrenage à gauche entre les pilotes : plein écran, Facile/Moyen/Difficile (50/75/100 %), tours, chrono, audio, Accueil. Les outils PC exigent `CRASHOUT_DEV_TOOLS=1` côté serveur |
 | Modes | TABLE/PC | TABLE, PC (dev), **TUTORIEL** (à quatre, circuit prédéfini, sans dégâts), **TEST TANGIBLES** (pilotes automatiques, dev) ; tous passent par `startRace()` |
 | Table | iiyama 65" 4K | Les LEGO sont calibrés pour une **dalle 55"** (`tableDiagonalInches`) ; `docs/seuils-tactiles.md` raisonne en 65" (0,75 mm/px). **À aligner avec la dalle réellement utilisée** |
 
-Phases serveur : `LOBBY → MAP → READY → RACE ⇄ PAUSED → RESULT`. Boucle physique 60 Hz, diffusion 30 Hz, repère logique 1920×1080.
+Phases serveur : `LOBBY → SETUP → MAP → READY → RACE ⇄ PAUSED → RESULT` (`SETUP` : choix de l’appareil par poste, table / téléphone / manette Wii, QR individuels ; le mode clavier de développement, le tutoriel et l’essai solo l’ignorent). Pilote téléphone : direction tactile par défaut, gyroscope optionnel ; pilote manette Wii : manette ouverte par la table (WebHID), numéro par ordre de connexion, `state.wiimotes`. Boucle physique 60 Hz, diffusion 30 Hz, repère logique 1920×1080.
 
 ### D. Tutoriel (issue #32)
 

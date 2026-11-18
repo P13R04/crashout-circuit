@@ -8,14 +8,26 @@ type Listener = { res: ServerResponse; trackVersion: number; phase: GameState['p
 
 export class SpectatorStream {
   private readonly listeners = new Set<Listener>();
-  private readonly limit = 8;
+  readonly limit = 8;
+  enabled: boolean;
 
-  constructor(readonly enabled: boolean, private readonly state: () => GameState, private readonly room: () => string) {
-    if (!enabled) return;
+  constructor(enabled: boolean, private readonly state: () => GameState, private readonly room: () => string) {
+    this.enabled = enabled;
     setInterval(this.tick, 1000 / Math.max(1, Math.min(30, config.spectatorHz))).unref();
     setInterval(() => {
       for (const { res } of this.listeners) if (!res.writableNeedDrain) res.write(': connexion\n\n');
     }, 15000).unref();
+  }
+
+  /** Nombre de spectateurs actuellement connectés. */
+  get count(): number { return this.listeners.size; }
+
+  /** Ouvre ou ferme les flux de course ; fermer déconnecte aussitôt les spectateurs présents. */
+  setEnabled(on: boolean): void {
+    this.enabled = on;
+    if (on) return;
+    for (const { res } of this.listeners) res.end();
+    this.listeners.clear();
   }
 
   connect(req: IncomingMessage, res: ServerResponse, room: string | null): void {

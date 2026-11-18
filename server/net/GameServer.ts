@@ -64,7 +64,6 @@ export class GameServer {
     this.playerSeats = new PlayerSeats(this.state.seats, randomUUID);
     this.state.developerTools = options.developerTools === true;
     this.state.soloTest = options.soloTest === true;
-    if (this.state.soloTest) this.state.theme = 'classic';
     const host: RulesHost = {
       /** Diffuse le retour d’action avec son équipe et le type de bonus lorsqu’il est connu. */
       feedback: (kind, x, y, team, itemKind) =>
@@ -75,6 +74,7 @@ export class GameServer {
       broadcastFull: () => this.broadcastFull(),
     };
     this.rules = new GameRules(this.state, host);
+    this.rules.soloByDefault = this.state.soloTest;
     this.physics = new PhysicsLoop(this.state, this.rules, /* Diffuse le snapshot demandé par la boucle de physique. */ () => this.broadcastTick());
     this.wss.on('connection', this.onConnection.bind(this));
     this.physics.start();
@@ -135,6 +135,7 @@ export class GameServer {
     this.rules.cancelTangiblePlacement();
     if (client.role !== 'table') return;
     releaseTableSteering(this.rules);
+    this.state.wiimotes = { A: null, B: null };
     for (const [seat, pad] of Object.entries(this.state.repairPads)) {
       if (isSeatId(seat) && this.mobilePads.has(seat)) continue;
       pad.held = false;
@@ -155,6 +156,7 @@ export class GameServer {
     if (client.role === 'table') {
       handleTableSession(this.rules, msg);
       handleTableGameplay(this.rules, msg);
+      if (msg.type === 'SetSeatDevice') this.evictIfOnTable(msg.seat);
       return;
     }
 
@@ -187,6 +189,11 @@ export class GameServer {
       this.sendTo(client.ws, { type: 'JoinRejected', t: now, reason: 'solo-seat' });
       return;
     }
+    const device = msg.seat === undefined ? undefined : this.state.seatDevices[msg.seat];
+    if (this.state.phase === 'SETUP' && (device === 'table' || device === 'wiimote')) {
+      this.sendTo(client.ws, { type: 'JoinRejected', t: now, reason: device === 'table' ? 'seat-on-table' : 'seat-wiimote' });
+      return;
+    }
     const result = this.playerSeats.claim(client.id, msg, now);
     if ('reason' in result) {
       this.sendTo(client.ws, { type: 'JoinRejected', t: now, reason: result.reason });
@@ -198,6 +205,18 @@ export class GameServer {
       releasePlayerControls(this.rules, result.seat);
       this.broadcastTick();
     }
+  }
+
+  /** Libère un poste que la table vient de reprendre, ou confié à une manette Wii, et prévient le joueur qui le tenait. */
+  private evictIfOnTable(seat: SeatId): void {
+    if (!isSeatId(seat) || this.state.seatDevices[seat] === 'phone') return;
+    const owner = this.playerSeats.evict(seat);
+    if (owner === undefined) return;
+    const holder = [...this.clients].find(client => client.id === owner);
+    if (holder) this.sendTo(holder.ws, { type: 'Left', t: Date.now() });
+    this.mobilePads.delete(seat);
+    releasePlayerControls(this.rules, seat);
+    this.broadcastTick();
   }
 
   /** Libère une place à la demande du joueur si la course n'a pas commencé. */

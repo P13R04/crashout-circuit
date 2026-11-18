@@ -11,9 +11,21 @@ import { tutorialIdentifying } from '../ui/TutorialOverlay.js';
 import { themeLook } from '../themes/themes.js';
 import { glow, NEON, plate } from '../themes/neon/neon.js';
 import type { Ctx } from './rendererTypes.js';
-import { START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, RESULT_BUTTON, PAUSE_BUTTON, RACE_START_BUTTON } from './rendererButtons.js';
+import { START_TABLE_BUTTON, START_WIIMOTE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, RESULT_BUTTON, PAUSE_BUTTON, RACE_START_BUTTON } from './rendererButtons.js';
 import { drawLobbyJoin } from './lobbyJoin.js';
 import type { Renderer } from './Renderer.js';
+
+/** Dessine un bouton de l'accueil : cadre, pictogramme partagé et nom lisible depuis les deux grands côtés. */
+function drawLobbyButton(ctx: Ctx, button: { x: number; y: number; w: number; h: number }, glyph: Icon, label: string, color: string): void {
+  ctx.fillStyle = `${color}18`; ctx.strokeStyle = color; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(button.x, button.y, button.w, button.h, 18); ctx.fill(); ctx.stroke();
+  icon(ctx, glyph, button.x + (button.w<300?30:74), button.y + button.h / 2, 34, color);
+  // Only the mode name needs a second orientation. The symbol is shared.
+  for (const rot of [0, Math.PI]) {
+    ctx.save(); ctx.translate(button.x + button.w / 2 + 25, button.y + button.h / 2); ctx.rotate(rot);
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${button.w<300?14:22}px monospace`; ctx.fillText(label, 0, button.w<300?21:28); ctx.restore();
+  }
+}
 
 /** Dessine l’accueil et ses boutons sans révéler les modes de test lors d’une séance publique. */
 export function drawLobby(renderer: Renderer, ctx: Ctx, developerTools = false, seats?: GameState['seats'], soloTest = false): void {
@@ -36,18 +48,11 @@ export function drawLobby(renderer: Renderer, ctx: Ctx, developerTools = false, 
     [START_TUTORIAL_BUTTON, 'draw', 'TUTORIEL', '#ffce66'],
     [START_TABLE_BUTTON, 'flag', 'COURSE', '#00e5ff'],
     ...(developerTools?[[START_PC_BUTTON, 'mouse', 'CLAVIER', '#ff4081'],[START_TANGIBLE_TEST_BUTTON, 'wrench', 'ESSAI OBJETS', '#61f4ba']] as const:[]),
-  ] as const) {
-    ctx.fillStyle = `${color}18`; ctx.strokeStyle = color; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.roundRect(button.x, button.y, button.w, button.h, 18); ctx.fill(); ctx.stroke();
-    icon(ctx, glyph, button.x + (button.w<300?30:74), button.y + button.h / 2, 34, color);
-    // Only the mode name needs a second orientation. The symbol is shared.
-    for (const rot of [0, Math.PI]) {
-      ctx.save(); ctx.translate(button.x + button.w / 2 + 25, button.y + button.h / 2); ctx.rotate(rot);
-      ctx.fillStyle = '#fff'; ctx.font = `bold ${button.w<300?14:22}px monospace`; ctx.fillText(label, 0, button.w<300?21:28); ctx.restore();
-    }
-  }
+  ] as const) drawLobbyButton(ctx, button, glyph, label, color);
+  drawLobbyButton(ctx, START_WIIMOTE_BUTTON, 'wheel', 'MANETTE WII', '#b388ff');
   ctx.restore();
-  if (renderer.lobbyJoin && seats) drawLobbyJoin(ctx, renderer.lobbyJoin, seats, soloTest);
+  // Le QR de l'accueil ne sert plus qu'à l'essai solo : en course normale, chaque poste a le sien dans la préparation.
+  if (renderer.lobbyJoin && seats && soloTest) drawLobbyJoin(ctx, renderer.lobbyJoin, seats, soloTest);
 }
 
 // ─── Overlays ─────────────────────────────────────────────────────────────

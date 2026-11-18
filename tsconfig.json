@@ -1,10 +1,13 @@
-/* Vérifie les clients et les scripts de test avec les types du navigateur ; utilisé par typecheck dans package.json et complété par tsconfig.server.json. */
 {
   "compilerOptions": {
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2020",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -13,6 +16,18 @@
     "isolatedModules": true,
     "useDefineForClassFields": true
   },
-  "include": ["client-admin/**/*.ts", "client-table/**/*.ts", "client-oz/**/*.ts", "client-phone/**/*.ts", "client-shared/**/*.ts", "scripts/**/*.ts"],
-  "exclude": ["node_modules", "dist", "server"]
+  "include": [
+    "client-admin/**/*.ts",
+    "client-table/**/*.ts",
+    "client-oz/**/*.ts",
+    "client-phone/**/*.ts",
+    "client-shared/**/*.ts",
+    "scripts/**/*.ts",
+    "client-wiimote/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "server"
+  ]
 }

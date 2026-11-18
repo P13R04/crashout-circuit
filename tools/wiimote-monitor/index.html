@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wiimote Monitor</title>
+<style>
+  :root { --bg:#12141a; --panel:#1b1e27; --line:#2b3040; --fg:#e6e8ee; --dim:#8a90a2; --on:#38e07b; --warn:#ffb020; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, sans-serif; }
+  header { display:flex; gap:12px; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  h1 { font-size:16px; margin:0 8px 0 0; }
+  button, select { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 12px; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--dim); }
+  button.primary { background:#2a5bd7; border-color:#2a5bd7; }
+  #status { color:var(--dim); }
+  #status.ok { color:var(--on); }
+  main { display:grid; grid-template-columns: 320px 1fr; gap:12px; padding:12px 16px; height:calc(100vh - 60px); }
+  @media (max-width:800px) { main { grid-template-columns:1fr; height:auto; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; min-height:0; display:flex; flex-direction:column; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:0 0 8px; }
+  .btns { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+  .btn { text-align:center; padding:8px 0; border:1px solid var(--line); border-radius:6px; color:var(--dim); }
+  .btn.on { background:var(--on); color:#04210f; border-color:var(--on); font-weight:600; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:2px 12px; font-family:ui-monospace, Consolas, monospace; margin-top:8px; }
+  .kv span:nth-child(odd) { color:var(--dim); }
+  .left { display:flex; flex-direction:column; gap:12px; overflow:auto; }
+  .logs { display:grid; grid-template-rows:1fr 1fr; gap:12px; min-height:0; }
+  .tools { display:flex; gap:12px; align-items:center; margin-bottom:8px; flex-wrap:wrap; color:var(--dim); }
+  .tools h2 { margin:0 auto 0 0; }
+  pre { margin:0; flex:1; overflow:auto; font:12px/1.5 ui-monospace, Consolas, monospace; white-space:pre-wrap; word-break:break-all; }
+  .note { color:var(--warn); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Wiimote Monitor</h1>
+  <button id="connect" class="primary">Connect Wiimote</button>
+  <label>Report mode
+    <select id="mode">
+      <option value="0x30">0x30 – buttons only</option>
+      <option value="0x31" selected>0x31 – buttons + accelerometer</option>
+    </select>
+  </label>
+  <button id="status-req">Request status / battery</button>
+  <span id="status">Not connected</span>
+  <span id="unsupported" class="note"></span>
+</header>
+
+<main>
+  <div class="left">
+    <section>
+      <h2>Buttons</h2>
+      <div class="btns" id="btns"></div>
+      <div class="kv">
+        <span>Accel X</span><span id="ax">–</span>
+        <span>Accel Y</span><span id="ay">–</span>
+        <span>Accel Z</span><span id="az">–</span>
+        <span>Battery</span><span id="bat">–</span>
+        <span>Extension</span><span id="ext">–</span>
+        <span>Reports/s</span><span id="rate">0</span>
+      </div>
+    </section>
+  </div>
+
+  <div class="logs">
+    <section>
+      <div class="tools">
+        <h2>Events (press / release / status)</h2>
+        <button data-clear="events">Clear</button>
+        <button id="dl">Download log</button>
+      </div>
+      <pre id="events"></pre>
+    </section>
+    <section>
+      <div class="tools">
+        <h2>Raw input reports</h2>
+        <label><input type="checkbox" id="changed" checked> only when bytes change</label>
+        <label><input type="checkbox" id="pause"> pause</label>
+        <button data-clear="raw">Clear</button>
+      </div>
+      <pre id="raw"></pre>
+    </section>
+  </div>
+</main>
+
+<script>
+'use strict';
+const FILTERS = [
+  { vendorId: 0x057e, productId: 0x0306 },  // RVL-CNT-01
+  { vendorId: 0x057e, productId: 0x0330 },  // RVL-CNT-01-TR (Wii Remote Plus)
+];
+const MAX_LINES = 400;
+
+// Core buttons: [name, byte index in the 2 button bytes, bit mask]
+const BUTTONS = [
+  ['Up',0,0x08], ['Down',0,0x04], ['Left',0,0x01], ['Right',0,0x02],
+  ['A',1,0x08], ['B',1,0x04], ['1',1,0x02], ['2',1,0x01],
+  ['+',0,0x10], ['−',1,0x10], ['Home',1,0x80],
+];
+// Data bytes after the report id: [buttons(2)] then extras
+const REPORT_NAMES = {
+  0x20:'status', 0x21:'read data', 0x22:'ack',
+  0x30:'btn', 0x31:'btn+accel', 0x32:'btn+ext8', 0x33:'btn+accel+IR12',
+  0x34:'btn+ext19', 0x35:'btn+accel+ext16', 0x36:'btn+IR10+ext9', 0x37:'btn+accel+IR10+ext6',
+};
+const HAS_ACCEL = new Set([0x31, 0x33, 0x35, 0x37]);
+
+const $ = id => document.getElementById(id);
+let device = null;
+let prevButtons = 0;
+let prevRaw = '';
+let reportCount = 0;
+const eventLog = [];
+
+// ---------- UI ----------
+const btnEls = {};
+for (const [name] of BUTTONS) {
+  const el = document.createElement('div');
+  el.className = 'btn'; el.textContent = name;
+  $('btns').appendChild(el); btnEls[name] = el;
+}
+function append(preId, line) {
+  const pre = $(preId);
+  const stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8;
+  pre.textContent += line + '\n';
+  const lines = pre.textContent.split('\n');
+  if (lines.length > MAX_LINES) pre.textContent = lines.slice(-MAX_LINES).join('\n');
+  if (stick) pre.scrollTop = pre.scrollHeight;
+}
+const ts = () => (performance.now() / 1000).toFixed(3).padStart(9);
+function logEvent(text) {
+  const line = `${ts()}  ${text}`;
+  eventLog.push(`${new Date().toISOString()}  ${text}`);
+  append('events', line);
+}
+const hex = bytes => Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(' ');
+
+// ---------- Decoding ----------
+function buttonsFrom(b0, b1) {
+  const pressed = {};
+  for (const [name, idx, mask] of BUTTONS) pressed[name] = ((idx ? b1 : b0) & mask) !== 0;
+  return pressed;
+}
+// Keep only button bits (the other bits of the 2 bytes carry accelerometer LSBs).
+function packButtons(b0, b1) { return ((b0 & 0x1f) << 8) | (b1 & 0x9f); }
+
+function handleReport(reportId, bytes) {
+  reportCount++;
+  const raw = `${reportId.toString(16).padStart(2, '0')}: ${hex(bytes)}`;
+  const name = REPORT_NAMES[reportId] || 'unknown';
+
+  if (!$('pause').checked && (!$('changed').checked || raw !== prevRaw)) {
+    append('raw', `${ts()}  [${name}] ${raw}`);
+  }
+  prevRaw = raw;
+
+  // Everything except 0x21/0x22 starts with the 2 button bytes.
+  if (reportId === 0x21 || reportId === 0x22 || bytes.length < 2) return;
+  const b0 = bytes[0], b1 = bytes[1];
+  const pressed = buttonsFrom(b0, b1);
+  for (const [n] of BUTTONS) btnEls[n].classList.toggle('on', pressed[n]);
+
+  const packed = packButtons(b0, b1);
+  if (packed !== prevButtons) {
+    const prev = buttonsFrom(prevButtons >> 8, prevButtons & 0xff);
+    for (const [n] of BUTTONS) {
+      if (pressed[n] !== prev[n]) logEvent(`${n} ${pressed[n] ? 'PRESSED' : 'released'}`);
+    }
+    prevButtons = packed;
+  }
+
+  if (HAS_ACCEL.has(reportId) && bytes.length >= 5) {
+    $('ax').textContent = bytes[2]; $('ay').textContent = bytes[3]; $('az').textContent = bytes[4];
+  }
+  if (reportId === 0x20 && bytes.length >= 6) {
+    const flags = bytes[2];
+    const pct = Math.round(bytes[5] / 0xc8 * 100);
+    $('bat').textContent = `${pct}%${flags & 1 ? ' (low!)' : ''}`;
+    $('ext').textContent = (flags & 2) ? 'connected' : 'none';
+    logEvent(`STATUS battery=${pct}% (raw ${bytes[5]}) extension=${(flags & 2) ? 'yes' : 'no'} leds=${(flags >> 4).toString(2).padStart(4, '0')}`);
+  }
+}
+
+// ---------- Device ----------
+async function send(reportId, data) {
+  if (!device) return;
+  await device.sendReport(reportId, new Uint8Array(data));
+}
+async function applyMode() {
+  await send(0x12, [0x00, parseInt($('mode').value, 16)]);   // data reporting mode, send on change
+  await send(0x15, [0x00]);                                   // ask for a status report (battery)
+}
+async function open(dev) {
+  device = dev;
+  if (!dev.opened) await dev.open();
+  dev.addEventListener('inputreport', e => handleReport(e.reportId, new Uint8Array(e.data.buffer)));
+  $('status').textContent = `Connected: ${dev.productName || 'Wiimote'} (0x${dev.productId.toString(16)})`;
+  $('status').className = 'ok';
+  logEvent('CONNECTED ' + (dev.productName || ''));
+  try { await send(0x11, [0x10]); await applyMode(); }          // LED 1 on, set mode, request status
+  catch (err) { logEvent('Could not send output report: ' + err.message + ' (input still works in default mode 0x30)'); }
+}
+async function connect() {
+  const [dev] = await navigator.hid.requestDevice({ filters: FILTERS });
+  if (dev) await open(dev);
+}
+
+if (!('hid' in navigator)) {
+  $('unsupported').textContent = 'WebHID is not available: use Chrome or Edge on http://localhost or https.';
+  $('connect').disabled = true;
+} else {
+  $('connect').onclick = () => connect().catch(err => logEvent('ERROR ' + err.message));
+  navigator.hid.addEventListener('disconnect', e => {
+    if (e.device !== device) return;
+    device = null; prevButtons = 0;
+    for (const n in btnEls) btnEls[n].classList.remove('on');
+    $('status').textContent = 'Disconnected (press a button to wake it, then Connect)';
+    $('status').className = '';
+    logEvent('DISCONNECTED');
+  });
+  navigator.hid.getDevices().then(devs => {
+    const known = devs.find(d => d.vendorId === 0x057e && (d.productId === 0x0306 || d.productId === 0x0330));
+    if (known) open(known).catch(err => logEvent('ERROR ' + err.message));
+  });
+}
+$('mode').onchange = () => applyMode().catch(err => logEvent('ERROR ' + err.message));
+$('status-req').onclick = () => send(0x15, [0x00]).catch(err => logEvent('ERROR ' + err.message));
+document.querySelectorAll('[data-clear]').forEach(b => b.onclick = () => { $(b.dataset.clear).textContent = ''; });
+$('dl').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([eventLog.join('\n')], { type: 'text/plain' }));
+  a.download = 'wiimote-log.txt'; a.click();
+};
+setInterval(() => { $('rate').textContent = reportCount; reportCount = 0; }, 1000);
+</script>
+</body>
+</html>

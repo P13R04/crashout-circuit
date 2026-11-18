@@ -1,10 +1,10 @@
 /** Vérifie la répartition physique des rôles et la surface stable du circuit. */
 import assert from 'node:assert/strict';
-import { SEAT_IDS } from '../../client-shared/seatLabels.js';
-import { PLAY_AREA, checkDivider } from '../../server/layout.js';
-import { playAreaFor, tablePanels, WIDE_PLAY_AREA } from '../../server/tableStations.js';
-import { generatePreset } from '../../server/track/MapGenerator.js';
-import { socketFixture, until } from './socketFixture.js';
+import { SEAT_IDS } from '../../../client-shared/seatLabels.js';
+import { PLAY_AREA, checkDivider } from '../../../server/layout.js';
+import { playAreaFor, tablePanels, WIDE_PLAY_AREA } from '../../../server/tableStations.js';
+import { generatePreset } from '../../../server/track/MapGenerator.js';
+import { socketFixture, until } from '../socketFixture.js';
 
 const fixture = await socketFixture();
 try {
@@ -16,6 +16,8 @@ try {
   await players[0].receive('Joined');
   assert.deepEqual(tablePanels(state).map(p => `${p.team}-${p.role}`).sort(), ['A-copilot', 'B-copilot', 'B-pilot']);
   table.send({ type: 'StartGame' });
+  await table.flush();
+  table.send({ type: 'ConfirmSetup' });
   await table.flush();
   assert.equal(playAreaFor(state), PLAY_AREA);
   table.send({ type: 'PadHold', team: 'B', role: 'pilot', on: true });
@@ -34,6 +36,8 @@ try {
     await player.receive('Joined');
   }
   table.send({ type: 'StartGame' });
+  await table.flush();
+  table.send({ type: 'ConfirmSetup' });
   await table.flush();
   assert.equal(playAreaFor(state), WIDE_PLAY_AREA);
   assert.equal(tablePanels(state).length, 0);

@@ -16,9 +16,15 @@ export function socketRole(path: string): SocketRole | null {
 
 export class HostAccess {
   private readonly key = randomBytes(24).toString('hex');
-  private readonly cookie = 'crashout-host-' + this.key.slice(0, 10);
+  private readonly cookieName = 'crashout-host-' + this.key.slice(0, 10);
 
-  constructor(readonly enabled: boolean, private readonly directHost?: (req: IncomingMessage) => boolean) {}
+  private on: boolean;
+  constructor(enabled: boolean, private readonly directHost?: (req: IncomingMessage) => boolean) { this.on = enabled; }
+  get enabled(): boolean { return this.on; }
+  set(on: boolean): void { this.on = on; }
+  cookie(secure: boolean): string {
+    return this.cookieName + '=' + this.key + '; Path=/; HttpOnly; SameSite=Strict' + (secure ? '; Secure' : '');
+  }
 
   url(base: string, path = '/', required = this.enabled): string {
     return required ? base + path + '?host=' + this.key : base + path;
@@ -29,7 +35,7 @@ export class HostAccess {
   }
 
   allowPrivate(req: IncomingMessage): boolean {
-    return this.directHost?.(req) === true || req.headers.cookie?.split(';').some(item => item.trim() === this.cookie + '=' + this.key) === true;
+    return this.directHost?.(req) === true || req.headers.cookie?.split(';').some(item => item.trim() === this.cookieName + '=' + this.key) === true;
   }
 
   /** Initialise un accès hôte à partir du lien privé, puis retire la clé de l’adresse. */
@@ -38,7 +44,7 @@ export class HostAccess {
       url.searchParams.delete('host');
       res.writeHead(303, {
         Location: url.pathname + url.search,
-        'Set-Cookie': this.cookie + '=' + this.key + '; Path=/; HttpOnly; SameSite=Strict' + (secure ? '; Secure' : ''),
+        'Set-Cookie': this.cookieName + '=' + this.key + '; Path=/; HttpOnly; SameSite=Strict' + (secure ? '; Secure' : ''),
         'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
       }).end();
       return false;

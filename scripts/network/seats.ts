@@ -63,6 +63,9 @@ try {
 
   table.send({ type: 'StartGame' });
   await table.flush();
+  assert.equal(state.phase, 'SETUP');
+  table.send({ type: 'ConfirmSetup' });
+  await table.flush();
   assert.equal(state.phase, 'MAP');
   game.rules.startRace(undefined, false);
   state.sessionStartAt = Date.now() - 5000;

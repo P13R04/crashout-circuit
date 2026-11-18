@@ -7,7 +7,7 @@ import type { GameState, Phase } from '../server/types.js';
 type Snapshot = Pick<GameState, 'phase' | 'seats' | 'theme' | 'soloTest' | 'wideTable'>
   & Pick<GameState['params'], 'difficulty' | 'lapsToWin' | 'sessionMaxSeconds'> & { room: string };
 
-const phaseLabel: Record<Phase, string> = { LOBBY: 'Accueil', MAP: 'Dessin', READY: 'Prêt',
+const phaseLabel: Record<Phase, string> = { LOBBY: 'Accueil', SETUP: 'Préparation des postes', MAP: 'Dessin', READY: 'Prêt',
   RACE: 'Course', PAUSED: 'En pause', RESULT: 'Résultat' };
 const form = document.querySelector<HTMLFormElement>('#settings')!;
 const room = document.querySelector('#room')!;

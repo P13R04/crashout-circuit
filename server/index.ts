@@ -12,8 +12,9 @@ import { fileURLToPath } from 'url';
 import { createSessionHttp, sessionAddresses } from './net/sessionHttp.js';
 import { GameServer } from './net/GameServer.js';
 import { audioByteRange } from './net/audioHttp.js';
-import { adminRequest } from './net/adminHttp.js';
-import { createLocalNetwork, isLoopback } from './net/localNetwork.js';
+import { handleSpectatorSwitch } from './net/spectatorSwitch.js';
+import { adminRequest } from './net/local/adminHttp.js';
+import { createLocalNetwork, isLoopback } from './net/local/localNetwork.js';
 import { HostAccess, socketRole } from './net/hostAccess.js';
 import { SpectatorStream } from './net/SpectatorStream.js';
 import { config } from './config.js';
@@ -80,6 +81,14 @@ const handleRequest: RequestListener = (req, res) => {
     return;
   }
 
+  if (url.pathname === '/api/spectators') {
+    void handleSpectatorSwitch(req, res, {
+      hostAccess, spectators, secure: encrypted(req),
+      onChange: announceSpectators,
+    });
+    return;
+  }
+
   if (url.pathname === '/api/spectator') {
     spectators.connect(req, res, url.searchParams.get('room'));
     return;
@@ -135,18 +144,18 @@ function sendSessionInfo(req: IncomingMessage, res: ServerResponse): void {
   const { baseUrls, ...connection } = announcedAddresses(port);
   const direct = localMode && !isLoopback(req) ? baseUrls.find(base => req.headers.host?.split(':')[0] === new URL(base).hostname) : undefined;
   const origins = direct ? [direct, ...baseUrls.filter(base => base !== direct)] : baseUrls;
-  res.end(JSON.stringify({ ...connection, baseUrls: origins, room: gameServer.room, spectators: spectators.enabled }));
+  res.end(JSON.stringify({ ...connection, baseUrls: origins, room: gameServer.room, spectators: spectators.enabled, viewers: spectators.count, viewerLimit: spectators.limit }));
 }
 
 function servePage(req: IncomingMessage, res: ServerResponse, url: URL): void {
   const pathname = url.pathname.replace(/\/$/, '') || '/';
-  const page = pathname === '/' ? 'client-table' : pathname === '/play' ? 'client-phone' : pathname === '/oz' ? 'client-oz' : null;
+  const page = pathname === '/wiimote' ? 'client-wiimote' : pathname === '/' ? 'client-table' : pathname === '/play' ? 'client-phone' : pathname === '/oz' ? 'client-oz' : null;
   if (!page) {
     res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end('<!doctype html><meta charset="utf-8"><h1>Page introuvable</h1><a href="/play">Rejoindre la partie</a>');
     return;
   }
-  if (page !== 'client-phone' && !hostAccess.authorize(req, res, url, encrypted(req))) return;
+  if (page !== 'client-phone' && page !== 'client-wiimote' && !hostAccess.authorize(req, res, url, encrypted(req))) return;
   if (serveStatic(res, resolve(CLIENTS_ROOT, page, 'index.html'))) return;
   res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end('Interface indisponible. Reconstruisez le projet avec npm run build.');
@@ -203,6 +212,19 @@ const spectators = new SpectatorStream(hostAccess.enabled, () => gameServer.getS
 
 // Export for use by PhysicsLoop and other modules (added in later tasks)
 export { gameServer };
+
+/** Rappelle les accès privés lorsque les spectateurs sont ouverts depuis la table. */
+function announceSpectators(enabled: boolean): void {
+  const { port } = httpServer.address() as { port: number };
+  if (!enabled) {
+    console.log('   Spectateurs fermés : les accès joueurs restent disponibles.');
+    return;
+  }
+  console.log('   Spectateurs ouverts : liens privés pour la table et Oz sur le réseau.');
+  const base = announcedAddresses(port).baseUrls[0] ?? `${protocol}://localhost:${port}`;
+  console.log(`   Table: ${hostAccess.url(base)}`);
+  console.log(`   Oz:    ${hostAccess.url(base, '/oz')}`);
+}
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 

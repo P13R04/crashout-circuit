@@ -30,11 +30,13 @@ import type { Ctx } from './rendererTypes.js';
 import { DRIVE_MODE_BUTTONS } from './rendererButtons.js';
 import * as raceOverlays from './raceOverlays.js';
 import type { LobbyJoin } from './lobbyJoin.js';
+import type { SetupLinks } from '../setup/setupLinks.js';
+import { drawSetup } from '../setup/setupScreen.js';
 import * as screenOverlays from './screenOverlays.js';
 import * as mapCreationScreen from './mapCreationScreen.js';
 
 // Réexports : les noms publics gardent leur chemin d’import.
-export { START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, RESULT_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTONS, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON } from './rendererButtons.js';
+export { START_TABLE_BUTTON, START_WIIMOTE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, RESULT_BUTTON, PAUSE_BUTTON, DRIVE_MODE_BUTTONS, DRIVE_MODE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON } from './rendererButtons.js';
 
 /** Compose les écrans de la table et choisit les couches de piste, d’objets, de voitures et d’interface selon la phase. */
 
@@ -43,6 +45,9 @@ export class Renderer {
   hud = new HUD();
 
   lobbyJoin: LobbyJoin | null = null;
+
+  /** Adresses et QR codes de l'écran de préparation, prêts dès que le serveur a annoncé son adresse. */
+  setupLinks: SetupLinks | null = null;
 
   creation = new TrackCreation();
 
@@ -108,11 +113,12 @@ export class Renderer {
     if (state) this.transitions.update(state, view.visualTime);
     this.reducedMotion = view.reducedMotion;
     this.time = view.visualTime;
-    if(world)world.backdrop.draw(ctx,this.time,view.reducedMotion,state?.phase==='MAP',state?.track??null,state?.phase==='LOBBY'?'lobby':state?.phase==='MAP'?'map':'race',buildFrame?.reveal??1);
+    if(world)world.backdrop.draw(ctx,this.time,view.reducedMotion,state?.phase==='MAP',state?.track??null,state?.phase==='LOBBY'||state?.phase==='SETUP'?'lobby':state?.phase==='MAP'?'map':'race',buildFrame?.reveal??1);
     else (industrial?this.scrapBackdrop:this.backdrop).draw(ctx,this.time,view.reducedMotion,state?.phase==='MAP');
     if (!state) return;
 
     if (state.phase === 'LOBBY') { vehicles.clear(); objects.clearPickups(); this.drawLobby(ctx, state.developerTools, state.seats, state.soloTest); return; }
+    if (state.phase === 'SETUP') { vehicles.clear(); objects.clearPickups(); drawSetup(ctx, state, this.setupLinks, this.theme, this.time, view.wiimotes); return; }
     if (state.phase === 'MAP') { vehicles.clear(); objects.clearPickups(); this.drawMap(ctx, state, view);  return; }
     if (state.phase !== 'READY' && state.phase !== 'RACE' && state.phase !== 'PAUSED' && state.phase !== 'RESULT') return;
     const now = state.phase === 'PAUSED' ? state.pausedAt : view.now();

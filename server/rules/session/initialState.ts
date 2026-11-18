@@ -37,7 +37,7 @@ export function makeCar(team: Team): Car {
 export function createInitialState(): GameState {
   return {
     phase: 'LOBBY',
-    theme: 'scrap',
+    theme: 'classic',
     sessionMode: 'race',
     developerTools: false,
     soloTest: false,
@@ -49,6 +49,8 @@ export function createInitialState(): GameState {
       'B-copilot': { taken: false, connected: false },
     },
     wideTable: false,
+    wiimotes: { A: null, B: null },
+    seatDevices: { 'A-pilot': 'table', 'A-copilot': 'table', 'B-pilot': 'table', 'B-copilot': 'table' },
     tick: 0,
     cars: { A: makeCar('A'), B: makeCar('B') },
     walls: [],

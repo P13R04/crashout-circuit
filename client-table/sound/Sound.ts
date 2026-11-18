@@ -172,7 +172,7 @@ export class TableAudio {
   /** Signale immédiatement une action locale pour éviter de doubler son son à la confirmation réseau. */
   uiCommand(message:{type:string;[key:string]:unknown}):void {
     if(message.type==='Slingshot')this.slingSentAt=performance.now();
-    if(['StartGame','StartTutorial','TutorialRace','StartTangibleTest','BeginRace','GenerateTrack','Reset','NewGame','Pause','ToggleDriveMode','TestToggle','Power'].includes(message.type)||message.type==='PadHold'&&message.on===true)this.feedback('ui');
+    if(['StartGame','SetSeatDevice','ConfirmSetup','StartTutorial','TutorialRace','StartTangibleTest','BeginRace','GenerateTrack','Reset','NewGame','Pause','ToggleDriveMode','TestToggle','Power'].includes(message.type)||message.type==='PadHold'&&message.on===true)this.feedback('ui');
   }
   /** Crée, ajuste ou arrête une boucle sonore identifiée par son rôle dans la scène. */
   private loop(key:string,id:AudioAsset,volume:number,rate=1,x=960,bus:'effects'|'ambience'='effects'):void {
@@ -203,7 +203,7 @@ export class TableAudio {
     let cues=this.timeline.step(s,view.now());
     if(this.resync){this.timeline.reset();this.timeline.step(s,view.now());cues=[];this.resync=false;}
     if(!this.available()){if(!this.stopped)this.stop();this.phase=s.phase;return;}
-    if(this.phase!==s.phase&&(s.phase==='PAUSED'||s.phase==='LOBBY'||s.phase==='RESULT'||s.phase==='MAP'))this.stop();
+    if(this.phase!==s.phase&&(s.phase==='PAUSED'||s.phase==='LOBBY'||s.phase==='SETUP'||s.phase==='RESULT'||s.phase==='MAP'))this.stop();
     this.stopped=false;this.phase=s.phase;this.mix();for(const cue of cues)this.feedback(cue.kind,{x:cue.x??960});
     const race=s.phase==='RACE'&&view.now()>=s.sessionStartAt,cyber=view.theme==='scrap'||view.theme==='neon';
     for(const team of ['A','B'] as const){
@@ -212,7 +212,7 @@ export class TableAudio {
     }
     const field=race&&Object.values(s.tangibles).some(/* Détecte un pilier actif qui nécessite une ambiance électrique continue. */ t=>t.active&&t.status==='placed'&&t.kind==='pylon');
     this.loop('electric','electric',field&&this.settings.effects>0?.025:0,.85);
-    const atmosphere=view.theme==='scrap'&&['LOBBY','MAP','READY','RACE'].includes(s.phase);
+    const atmosphere=view.theme==='scrap'&&['LOBBY','SETUP','MAP','READY','RACE'].includes(s.phase);
     this.loop('ambience','ambience',atmosphere&&this.settings.ambience>0?.26:0,1,960,'ambience');
     this.musicMix(atmosphere&&this.settings.music>0);
     const pulling=race&&!!view.sling&&!view.sling.idle,ready=pulling&&!!view.sling?.shot.valid;

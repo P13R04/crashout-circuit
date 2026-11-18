@@ -7,6 +7,9 @@ export interface SessionInfo {
   spectators?: boolean;
   localNetwork?: boolean;
   secureBaseUrls?: string[];
+  /** Spectateurs connectés et nombre maximal admis. */
+  viewers?: number;
+  viewerLimit?: number;
 }
 
 /** Renvoie les informations actuelles de la séance. */
