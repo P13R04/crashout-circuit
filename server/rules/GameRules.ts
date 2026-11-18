@@ -51,6 +51,8 @@ export class GameRules {
   rng: () => number;
   tutorial: Tutorial | null = null;
   automaticPilot = new AutomaticPilot();
+  /** Mode solo imposé au démarrage du serveur : resetToLobby y revient, sinon le solo lancé depuis l'accueil se termine. */
+  soloByDefault = false;
 
   /** Conserve l’état et l’horloge puis relie les retours de jeu à la progression du tutoriel. */
   constructor(

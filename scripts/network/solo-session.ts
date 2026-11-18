@@ -63,15 +63,66 @@ try {
   await fixture.close();
 }
 
+// Sans CRASHOUT_SOLO_TEST : un pilote seul à l'accueil peut lancer le solo, qui s'arrête au retour à l'accueil.
 const normal = await socketFixture();
 try {
-  const pilot = await normal.client('player');
+  const state = normal.game.getState();
+  assert.equal(state.soloTest, false);
+  const [table, copilot, pilot] = await Promise.all([normal.client('table'), normal.client('player'), normal.client('player')]);
+  normal.game.physics.stop();
+  copilot.send({ type: 'Join', seat: 'B-copilot' });
+  await copilot.receive('Joined');
   pilot.send({ type: 'Join', seat: 'A-pilot' });
   await pilot.receive('Joined');
+  // Une autre place prise : le solo ne prend pas la table de quelqu'un d'autre.
   pilot.send({ type: 'StartSolo' });
   await pilot.flush();
-  assert.equal(normal.game.getState().phase, 'LOBBY');
+  assert.equal(state.phase, 'LOBBY');
+  assert.equal(state.soloTest, false);
+  copilot.send({ type: 'Leave' });
+  await copilot.receive('Left');
+  // Le copilote ne peut pas lancer le solo, le pilote A seul le peut.
+  const other = await normal.client('player');
+  other.send({ type: 'Join', seat: 'A-copilot' });
+  await other.receive('Joined');
+  other.send({ type: 'StartSolo' });
+  await other.flush();
+  assert.equal(state.phase, 'LOBBY');
+  other.send({ type: 'Leave' });
+  await other.receive('Left');
+  pilot.send({ type: 'StartSolo' });
+  await pilot.flush();
+  assert.equal(state.soloTest, true);
+  assert.equal(state.phase, 'RACE');
+  assert.equal(state.pickups.length, 0);
+  // Pendant le solo, une autre place est refusée.
+  const late = await normal.client('player');
+  late.send({ type: 'Join', seat: 'B-pilot' });
+  assert.equal((await late.receive('JoinRejected')).reason, 'solo-seat');
+  // Retour à l'accueil depuis la table : le mode normal revient, le pilote garde sa place.
+  table.send({ type: 'Reset' });
+  await table.flush();
+  assert.equal(state.phase, 'LOBBY');
+  assert.equal(state.soloTest, false);
+  assert.equal(state.seats['A-pilot'].connected, true);
+  late.send({ type: 'Join', seat: 'B-pilot' });
+  assert.equal((await late.receive('Joined')).seat, 'B-pilot');
 } finally {
   await normal.close();
 }
-console.log('✓ Solo : place unique, départ depuis le téléphone, conduite, reprise, relance et mode standard préservé');
+
+// En cours de partie normale, StartSolo est ignoré.
+const running = await socketFixture();
+try {
+  const pilot = await running.client('player');
+  pilot.send({ type: 'Join', seat: 'A-pilot' });
+  await pilot.receive('Joined');
+  running.game.rules.state.phase = 'MAP';
+  pilot.send({ type: 'StartSolo' });
+  await pilot.flush();
+  assert.equal(running.game.getState().soloTest, false);
+  assert.equal(running.game.getState().phase, 'MAP');
+} finally {
+  await running.close();
+}
+console.log('✓ Solo : place unique, départ depuis le téléphone, conduite, reprise, relance, solo sans variable d’environnement et retour à l’accueil');

@@ -6,7 +6,7 @@
 import { presentingTrack } from '../../server/track/trackPresentation.js';
 import { LOGICAL_W, PANELS, padLocal, panelWidth, PANEL_H, PEDAL_LOCAL, POWER_BTN_LOCAL, worldToLocal, steerArea as steerAreaForState, inTangibleDepot, inNeutralUi } from '../../server/layout.js';
 import { trackTangent, nearestTrackEdge } from '../../server/geometry.js';
-import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON } from '../renderer/Renderer.js';
+import { RESULT_BUTTON, START_TABLE_BUTTON, START_PC_BUTTON, START_TUTORIAL_BUTTON, START_TANGIBLE_TEST_BUTTON, START_WIIMOTE_BUTTON, PAUSE_BUTTON, MAP_GENERATE_BUTTON, RACE_START_BUTTON } from '../renderer/Renderer.js';
 import { inTutorialCard, tutorialButtonAt, tutorialIdentifying } from '../ui/TutorialOverlay.js';
 import { tangibleTouchPose, TANGIBLE_CONTACT_GRACE_MS } from '../../server/tangibles/tangibleTouch.js';
 import { tangibleDefinition } from '../../server/tangibles/tangibles.js';
@@ -36,6 +36,8 @@ export function onDown(recognizer: GestureRecognizer, e: PointerEvent): void {
 
   // 0 — lobby: start button
   if (state.phase === 'LOBBY') {
+    // Le panneau Wii s'ouvre à la levée du doigt, dans une autre fenêtre : la table reste ouverte.
+    if (hit(START_WIIMOTE_BUTTON)) { c.zone = 'wiimote'; return; }
     if (state.soloTest) { c.zone = 'rejected'; return; }
     if (hit(START_TABLE_BUTTON) || state.developerTools && hit(START_PC_BUTTON)) {
       c.zone = 'result';

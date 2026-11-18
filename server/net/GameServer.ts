@@ -64,7 +64,6 @@ export class GameServer {
     this.playerSeats = new PlayerSeats(this.state.seats, randomUUID);
     this.state.developerTools = options.developerTools === true;
     this.state.soloTest = options.soloTest === true;
-    if (this.state.soloTest) this.state.theme = 'classic';
     const host: RulesHost = {
       /** Diffuse le retour d’action avec son équipe et le type de bonus lorsqu’il est connu. */
       feedback: (kind, x, y, team, itemKind) =>
@@ -75,6 +74,7 @@ export class GameServer {
       broadcastFull: () => this.broadcastFull(),
     };
     this.rules = new GameRules(this.state, host);
+    this.rules.soloByDefault = this.state.soloTest;
     this.physics = new PhysicsLoop(this.state, this.rules, /* Diffuse le snapshot demandé par la boucle de physique. */ () => this.broadcastTick());
     this.wss.on('connection', this.onConnection.bind(this));
     this.physics.start();

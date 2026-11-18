@@ -13,6 +13,6 @@
     "isolatedModules": true,
     "useDefineForClassFields": true
   },
-  "include": ["client-table/**/*.ts", "client-oz/**/*.ts", "client-phone/**/*.ts", "client-shared/**/*.ts", "scripts/**/*.ts"],
+  "include": ["client-table/**/*.ts", "client-oz/**/*.ts", "client-phone/**/*.ts", "client-wiimote/**/*.ts", "client-shared/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["node_modules", "dist", "server"]
 }

@@ -8,6 +8,8 @@ import { LOGICAL_W, LOGICAL_H } from '../../server/layout.js';
 import { showMapError } from '../view.js';
 import { mapEndpointError, mapStrokeEndpoints } from '../../server/track/mapCreation.js';
 import { TANGIBLE_CONTACT_GRACE_MS } from '../../server/tangibles/tangibleTouch.js';
+import { START_WIIMOTE_BUTTON } from '../renderer/rendererButtons.js';
+import { openWiimotePanel } from '../ui/wiimotePanelLink.js';
 import type { GestureRecognizer } from './GestureRecognizer.js';
 
 /** Convertit le contact du navigateur en coordonnées de la table indépendamment de la résolution d’affichage. */
@@ -53,6 +55,10 @@ export function onUp(recognizer: GestureRecognizer, e: PointerEvent): void {
   if(c.zone==='free')c.releasedAt=performance.now();
   if(c.zone==='tangible'&&e.type==='pointerup'){const p=toLogical(recognizer, e);c.x=p.x;c.y=p.y;}
   if(recognizer.borderPull?.ids.includes(c.id)){if(e.type==='pointerup'){const at=toLogical(recognizer, e);c.x=at.x;c.y=at.y;}recognizer.streamBorderPull(true);recognizer.borderPull=null;}
+  if (c.zone === 'wiimote' && e.type === 'pointerup') {
+    const at = toLogical(recognizer, e), b = START_WIIMOTE_BUTTON;
+    if (at.x >= b.x && at.x <= b.x + b.w && at.y >= b.y && at.y <= b.y + b.h) openWiimotePanel();
+  }
   recognizer.contacts.delete(c.id);
   recognizer.view.debug.contacts = recognizer.contacts.size;
   if(c.zone==='tangible'){

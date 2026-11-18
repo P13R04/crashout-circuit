@@ -6,7 +6,7 @@
 import { THEMES, themeLook, saveTheme, type ThemeId } from '../themes/themes.js';
 import type { TableApp } from './tableApp.js';
 
-/** Construit les aperçus de thème, applique l'ambiance Ferraille et suit la préférence de mouvement du navigateur. */
+/** Construit les aperçus de thème, applique l'ambiance Grand Prix par défaut et suit la préférence de mouvement du navigateur. */
 export function setupDisplayPreferences(app: TableApp): { selectTheme: (id: ThemeId, persist?: boolean) => void } {
   const { canvas, view, urlParams, conn } = app;
   // Le changement d’ambiance est partagé et laisse la course en cours.
@@ -33,7 +33,7 @@ export function setupDisplayPreferences(app: TableApp): { selectTheme: (id: Them
     for (const button of themeOptions.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.theme === id));
   }
   // Access to localStorage itself can be denied in embedded/private contexts.
-  selectTheme('scrap',false);
+  selectTheme('classic',false);
   view.debug.on = false;
   const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
   view.reducedMotion = motionPreference.matches || urlParams.get('motion') === '0';

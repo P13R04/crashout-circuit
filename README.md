@@ -15,6 +15,7 @@ npm start
 - **Table** : `http://localhost:3000/` sur l’ordinateur relié à la table, en plein écran.
 - **Magicien d’Oz** : `http://<ip-de-la-table>:3000/oz` sur un ordinateur, une tablette ou un téléphone du même Wi-Fi. Accès direct par cette adresse, sans code ni connexion supplémentaire. L’adresse exacte est affichée au démarrage. `localhost` désigne toujours l’ordinateur sur lequel le navigateur est ouvert.
 - **Téléphones** : scanner le QR de l’accueil, ou ouvrir `/play` sur l’adresse de la séance et saisir le code affiché. Choisir l’équipe puis le rôle.
+- **Manette Wii (essai, #54)** : bouton **MANETTE WII** de l’accueil de la table, ou `http://localhost:3000/wiimote` (Chrome ou Edge de bureau, `localhost` ou HTTPS), pour piloter à la place du téléphone et lancer une partie solo sans variable d’environnement. Voir [la décision](docs/pilote-wiimote-decision.md) et [le protocole d’essai](docs/pilote-wiimote-protocole-essai.md).
 - Pour changer le port : `PORT=3100 npm start`.
 
 Le serveur doit rester ouvert pendant la séance. Les deux appareils doivent pouvoir communiquer sur le réseau local (un Wi-Fi invité qui isole les appareils ne convient pas). Ce prototype est prévu pour le réseau local de la séance ; il n’implémente pas de compte utilisateur.
@@ -65,7 +66,7 @@ Ouvrir `http://localhost:5173/client-table/` , `http://localhost:5173/client-oz/
 
 Les partenaires d’une équipe sont en diagonale : pilote cyan en bas à gauche et copilote cyan en haut à droite ; pilote rose en haut à gauche et copilote rose en bas à droite. Chaque poste fait face à son bord de table. Les dépôts tangibles et l’attribution des gestes suivent la position du copilote.
 
-1. Choisir **TUTORIEL** pour découvrir le jeu à quatre, ou **COURSE** pour créer directement un circuit. Le thème de séance est **Ferraille**. Le choix des ambiances et de la conduite reste réservé aux outils de développement.
+1. Choisir **TUTORIEL** pour découvrir le jeu à quatre, ou **COURSE** pour créer directement un circuit. Le thème de séance est **Grand Prix** (Ferraille, Néon, Circuit miniature et Castagne restent disponibles en préparation). Le choix des ambiances et de la conduite reste réservé aux outils de développement.
 2. Cyan place P1, Rose place P2 ; Cyan relie les deux points, puis Rose les relie dans sa moitié ; chacun peut commencer par P1 ou P2. La création est guidée et séquentielle. Le circuit suit les tracés, y compris les boucles et croisements ; les refus sont expliqués à l’écran.
 3. Toucher le bouton à icône de circuit : le revêtement se dessine progressivement, puis la ligne à damier fait plusieurs tours et ralentit jusqu’à sa position aléatoire. Quand elle est fixée, **▶** permet de lancer la course sur la table. Le lancement, la pause et la remise à zéro appartiennent aux joueurs.
 4. Le pilote conduit avec la bande gauche / droite. **Avec les outils de développement**, **Paramètres → Conduite**, séparément pour chaque équipe, bascule entre l’avance automatique et une pédale maintenue pour accélérer, à vitesse maximale réduite. Le pilote n’a plus de bouton pour utiliser les objets.
