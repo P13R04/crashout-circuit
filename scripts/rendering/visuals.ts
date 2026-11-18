@@ -468,9 +468,9 @@ test('seat labels appear during circuit creation and never on the home screen',(
 test('theme preference survives reload, tolerates invalid values and unavailable storage', () => {
   const values = new Map<string, string>();
   const storage = { /* Renvoie la préférence simulée ou reproduit un refus d’accès au stockage. */ getItem: (key: string) => values.get(key) ?? null, /* Enregistre la préférence simulée ou reproduit un refus d’écriture du stockage. */ setItem: (key: string, value: string) => { values.set(key, value); } };
-  assert.equal(loadTheme(storage), 'scrap');for(const theme of THEMES){saveTheme(storage,theme.id);assert.equal(loadTheme(storage),theme.id);}
-  values.set(THEME_STORAGE_KEY, 'unknown'); assert.equal(loadTheme(storage), 'scrap');
-  assert.equal(loadTheme({ /* Reproduit un refus du stockage local pour vérifier le comportement de secours. */ getItem() { throw Error('denied'); } }), 'scrap');
+  assert.equal(loadTheme(storage), 'classic');for(const theme of THEMES){saveTheme(storage,theme.id);assert.equal(loadTheme(storage),theme.id);}
+  values.set(THEME_STORAGE_KEY, 'unknown'); assert.equal(loadTheme(storage), 'classic');
+  assert.equal(loadTheme({ /* Reproduit un refus du stockage local pour vérifier le comportement de secours. */ getItem() { throw Error('denied'); } }), 'classic');
   /** Vérifie qu’un stockage refusé ne fait pas échouer le changement de préférence. */
   assert.doesNotThrow(() => saveTheme({ /* Reproduit un refus du stockage local pour vérifier le comportement de secours. */ setItem() { throw Error('denied'); } }, 'scrap'));
 });

@@ -117,7 +117,7 @@ export function createView(now: () => number): View {
     state: null,
     reducedMotion: false,
     tutorialMode: 'table',
-    theme: 'scrap',
+    theme: 'classic',
     visualTime: 0,
     now,
     effects: [],
