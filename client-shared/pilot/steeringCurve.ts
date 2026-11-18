@@ -15,11 +15,14 @@ export const STEERING = {
   smoothing: .25,
 };
 
-/** Transforme un écart d'angle en direction bornée et progressive. */
-export function steerFromAngle(wheel: number, neutral: number): number {
+/** Zone morte, angle de pleine direction et progressivité d'une courbe ; le téléphone garde STEERING. */
+export interface SteeringCurve { deadZone: number; maxSteer: number; steerExponent: number }
+
+/** Transforme un écart d'angle en direction bornée et progressive, avec la courbe du téléphone sauf indication contraire. */
+export function steerFromAngle(wheel: number, neutral: number, curve: SteeringCurve = STEERING): number {
   const delta = ((wheel - neutral + 540) % 360) - 180;
-  const fraction = Math.min(1, Math.max(0, (Math.abs(delta) - STEERING.deadZone) / (STEERING.maxSteer - STEERING.deadZone)));
-  return Math.sign(delta) * fraction ** STEERING.steerExponent;
+  const fraction = Math.min(1, Math.max(0, (Math.abs(delta) - curve.deadZone) / (curve.maxSteer - curve.deadZone)));
+  return Math.sign(delta) * fraction ** curve.steerExponent;
 }
 
 /** Lisse les variations du capteur et recentre instantanément dans la zone morte. */

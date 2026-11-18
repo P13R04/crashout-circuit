@@ -65,7 +65,9 @@ Protocole : tenir la manette et le téléphone dans la même main (ou fixés ens
 | Gauche | 35° | | | | doit saturer vers −1 |
 | Retour au neutre | 0° | | | | temps de retour |
 
-Comparer l’écart au seuil de la décision (**0,15 proposé, non validé**).
+La manette a **sa propre courbe**, plus douce que celle du téléphone (zone morte 4°, pleine direction à 50° par défaut) : pour 10° d’écart, elle donne 0,04 contre 0,14 pour le téléphone ; l’écart est voulu. Comparer donc la direction de la manette à la **courbe attendue** (`((angle − 4) / (angle de pleine direction − 4)) ^ 1,5`), et le sens et la symétrie avec le téléphone. Le seuil de la décision (**0,15 proposé, non validé**) s’applique à cet écart.
+
+**Régler la sensibilité.** Le curseur « Sensibilité » de la page Wii règle l’angle de pleine direction de 30° (très sensible) à 90° (peu sensible), mémorisé par le navigateur. Faire essayer 40°, 50°, 65° et 80° aux testeurs sur le même circuit et noter la valeur qui leur convient, avec les sorties de piste (§4).
 
 ## 4. Mesurer la latence ressentie en course, puis la latence appui → effet
 

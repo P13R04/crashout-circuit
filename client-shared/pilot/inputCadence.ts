@@ -16,9 +16,9 @@ export type DriveSample = { steer: number; throttle: number };
 export type SentInput = DriveSample & { time: number };
 
 /** Limite le débit tout en renouvelant les commandes immobiles. */
-export function shouldSendInput(now: number, input: DriveSample, last: SentInput): boolean {
+export function shouldSendInput(now: number, input: DriveSample, last: SentInput, minSendMs = CADENCE.minSendMs): boolean {
   const elapsed = now - last.time;
-  if (elapsed < CADENCE.minSendMs) return false;
+  if (elapsed < minSendMs) return false;
   // Préserve une période de 100 ms même lorsque le seuil tombe entre deux lectures.
   return elapsed >= CADENCE.heartbeatMs - CADENCE.pollMs
     || Math.abs(input.steer - last.steer) > .01 || Math.abs(input.throttle - last.throttle) > .01;

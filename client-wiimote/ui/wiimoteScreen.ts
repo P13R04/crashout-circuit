@@ -6,6 +6,7 @@
 import { SEAT_IDS, TEAM_LABEL, playerTeam } from '../../client-shared/seatLabels.js';
 import type { SeatId } from '../../server/types.js';
 import type { TiltGrip } from '../steering/tiltAngle.js';
+import { RANGE_LIMITS } from '../steering/wiimoteSteering.js';
 import { controllerHint, pressedLabel, sessionHint, type WiimoteView } from './viewHints.js';
 
 export interface ScreenActions {
@@ -17,6 +18,7 @@ export interface ScreenActions {
   startSolo(): void;
   setGrip(grip: TiltGrip): void;
   setFlip(flip: boolean): void;
+  setRange(range: number): void;
 }
 
 const PILOT_SEATS = SEAT_IDS.filter(id => id.endsWith('-pilot'));
@@ -62,8 +64,10 @@ export class WiimoteScreen {
   private readonly buttonsText = element('p', 'detail');
   private readonly grip = element('select');
   private readonly flip = element('input');
+  private readonly range = element('input');
+  private readonly rangeText = element('p', 'detail');
 
-  constructor(root: HTMLElement, private readonly actions: ScreenActions, initialRoom: string, grip: TiltGrip, flip: boolean) {
+  constructor(root: HTMLElement, private readonly actions: ScreenActions, initialRoom: string, grip: TiltGrip, flip: boolean, range: number) {
     this.connect = button('Connecter la manette', actions.connectController, 'primary');
     this.recalibrate = button('Recalibrer le neutre (Home)', actions.recalibrate);
     this.leaveButton = button('Libérer la place', actions.leave);
@@ -74,7 +78,7 @@ export class WiimoteScreen {
     this.roomInput.autocomplete = 'off';
     this.roomInput.spellcheck = false;
     this.roomInput.setAttribute('aria-label', 'Code de séance');
-    root.append(this.controllerSection(), this.gameSection(), this.sessionSection(), this.drivingSection(), this.settingsSection(grip, flip));
+    root.append(this.controllerSection(), this.gameSection(), this.sessionSection(), this.drivingSection(range), this.settingsSection(grip, flip));
   }
 
   /** Affiche l'état courant ; ne touche au DOM que pour ce qui a changé. */
@@ -123,13 +127,29 @@ export class WiimoteScreen {
   }
 
   /** Bloc de la direction en direct et du recalibrage. */
-  private drivingSection(): HTMLElement {
+  private drivingSection(range: number): HTMLElement {
     const section = element('section');
+    this.range.type = 'range';
+    this.range.min = String(RANGE_LIMITS.min);
+    this.range.max = String(RANGE_LIMITS.max);
+    this.range.step = '5';
+    this.range.value = String(range);
+    this.range.setAttribute('aria-label', 'Angle pour tourner à fond');
+    this.range.addEventListener('input', () => {
+      this.showRange(Number(this.range.value));
+      this.actions.setRange(Number(this.range.value));
+    });
+    this.showRange(range);
     const meter = element('div', 'meter');
     meter.setAttribute('aria-hidden', 'true');
     meter.append(element('div', 'center'), this.marker);
-    section.append(element('h2', '', 'Direction'), meter, this.steerText, this.angleText, this.accelText, this.buttonsText, this.recalibrate);
+    section.append(element('h2', '', 'Direction'), meter, this.steerText, this.angleText, this.accelText, this.buttonsText, this.range, this.rangeText, this.recalibrate);
     return section;
+  }
+
+  /** Affiche l'angle de pleine direction choisi et le sens du réglage. */
+  private showRange(range: number): void {
+    setText(this.rangeText, `Sensibilité : tourner à fond à ${range}° (plus grand = moins sensible, plus petit = plus sensible).`);
   }
 
   /** Bloc des réglages d'essai : prise en main et sens de rotation. */

@@ -13,7 +13,7 @@ Un essai fonctionnel de la piste A (WebHID), à côté du front téléphone. Les
 | Ouverture WebHID, mode, LED, vibration, reconnexion (API injectée, testable) | `client-wiimote/device/` |
 | Angle de volant, filtre passe-bas, neutre, direction (pur) | `client-wiimote/steering/` |
 | Source de commandes : boutons + direction | `client-wiimote/control/` |
-| Courbe de direction (zone morte ±3°, maximum ±35°, exposant 1,3, lissage 0,25) et cadence d’envoi, **identiques au téléphone** | `client-shared/pilot/steeringCurve.ts`, `inputCadence.ts` |
+| Fonction de courbe de direction et cadence d’envoi **partagées avec le téléphone**, qui garde ses valeurs (zone morte ±3°, maximum ±35°, exposant 1,3, lissage 0,25). La manette a sa propre courbe, voir « Réglage après les premiers essais » | `client-shared/pilot/steeringCurve.ts`, `inputCadence.ts` |
 | Interface « source de commandes » et couche réseau du pilote | `client-shared/pilot/pilotCommandSource.ts`, `pilotLink.ts` |
 | Séance (code, place `A-pilot`/`B-pilot`, jeton, reconnexion) | `client-shared/playerSession.ts` (déplacé depuis `client-phone/session.ts`, qui reste en façade) |
 | Tests | `npm run test:wiimote` (4 scripts dans `scripts/wiimote/`, ajoutés à `check` et `verify`) |
@@ -31,7 +31,7 @@ Un essai fonctionnel de la piste A (WebHID), à côté du front téléphone. Les
 
 | Entrée | Effet | Remarque |
 |---|---|---|
-| Inclinaison | Direction | Même chaîne que le téléphone après l’angle |
+| Inclinaison | Direction | Courbe propre à la manette : zone morte 4°, pleine direction à 50° (réglable de 30° à 90°), exposant 1,5 |
 | B (gâchette) | Accélérateur | Compte en mode PÉDALE ; en AUTO, la voiture avance seule |
 | A | **Réparer** (maintenu) | Pad de réparation du pilote, indispensable pour redémarrer |
 | 1 | Bascule AUTO / PÉDALE | Une pression, une bascule |
@@ -47,9 +47,9 @@ Légende : **mesuré** (rien pour l’instant), **calculé** (d’après le code
 | Critère | Téléphone (état actuel) | Wiimote seule | Wiimote + MotionPlus (Wii Remote Plus) |
 |---|---|---|---|
 | **Capteur** | Orientation fusionnée par le système (`DeviceOrientation`) | Accéléromètre 3 axes seul : inclinaison par la gravité, pas de lacet | Accéléromètre + gyroscope (MotionPlus intégré) |
-| **Précision de l’angle** | à mesurer | Accéléromètre 8 bits, repos autour de 128, environ 25 unités par g (doc, **à confirmer**) : un pas vaut environ 2 à 3° (calculé). La zone morte de ±3° équivaut à environ un pas. Un 10 bits existe en mode 0x31 (non implémenté, à vérifier) | Même accéléromètre. Le gyroscope n’apporte rien au roulis tant qu’on ne l’active pas (registres d’extension, **non implémenté**) ; sa précision est à mesurer |
-| **Dérive et secousses** | Pas de dérive visible attendue (à confirmer) | Aucune dérive, mais une secousse fausse l’angle : rapports rejetés si la norme s’écarte de plus de 35 % du repos, filtre passe-bas (α = 0,3 par rapport, constante de temps d’environ 28 ms à 100 rapports/s, calculée) | Le gyroscope pourrait filtrer les secousses mais demande une fusion à écrire |
-| **Latence mesurée** | **à mesurer** (filtre de direction α = 0,25 à environ 60 mesures/s, soit environ 58 ms de constante de temps, calculée) | **à mesurer** (Bluetooth HID + WebHID + filtre ≈ 28 ms + lissage de direction + WebSocket local) | **à mesurer** |
+| **Précision de l’angle** | à mesurer | Accéléromètre 8 bits, repos autour de 128, environ 25 unités par g (doc, **à confirmer**) : un pas vaut environ 2 à 3° (calculé). La zone morte de ±4° de la manette équivaut à environ deux pas. Un 10 bits existe en mode 0x31 (non implémenté, à vérifier) | Même accéléromètre. Le gyroscope n’apporte rien au roulis tant qu’on ne l’active pas (registres d’extension, **non implémenté**) ; sa précision est à mesurer |
+| **Dérive et secousses** | Pas de dérive visible attendue (à confirmer) | Aucune dérive, mais une secousse fausse l’angle : rapports rejetés si la norme s’écarte de plus de 35 % du repos, angle lissé par un filtre adaptatif « 1 € » (très lissé au repos, presque pas en mouvement) ; la manette n’est pas mesurée quand moins de 0,5 g tombe dans son plan | Le gyroscope pourrait filtrer les secousses mais demande une fusion à écrire |
+| **Latence mesurée** | **à mesurer** (filtre de direction α = 0,25 à environ 60 mesures/s, soit environ 58 ms de constante de temps, calculée) | **à mesurer** (Bluetooth HID + WebHID + filtre adaptatif + WebSocket local ; traitement logiciel simulé à environ 15 ms au milieu d’un geste rapide, voir « Réglage après les premiers essais ») | **à mesurer** |
 | **Cadence de lecture** | à mesurer | Rapports 0x31 environ 100 par seconde (doc, à mesurer sous Windows). Mode par changement : une manette immobile ne rapporte rien ; `?continuous=1` demande l’envoi continu | idem |
 | **Appairage** | Aucun : Wi-Fi, QR ou code de séance | Bluetooth, manuel sous Windows, sans code PIN (voir plus bas) ; **à tester avant une démonstration publique** | idem ; la reconnaissance se fait par `productId` 0x0330 (`RVL-CNT-01-TR`), 0x0306 pour la Wiimote seule |
 | **Coût** | 0 € (téléphones des joueurs) | **à relever** (manette d’occasion, adaptateur Bluetooth si le PC n’en a pas) | **à relever** |
@@ -93,7 +93,7 @@ Critères pour passer de « ajouter » à une recommandation ferme (seuils propo
 
 | Critère | Seuil proposé |
 |---|---|
-| Écart de direction manette / téléphone sur le même geste | à définir après la première mesure ; à titre de départ, moins de 0,15 en valeur absolue aux angles 10°, 20° et 35° |
+| Écart de direction manette / téléphone sur le même geste | à définir après la première mesure ; à titre de départ, moins de 0,15 en valeur absolue aux angles 10°, 20° et 35°, **en tenant compte de la courbe propre à la manette** (elle est volontairement plus douce que celle du téléphone) |
 | Latence appui → effet visible sur la table | pas pire que celle du téléphone mesurée de la même façon |
 | Direction conduisible sans corriger en permanence | trois tours complets sans sortie de piste imputable à la manette |
 | Appairage | trois essais d’appairage et de reconnexion de suite sans intervention technique |
@@ -129,6 +129,34 @@ Critères pour passer de « ajouter » à une recommandation ferme (seuils propo
 **Dépendances.** #38 (places pilote et copilote), #39 (HTTPS, nécessaire hors `localhost`), #41 (gyroscope actuel, dont la courbe de direction est partagée), epic #48. Voir aussi #54 (cette décision) et #53 si un téléphone « vue seule » est voulu.
 
 *Numéros : ceux du fork. Pour l’amont, ajouter 14 aux numéros de téléphone (voir `docs/gantt-crashout-circuit.html`).*
+
+## Réglage après les premiers essais (18 novembre 2026)
+
+Les testeurs ont signalé deux défauts : **la manette est trop sensible** (un petit mouvement envoie la voiture loin d’un côté) et **un délai entre la manette et la voiture**. Les chiffres ci-dessous viennent d’une **simulation** sur le même geste (rampe en cosinus, quantification 8 bits, bruit ajouté), pas d’une mesure sur la manette. Elle reste à confirmer avec le protocole d’essai.
+
+**Sensibilité.** La manette réutilisait la courbe du téléphone (pleine direction à 35°, zone morte de 3°). Un poignet tourne moins qu’un téléphone, et la direction règle la vitesse de rotation de la voiture : une direction même moyenne tenue une seconde la fait beaucoup tourner. Changements :
+
+| | Avant | Après |
+|---|---|---|
+| Zone morte | 3° | 4° |
+| Angle de pleine direction | 35° | 50°, **réglable de 30° à 90° par un curseur** sur la page (mémorisé par le navigateur, ou `?range=`) |
+| Progressivité | exposant 1,3 | exposant 1,5 |
+| Direction pour 10° d’écart | 0,14 | 0,04 |
+| Direction pour 25° d’écart | 0,61 | 0,32 |
+
+Deux autres causes possibles de sensibilité ont aussi été corrigées : (1) le neutre est maintenant mesuré **manette immobile** (la mesure repart de zéro tant que l’angle bouge de plus de 4°), au lieu de se figer pendant qu’on prend la manette en main ; (2) la manette n’est plus lue quand moins de 0,5 g tombe dans son plan (0,15 g auparavant) : un seul pas de l’accéléromètre y déplaçait l’angle de plus de 15°, ce qui faisait « sauter » la direction quand la manette n’était pas bien droite.
+
+**Délai.** Le Bluetooth n’est qu’une partie du délai. Le logiciel en ajoutait une autre, qu’on peut réduire :
+
+| Étape | Avant | Après |
+|---|---|---|
+| Lissage | passe-bas sur chaque axe (constante de temps ≈ 28 ms) puis lissage de la direction (≈ 35 ms à 100 rapports/s) | un seul filtre adaptatif « 1 € » sur l’angle : fort au repos, quasi nul en mouvement |
+| Envoi vers le serveur | au plus 30 par seconde | au plus 60 par seconde (≈ 50 mesurés en balayage dans le navigateur) |
+| Temps pour atteindre 50 % puis 90 % de la valeur finale (geste de 0 à 40° en 150 ms, simulé) | 130 ms puis 190 ms | 100 ms puis 140 ms (indicatif : chaque chaîne est comparée à sa propre valeur finale, 1,0 avant et 0,7 après à 40°, puisque la courbe a changé) |
+
+Ce qui reste et **ne peut pas se corriger dans le code** : le trajet Bluetooth et le pilote Windows, la diffusion de l’état à 30 par seconde par le serveur et le rendu de la table, communs au téléphone. Pour réduire la part Bluetooth : adaptateur USB Bluetooth 4 ou plus, branché près de la manette sur un port USB 2 (éviter les ports USB 3 voisins, qui brouillent le 2,4 GHz), pas de gros fichier transféré par Wi-Fi 2,4 GHz pendant la partie, aucun autre périphérique Bluetooth actif, piles neuves, fenêtre de la page Wii au premier plan et visible (un onglet masqué est ralenti par le navigateur), et dans le gestionnaire de périphériques Windows décocher « Autoriser l’ordinateur à éteindre ce périphérique » sur l’adaptateur. Rien de tout cela n’est mesuré ici.
+
+Mesure à faire : refaire le §4 du protocole (caméra au ralenti) avant et après ces réglages, et chercher la valeur du curseur qui convient aux testeurs.
 
 ## Ce qui n’est pas vérifié
 

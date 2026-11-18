@@ -30,6 +30,7 @@ export class PilotLink {
     private readonly session: PilotSessionPort,
     private readonly team: Team,
     private readonly source: PilotCommandSource,
+    private readonly options: { minSendMs?: number } = {},
   ) {
     this.steer = createControls(msg => this.session.send(msg)).steer;
   }
@@ -51,7 +52,7 @@ export class PilotLink {
     this.syncToggle(racing && command!.toggleDriveMode);
     if (!driving || !command) return;
     const input = driveSample({ steer: command.steer, throttle: 0 }, state.driveMode[this.team] === 'pedal', command.accelerate);
-    if (!shouldSendInput(now, input, this.last)) return;
+    if (!shouldSendInput(now, input, this.last, this.options.minSendMs)) return;
     this.steer(this.team, input.steer, input.throttle);
     this.last = { ...input, time: now };
   }

@@ -2,7 +2,7 @@
  * Page du pilote Wii : relie la manette (WebHID), la séance (WebSocket /ws/player) et l'écran.
  * Liens : client-wiimote/device/webHidWiimote.ts, client-shared/playerSession.ts, client-shared/pilot/pilotLink.ts.
  * La manette est la seule source de commandes : aucun capteur du téléphone, aucune entrée tactile ni clavier pour conduire.
- * Réglages d'essai par l'adresse : ?room=ABCDE&grip=face|flat&flip=1&continuous=1.
+ * Réglages d'essai par l'adresse : ?room=ABCDE&grip=face|flat&flip=1&continuous=1&range=50 (angle de pleine direction).
  */
 import { PhoneSession } from '../client-shared/playerSession.js';
 import { CADENCE } from '../client-shared/pilot/inputCadence.js';
@@ -16,13 +16,17 @@ import { browserHid } from './device/hidTypes.js';
 import { WebHidWiimote } from './device/webHidWiimote.js';
 import { NO_BUTTONS } from './hid/reportDecoder.js';
 import type { TiltGrip, TiltSettings } from './steering/tiltAngle.js';
+import { RANGE_LIMITS, WIIMOTE_CURVE } from './steering/wiimoteSteering.js';
 import { WiimoteScreen } from './ui/wiimoteScreen.js';
 import type { ControllerState, WiimoteView } from './ui/viewHints.js';
 
 const REFRESH_MS = 50;
+const RANGE_KEY = 'crashout-wiimote-range';
+/** Intervalle minimal entre deux envois : 60 par seconde, au rythme de la physique du serveur, au lieu de 30. */
+const SEND_MS = 1000 / 60;
 const params = new URLSearchParams(location.search);
 const settings: TiltSettings = { grip: params.get('grip') === 'flat' ? 'flat' : 'face', flip: params.get('flip') === '1' };
-const source = new WiimoteCommandSource(settings);
+const source = new WiimoteCommandSource(settings, initialRange());
 const session = new PhoneSession(render);
 let link: PilotLink | null = null;
 let controller: ControllerState = 'idle';
@@ -63,9 +67,32 @@ const screen = new WiimoteScreen(document.querySelector<HTMLElement>('#screen')!
   startSolo: () => { void startSolo(); },
   setGrip: (grip: TiltGrip) => source.steering.configure({ ...source.steering.tilt, grip }),
   setFlip: flip => source.steering.configure({ ...source.steering.tilt, flip }),
-}, params.get('room') ?? '', settings.grip, settings.flip);
+  setRange: range => { source.steering.setRange(range); saveRange(source.steering.range); },
+}, params.get('room') ?? '', settings.grip, settings.flip, source.steering.range);
 
 if (!hid.supported) controller = 'unsupported';
+
+/** Angle de pleine direction : l'adresse d'abord, puis le dernier réglage du navigateur, sinon la valeur par défaut. */
+function initialRange(): number {
+  const fromUrl = Number(params.get('range'));
+  if (params.has('range') && Number.isFinite(fromUrl)) return fromUrl;
+  try {
+    const saved = Number(localStorage.getItem(RANGE_KEY));
+    if (saved >= RANGE_LIMITS.min && saved <= RANGE_LIMITS.max) return saved;
+  } catch {
+    // Sans stockage, la valeur par défaut s'applique à chaque ouverture.
+  }
+  return WIIMOTE_CURVE.maxSteer;
+}
+
+/** Mémorise le réglage de sensibilité pour la prochaine ouverture de la page. */
+function saveRange(range: number): void {
+  try {
+    localStorage.setItem(RANGE_KEY, String(range));
+  } catch {
+    // Réglage conservé pour cette page seulement.
+  }
+}
 
 /** Vérifie la manette puis lance la partie solo, et affiche la raison si elle ne peut pas démarrer. */
 async function startSolo(): Promise<void> {
@@ -100,7 +127,7 @@ function syncLink(): void {
   const seat = session.seat;
   const pilot = seat?.endsWith('-pilot') ? seat : null;
   if (pilot && !link) {
-    link = new PilotLink(session, playerTeam(pilot), source);
+    link = new PilotLink(session, playerTeam(pilot), source, { minSendMs: SEND_MS });
     hid.setPlayer(playerNumber(pilot));
   } else if (!pilot && link) {
     link.release();

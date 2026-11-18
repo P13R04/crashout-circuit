@@ -136,6 +136,17 @@ const beforeRelease = session.sent.length;
 link.release();
 assert.deepEqual(session.sent.slice(beforeRelease).filter(m => m.type === 'PilotInput').map(m => [m.steer, m.throttle]), [[0, 0]]);
 
+// Intervalle minimal réglable : la page Wii envoie à 60 Hz, le téléphone reste à 30 Hz par défaut.
+for (const [minSendMs, expected] of [[1000 / 60, 2], [undefined, 1]] as const) {
+  const paced = new FakeSession();
+  const pacedSource = new ScriptedSource();
+  const pacedLink = new PilotLink(paced, 'A', pacedSource, minSendMs === undefined ? {} : { minSendMs });
+  pacedLink.tick(1000);
+  pacedSource.snapshot = { ...pacedSource.snapshot!, steer: .6 };
+  pacedLink.tick(1017);
+  assert.equal(paced.take('PilotInput').length, expected, `intervalle ${minSendMs ?? 'par défaut'}`);
+}
+
 // Chaîne complète : rapports de la vraie source jusqu'au réseau, puis déconnexion de la manette.
 const real = new WiimoteCommandSource({ grip: 'face', flip: false });
 const wire = new FakeSession();

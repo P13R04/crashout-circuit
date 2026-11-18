@@ -22,8 +22,8 @@ export class WiimoteCommandSource implements PilotCommandSource {
   private connected = false;
   private lastSeen = 0;
 
-  constructor(settings: TiltSettings) {
-    this.steering = new WiimoteSteering(settings);
+  constructor(settings: TiltSettings, range?: number) {
+    this.steering = new WiimoteSteering(settings, range);
   }
 
   /** Indique que la manette est ouverte et que ses rapports arrivent. */

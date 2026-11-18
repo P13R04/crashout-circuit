@@ -1,5 +1,5 @@
 /**
- * Convertit l'accélération de la Wiimote en angle de volant, avec filtre passe-bas et rejet des secousses.
+ * Convertit l'accélération de la Wiimote en angle de volant, avec rejet des secousses.
  * Liens : client-wiimote/hid/wiimoteProtocol.ts, client-wiimote/steering/wiimoteSteering.ts.
  * Module pur. Sans gyroscope, seule l'inclinaison est mesurable, par la gravité ; la rotation autour de la verticale ne l'est pas.
  * Les axes et le signe sont à valider sur la manette réelle avec tools/wiimote-monitor (voir docs/pilote-wiimote-protocole-essai.md).
@@ -24,14 +24,15 @@ export interface TiltSettings {
 export interface Gravity { x: number; y: number; z: number }
 
 export const TILT = {
-  /** Part de l'écart rattrapée à chaque rapport : filtre passe-bas sur chaque axe. */
-  lowPass: .3,
   /** Écart relatif de la norme à sa valeur de repos au-delà duquel un rapport est une secousse. */
   shakeTolerance: .35,
   /** Secousses consécutives après lesquelles la norme de repos est réapprise. */
   shakeResetCount: 50,
-  /** Projection minimale, en g, dans le plan de lecture : en dessous, la manette est trop à plat. */
-  minProjection: .15,
+  /**
+   * Projection minimale, en g, dans le plan de lecture : en dessous, la manette est trop à plat pour ce plan.
+   * Un pas de l'accéléromètre vaut environ 0,04 g : à 0,15 g il déplaçait déjà l'angle de plus de 15°.
+   */
+  minProjection: .5,
 };
 
 const radians = Math.PI / 180;
@@ -54,11 +55,11 @@ export function tiltAngle(gravity: Gravity, settings: TiltSettings): number | nu
   return settings.flip ? -angle : angle;
 }
 
-/** Résultat d'un rapport : gravité filtrée et indication de secousse. */
+/** Résultat d'un rapport : gravité retenue et indication de secousse. */
 export interface FilteredGravity { gravity: Gravity; shaking: boolean }
 
-/** Filtre passe-bas sur la gravité ; un rapport dont la norme s'écarte trop de celle du repos est rejeté. */
-export class GravityFilter {
+/** Écarte les secousses : un rapport dont la norme s'écarte trop de celle du repos est rejeté, sans lisser les autres. */
+export class ShakeGate {
   private value: Gravity | null = null;
   private rest = 0;
   private shakes = 0;
@@ -70,7 +71,7 @@ export class GravityFilter {
     this.shakes = 0;
   }
 
-  /** Intègre un rapport ; pendant une secousse, la dernière gravité fiable est conservée. */
+  /** Laisse passer un rapport fiable ; pendant une secousse, la dernière gravité fiable est conservée. */
   push(raw: RawAccel): FilteredGravity {
     const sample = rawToGravity(raw);
     const norm = Math.hypot(sample.x, sample.y, sample.z);
@@ -78,13 +79,8 @@ export class GravityFilter {
     if (Math.abs(norm - this.rest) > this.rest * TILT.shakeTolerance) return this.reject();
     this.shakes = 0;
     this.rest += (norm - this.rest) * .02;
-    const k = TILT.lowPass;
-    this.value = {
-      x: this.value.x + (sample.x - this.value.x) * k,
-      y: this.value.y + (sample.y - this.value.y) * k,
-      z: this.value.z + (sample.z - this.value.z) * k,
-    };
-    return { gravity: this.value, shaking: false };
+    this.value = sample;
+    return { gravity: sample, shaking: false };
   }
 
   /** Premier rapport : sert de référence de repos. */
