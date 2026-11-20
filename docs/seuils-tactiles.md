@@ -1,6 +1,6 @@
 # Seuils tactiles du lance-pierre : protocole d'essai sur la table (issue #38)
 
-Les seuils n'ont jamais été validés en multitouch réel : `scripts/gestures.ts` ne rejoue que des événements simulés. Ce document prépare la séance sur la dalle. Il décrit les réglages sans recompilation, le journal des décisions du recognizer et le protocole à suivre.
+Les seuils n'ont jamais été validés en multitouch réel : `scripts/gestures/gestures.ts` ne rejoue que des événements simulés. Ce document prépare la séance sur la dalle. Il décrit les réglages sans recompilation, le journal des décisions du recognizer et le protocole à suivre.
 
 ## Seuils et réglages
 
@@ -18,7 +18,7 @@ L'échelle en millimètres dépend de la dalle : `mm/px = diagonale(") × 25,4 �
 | Traction maximale (`slingMaxPullPx`) | 260 px | ≈ 19,5 cm | `config.json` |
 | Portée minimale / maximale (`slingMinRangePx`, `slingMaxRangePx`) | 220 / 900 px | ≈ 16,5 / 67 cm | `config.json` |
 
-Exemple : `http://<ip-de-la-table>:3000/?debug=1&cluster=230&palm=200`. Les paramètres inconnus, non numériques ou hors plage sont ignorés (plages dans `client-table/gestureTuning.ts`). Chaque modification de seuil validée sur la table doit ensuite être reportée dans les défauts de ce fichier, dans `config.json`, dans `scripts/gestures.ts` et dans ce tableau.
+Exemple : `http://<ip-de-la-table>:3000/?debug=1&cluster=230&palm=200`. Les paramètres inconnus, non numériques ou hors plage sont ignorés (plages dans `client-table/gesture/gestureTuning.ts`). Chaque modification de seuil validée sur la table doit ensuite être reportée dans les défauts de ce fichier, dans `config.json`, dans `scripts/gestures/gestures.ts` et dans ce tableau.
 
 Depuis les premières mesures de l'issue, le comportement a changé : seul le **relâchement du doigt qui tire** déclenche le tir (un doigt de la fourche levé ne tire plus), et un seul bonus peut être armé à la fois, donc un troisième doigt ne transforme plus un portail de boost en lance-pierre. Le protocole vérifie quand même ces deux points sur la dalle.
 

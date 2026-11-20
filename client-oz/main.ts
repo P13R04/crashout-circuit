@@ -1,13 +1,13 @@
 /**
  * Relie les boutons, les raccourcis et le journal de la console à sa carte et à la connexion WebSocket.
- * Liens : client-oz/index.html, client-shared/net.ts, client-oz/OzMap.ts, client-oz/OzController.ts,
+ * Liens : client-oz/index.html, client-shared/net.ts, client-oz/map/OzMap.ts, client-oz/OzController.ts,
  * server/types.ts et les utilitaires importés ci-dessous.
  */
 import { StateSync, connectWs, type Connection } from '../client-shared/net.js';
-import { OzMap, type OzTool } from './OzMap.js';
+import { OzMap, type OzTool } from './map/OzMap.js';
 import { OzController, ozShortcut } from './OzController.js';
 import type { Vec2 } from '../server/types.js';
-import type { TangibleId } from '../server/tangibles.js';
+import type { TangibleId } from '../server/tangibles/tangibles.js';
 
 const status = document.getElementById('status')!;
 const hint = document.getElementById('hint')!;
@@ -23,6 +23,8 @@ const touchButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-tan
 const quickUndo=document.getElementById('quick-undo') as HTMLButtonElement;
 const quickDeselect=document.getElementById('quick-deselect') as HTMLButtonElement;
 
+const objectTools = document.getElementById('object-tools')!;
+const quickTools = document.getElementById('quick-tools')!;
 const objectList=document.getElementById('object-list')!;
 const objectCards=new Map<number,{state:HTMLElement;toggle:HTMLButtonElement;remove:HTMLButtonElement}>();
 // Crée une carte de commandes par tangible et branche ses boutons d’activation et de retrait.
@@ -295,7 +297,11 @@ function refresh(): void {
   }
   placementMode.disabled=!controller.connected||!s;
   placementMode.value=touch?'touch':'manual';
-  touchTools.hidden=false;
+  objectTools.hidden = !enabled;
+  quickTools.hidden = !enabled;
+  quickUndo.disabled = !controller.canUndo;
+  quickDeselect.disabled = !map.hasOperation;
+  touchTools.hidden = !touch;
   btnArc.hidden=touch;btnWall.hidden=touch;btnClear.hidden=touch;
   for(const button of touchButtons){
     const id=Number(button.dataset.tangible);

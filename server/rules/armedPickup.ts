@@ -1,0 +1,12 @@
+/**
+ * Retrouve le bonus réservé sur la table et fournit la durée des feux de reprise après réparation.
+ * Liens : server/types.ts.
+ * Référencé notamment par client-table/gesture/GestureRecognizer.ts, client-table/ui/HUD.ts, client-table/renderer/Renderer.ts.
+ */
+import type { GameState } from '../types.js';
+/** Retrouve le seul stock armé dont le geste est réservé sur la table. */
+export function armedPickup(state:GameState){
+  for(const team of ['A','B'] as const){const car=state.cars[team];if(car.itemArmed&&car.heldItem)return{team,kind:car.heldItem,version:car.itemArmVersion??0};}
+  return null;
+}
+export const RESPAWN_COUNTDOWN_MS=3000;

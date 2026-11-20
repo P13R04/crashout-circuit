@@ -1,0 +1,312 @@
+<title>Gantt Crashout Circuit</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Mise en page : un tableau de Gantt en grille CSS (étiquette fixe + colonne « Acquis » + 7 semaines), complété par les notes de l'équipe et la liste des issues à créer. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --fg: #13202c;
+  --muted: #566878;
+  --line: #d8e0e8;
+  --tint: #eaf0f6;
+  --ms: #e3edf9;
+  --done: #2b8a66;
+  --check: #b8780f;
+  --todo: #2563c9;
+  --on-bar: #ffffff;
+  --font-head: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e151c; --surface: #151f29; --fg: #e5ecf3; --muted: #94a5b5; --line: #26333f;
+    --tint: #1b2733; --ms: #1a2a40; --done: #3fae85; --check: #d79a35; --todo: #5a97f5; --on-bar: #0b121a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e151c; --surface: #151f29; --fg: #e5ecf3; --muted: #94a5b5; --line: #26333f;
+  --tint: #1b2733; --ms: #1a2a40; --done: #3fae85; --check: #d79a35; --todo: #5a97f5; --on-bar: #0b121a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.5;
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+main { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+h1, h2 { font-family: var(--font-head); text-wrap: balance; margin: 0; }
+h1 { font-size: 30px; line-height: 1.15; }
+h2 { font-size: 18px; }
+p { margin: 0; }
+header { display: flex; flex-direction: column; gap: 10px; }
+.lede { color: var(--muted); max-width: 70ch; }
+.hyp { background: var(--tint); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; max-width: 80ch; }
+.hyp b { font-weight: 600; }
+.summary { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; }
+.summary span { color: var(--muted); }
+.summary strong { font-family: var(--font-head); font-size: 20px; color: var(--fg); margin-right: 4px; font-variant-numeric: tabular-nums; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip { font: inherit; font-size: 13px; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.chip:focus-visible, .scroller:focus-visible { outline: 2px solid var(--todo); outline-offset: 2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 13px; margin-left: auto; }
+.legend i { display: inline-block; width: 22px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+.legend .l-done { background: var(--done); } .legend .l-check { background: var(--check); } .legend .l-todo { background: var(--todo); }
+.legend .l-new { border: 2px dashed var(--fg); background: transparent; }
+.scroller { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.gantt { min-width: 940px; --label: 300px; }
+.row { display: grid; grid-template-columns: var(--label) repeat(8, minmax(74px, 1fr)); align-items: stretch; border-top: 1px solid var(--line); }
+.row > .name { grid-column: 1; grid-row: 1; position: sticky; left: 0; z-index: 3; background: var(--surface); padding: 8px 12px; border-right: 1px solid var(--line); min-width: 0; }
+.row > .cell { grid-row: 1; border-left: 1px solid var(--line); min-height: 46px; }
+.cell.ms { background: var(--ms); }
+.cell.past { background: var(--tint); }
+.row.head { border-top: 0; }
+.row.head > .cell { padding: 8px 6px; text-align: center; min-height: 0; font-size: 12px; line-height: 1.3; color: var(--muted); }
+.row.head > .cell b { display: block; font-family: var(--font-head); font-size: 14px; color: var(--fg); font-variant-numeric: tabular-nums; }
+.row.head > .name { font-family: var(--font-head); font-weight: 500; color: var(--muted); align-self: end; }
+.tag { display: inline-block; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--todo); font-weight: 600; margin-top: 2px; }
+.row.group { background: var(--tint); }
+.row.group > .name { background: var(--tint); font-family: var(--font-head); font-weight: 700; font-size: 14px; display: flex; justify-content: space-between; gap: 8px; }
+.row.group > .name small { font-family: var(--font-body); font-weight: 400; color: var(--muted); }
+.row.group > .cell { min-height: 0; }
+.name .t { font-weight: 500; display: block; overflow-wrap: anywhere; }
+.name .s { color: var(--muted); font-size: 12px; display: block; overflow-wrap: anywhere; margin-top: 1px; }
+.new { display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; border: 1px dashed var(--fg); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
+.bar { grid-row: 1; align-self: center; z-index: 2; margin: 0 4px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600; color: var(--on-bar); white-space: nowrap; overflow: hidden; }
+.bar.done { background: var(--done); } .bar.check { background: var(--check); } .bar.todo { background: var(--todo); }
+.bar.create { outline: 2px dashed var(--fg); outline-offset: 1px; }
+.bar.ms { background: transparent; color: var(--fg); font-family: var(--font-head); font-weight: 700; font-size: 13px; gap: 5px; }
+.bar.ms::before { content: ""; width: 11px; height: 11px; background: var(--fg); transform: rotate(45deg); flex: none; }
+.bar.ms.soft::before { background: transparent; border: 2px solid var(--fg); }
+.miles { color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
+.miles b { color: var(--fg); font-weight: 600; }
+section { display: flex; flex-direction: column; gap: 12px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+.cols > * { min-width: 0; }
+ul.plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+ul.plain li { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; }
+ul.plain em { font-style: normal; color: var(--muted); display: block; font-size: 13px; }
+ol.crit { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+@media (max-width: 520px) { h1 { font-size: 25px; } .legend { margin-left: 0; } }
+@media print { .controls { display: none; } }
+</style>
+
+<main>
+  <header>
+    <h1>Gantt Crashout Circuit</h1>
+    <p class="lede">Le planning est établi à partir des issues du dépôt (copie du fork, numéros indiqués ici), des quatre boucles de jeu et des notes de la dernière séance. Les barres vertes sont du code déjà écrit, les ambre sont à revérifier avec les téléphones, les bleues restent à faire.</p>
+    <p class="hyp"><b>Dates supposées.</b> Séance 3 le 16 novembre, séance 5 le 30 novembre, séance 8 le 21 décembre (à confirmer dans le cours), rendu vidéo la semaine du 28 décembre. Le calendrier officiel n'était pas disponible : à corriger dans les données du script (colonnes de chaque ligne).</p>
+    <div class="summary" id="summary" aria-live="polite"></div>
+  </header>
+
+  <section aria-labelledby="gt">
+    <h2 id="gt">Planning par boucle</h2>
+    <div class="controls">
+      <div id="filters" class="controls" role="group" aria-label="Filtrer par boucle"></div>
+      <div class="legend">
+        <span><i class="l-done"></i>Acquis</span>
+        <span><i class="l-check"></i>À revérifier</span>
+        <span><i class="l-todo"></i>À faire</span>
+        <span><i class="l-new"></i>Issue à créer</span>
+      </div>
+    </div>
+    <div class="scroller" tabindex="0" role="region" aria-label="Diagramme de Gantt, défilement horizontal">
+      <div class="gantt" id="gantt"></div>
+    </div>
+    <div class="miles">
+      <span><b>S3</b> · première démonstration, premier scénario d'échanges entre appareils.</span>
+      <span><b>S5</b> · démonstration intermédiaire, au moins un scénario complet.</span>
+      <span><b>S8</b> · démonstration finale avec tests utilisateurs, date à confirmer.</span>
+      <span><b>Rendu</b> · vidéo et partage du document de travail, fin du module.</span>
+    </div>
+  </section>
+
+  <div class="cols">
+    <section aria-labelledby="crit">
+      <h2 id="crit">Ce qui bloque quoi</h2>
+      <ol class="crit">
+        <li><b>Pour la séance 5 :</b> retirer le Magicien d'Oz (#52), puis vérifier la construction du circuit et une partie complète à quatre téléphones. Sans cela, la pose des tangibles dépend encore de la console Oz.</li>
+        <li><b>Pour la séance 8 :</b> le catalogue des événements précède le flux SSE, qui précède la page spectateur, qui précède le point de vue et les émotes.</li>
+        <li><b>À ne pas oublier :</b> l'epic pilote/copilote (#48, PR #36) n'est pas fusionnée. Les issues #38 à #51 sont codées mais pas validées sur de vrais téléphones ni sur la grande table.</li>
+        <li><b>Déconnexion :</b> les places sont gardées 60 s avant la course et 300 s pendant. Il manque le comportement en jeu (voiture, équipe, reprise).</li>
+      </ol>
+    </section>
+    <section aria-labelledby="notes">
+      <h2 id="notes">Des notes aux lignes du planning</h2>
+      <ul class="plain" id="notesList"></ul>
+    </section>
+  </div>
+
+  <section aria-labelledby="news">
+    <h2 id="news">Issues à créer</h2>
+    <p class="lede">Pas encore ouvertes sur GitHub. Les lignes du spectateur sont reprises dans le découpage de l'epic #53.</p>
+    <ul class="plain" id="newList"></ul>
+  </section>
+
+  <p class="lede">Numéros : ceux du fork. Pour l'ensemble téléphone, l'issue amont vaut le numéro du fork + 14 (le #38 du fork est le #52 amont). Le Magicien d'Oz est #52 (amont #78), le spectateur #53 (amont #79) et la discussion sur les télécommandes Wii #54 (fork seulement).</p>
+</main>
+
+<script>
+// Colonnes : 0 = « Acquis » (avant le 16 nov), 1 à 7 = semaines du 16 nov au 28 déc.
+var WEEKS = ["16 nov", "23 nov", "30 nov", "7 déc", "14 déc", "21 déc", "28 déc"];
+var MS_COLS = [1, 3, 6, 7];
+var GROUPS = [
+  { id: "jal", label: "Jalons du cours", filter: null },
+  { id: "tra", label: "Transverse : méthode et documents", filter: "Transverse" },
+  { id: "gam", label: "Boucle de gameplay", filter: "Gameplay" },
+  { id: "pil", label: "Boucle pilote", filter: "Pilote" },
+  { id: "cop", label: "Boucle copilote", filter: "Copilote" },
+  { id: "spe", label: "Boucle spectateur · epic #53", filter: "Spectateur" },
+  { id: "val", label: "Validation et rendu", filter: "Validation" }
+];
+// st : done | check | todo ; create : issue à ouvrir
+var ROWS = [
+  { g: "jal", ms: [[1, "S3"], [3, "S5"], [6, "S8 ?", true], [7, "Rendu"]] },
+
+  { g: "tra", t: "Planifier le travail", s: "Ce Gantt, découpé par boucle", a: 1, b: 1, st: "done" },
+  { g: "tra", t: "Définir le MVP", s: "Les MVP 1 à 3 sont esquissés dans docs/ihm-reparties ; à figer avec l'équipe", a: 1, b: 1, st: "todo" },
+  { g: "tra", t: "Appliquer la méthode de conception", s: "Modèles de tâches des quatre boucles (HAMSTERS, draw.io)", a: 1, b: 2, st: "todo", create: true },
+  { g: "tra", t: "Lister les événements client ↔ serveur", s: "Base : server/protocol/messages.ts ; ajouter le flux SSE du spectateur", a: 1, b: 2, st: "todo", create: true },
+  { g: "tra", t: "Trancher : télécommandes Wii ou téléphones", s: "Discussion #54 : comparatif et essai court avec une vraie manette", a: 2, b: 3, st: "todo" },
+  { g: "tra", t: "Document d'architecture de l'avancée", s: "Mettre à jour docs/archi.png et docs/guide-du-code.md", a: 2, b: 3, st: "todo", create: true },
+
+  { g: "gam", t: "Lancer, répartir rôles et équipes", s: "QR unique, places, HTTPS · #38 #39 #40", a: 0, b: 0, st: "done" },
+  { g: "gam", t: "Choisir difficulté, tours et chrono sur la table", s: "Existe déjà sur la table ; à revérifier avec les téléphones", a: 2, b: 2, st: "check" },
+  { g: "gam", t: "Supprimer le Magicien d'Oz", s: "La pose passe par les copilotes · #52 (amont #78)", a: 2, b: 3, st: "todo" },
+  { g: "gam", t: "Construire le circuit sans Oz", s: "Phase MAP et poses depuis les téléphones, après la ligne précédente", a: 3, b: 3, st: "todo" },
+  { g: "gam", t: "Partie complète à quatre téléphones", s: "Jusqu'à la fin du temps ou du nombre de tours · démo S5", a: 3, b: 3, st: "check" },
+  { g: "gam", t: "Gérer la déconnexion d'un joueur en jeu", s: "Voiture, avertissement de l'équipe, reprise ; la réservation de place existe déjà", a: 2, b: 3, st: "todo", create: true },
+
+  { g: "pil", t: "Rejoindre par QR et conduire au gyroscope", s: "#40 #41", a: 0, b: 0, st: "done" },
+  { g: "pil", t: "Vues périphérique, 1re et 3e personne", s: "#42 #43 #49", a: 0, b: 0, st: "done" },
+  { g: "pil", t: "Vues adaptées aux thèmes et thème Rétro", s: "#44 #50 #51", a: 0, b: 0, st: "done" },
+  { g: "pil", t: "Alerte claire quand l'équipier doit réparer", s: "Vibration, bandeau et signal sur la table ; constat de la démo : on se le disait sans le voir", a: 2, b: 3, st: "todo", create: true },
+  { g: "pil", t: "Limiter l'effet « scotché au téléphone »", s: "Retours partagés sur la table, lecture d'un coup d'œil, à observer aux tests", a: 4, b: 5, st: "todo", create: true },
+
+  { g: "cop", t: "Rejoindre, activer ses objets, poser sur la table", s: "#45", a: 0, b: 0, st: "done" },
+  { g: "cop", t: "Poser depuis le téléphone (accessibilité)", s: "#46", a: 0, b: 0, st: "done" },
+  { g: "cop", t: "Réparer avec le pilote", s: "Bouton à maintenir en place ; l'alerte est dans la ligne pilote", a: 0, b: 0, st: "done" },
+
+  { g: "spe", t: "Cadrer le rôle spectateur", s: "Lecture seule, hors des quatre places, accès par QR · epic #53", a: 1, b: 2, st: "todo" },
+  { g: "spe", t: "Flux serveur vers spectateur en SSE", s: "État de la course en lecture seule", a: 2, b: 3, st: "todo", create: true },
+  { g: "spe", t: "Page spectateur : QR et vue globale", s: "Se connecter par QR, voir toute la course", a: 3, b: 4, st: "todo", create: true },
+  { g: "spe", t: "Choisir un point de vue", s: "Suivre une voiture en reprenant les vues du pilote", a: 4, b: 5, st: "todo", create: true },
+  { g: "spe", t: "Commenter par une émote", s: "SSE ne descend que dans un sens : envoi par requête HTTP, affichage sur la table", a: 4, b: 5, st: "todo", create: true },
+  { g: "spe", t: "Reconnexion et tests du spectateur", s: "Reprise automatique du flux, spectateur qui part ou arrive en course", a: 5, b: 5, st: "todo", create: true },
+
+  { g: "val", t: "Essai sur vrais téléphones et sur la table, puis fusion", s: "Epic #48, PR #36 du fork ; aucun essai matériel encore fait", a: 2, b: 2, st: "todo" },
+  { g: "val", t: "Tests utilisateurs", s: "Réparation, facteur social, déconnexions · compte rendu dans #47", a: 5, b: 6, st: "todo" },
+  { g: "val", t: "Vidéo de rendu et partage du document de travail", s: "Fin du module", a: 7, b: 7, st: "todo" }
+];
+var NOTES = [
+  ["Facteur social perdu, on reste scotché au téléphone", "Pilote : limiter l'effet « scotché au téléphone »"],
+  ["Réparation compliquée en démo, on se le disait sans le remarquer", "Pilote : alerte claire quand l'équipier doit réparer"],
+  ["Prendre en compte la déconnexion d'un joueur", "Gameplay : gérer la déconnexion d'un joueur en jeu"],
+  ["Spectateur en server-sent events", "Spectateur : flux SSE, émotes par requête HTTP"],
+  ["Quels événements le client envoie, lesquels le serveur envoie ou reçoit", "Transverse : lister les événements client ↔ serveur"],
+  ["Document architectural de l'avancée", "Transverse : document d'architecture"],
+  ["Planifier, définir le MVP, appliquer la méthode de conception", "Transverse : ce Gantt, MVP, modèles de tâches"]
+];
+var LABEL = { done: "Acquis", check: "Vérifier", todo: "À faire" };
+
+function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+function cells(row, withMs) {
+  for (var c = 0; c <= 7; c++) {
+    var d = el("div", "cell" + (c === 0 ? " past" : "") + (withMs && MS_COLS.indexOf(c) > -1 ? " ms" : ""));
+    d.style.gridColumn = String(c + 2);
+    row.appendChild(d);
+  }
+}
+function draw(active) {
+  var root = document.getElementById("gantt");
+  root.textContent = "";
+  var head = el("div", "row head");
+  head.appendChild(el("div", "name", "Tâche"));
+  var acq = el("div", "cell past"); acq.style.gridColumn = "2";
+  acq.appendChild(el("b", null, "Acquis")); acq.appendChild(document.createTextNode("avant le 16 nov"));
+  head.appendChild(acq);
+  WEEKS.forEach(function (w, i) {
+    var c = el("div", "cell" + (MS_COLS.indexOf(i + 1) > -1 ? " ms" : ""));
+    c.style.gridColumn = String(i + 3);
+    c.appendChild(el("b", null, w));
+    c.appendChild(document.createTextNode("semaine " + (i + 1)));
+    if (i === 0) { c.appendChild(document.createElement("br")); c.appendChild(el("span", "tag", "aujourd'hui")); }
+    head.appendChild(c);
+  });
+  root.appendChild(head);
+
+  GROUPS.forEach(function (g) {
+    if (active && g.filter && g.filter !== active) return;
+    if (active && !g.filter) return;
+    var rows = ROWS.filter(function (r) { return r.g === g.id; });
+    var gr = el("div", "row group");
+    var gn = el("div", "name", g.label);
+    if (g.filter) gn.appendChild(el("small", null, rows.length + " lignes"));
+    gr.appendChild(gn); cells(gr, false); root.appendChild(gr);
+    rows.forEach(function (r) {
+      var row = el("div", "row");
+      var n = el("div", "name");
+      if (r.ms) { n.appendChild(el("span", "t", "Échéances")); }
+      else {
+        var t = el("span", "t", r.t);
+        if (r.create) t.appendChild(el("span", "new", "à créer"));
+        n.appendChild(t); n.appendChild(el("span", "s", r.s));
+      }
+      row.appendChild(n); cells(row, true);
+      if (r.ms) {
+        r.ms.forEach(function (m) {
+          var b = el("div", "bar ms" + (m[2] ? " soft" : ""), m[1]);
+          b.style.gridColumn = (m[0] + 2) + " / " + (m[0] + 3);
+          row.appendChild(b);
+        });
+      } else {
+        var bar = el("div", "bar " + r.st + (r.create ? " create" : ""), LABEL[r.st]);
+        bar.style.gridColumn = (r.a + 2) + " / " + (r.b + 3);
+        var from = r.a === 0 ? "avant le 16 nov" : WEEKS[r.a - 1];
+        var to = r.b === 0 ? "" : " au " + WEEKS[r.b - 1];
+        bar.setAttribute("role", "img");
+        bar.setAttribute("aria-label", r.t + " : " + LABEL[r.st] + ", " + (r.b === 0 ? from : "du " + from + to));
+        row.appendChild(bar);
+      }
+      root.appendChild(row);
+    });
+  });
+}
+function summarize() {
+  var work = ROWS.filter(function (r) { return !r.ms; });
+  var n = function (st) { return work.filter(function (r) { return r.st === st; }).length; };
+  var news = work.filter(function (r) { return r.create; }).length;
+  var box = document.getElementById("summary");
+  [[n("done"), "lignes acquises"], [n("check"), "à revérifier"], [n("todo"), "à faire"], [news, "issues à créer"]].forEach(function (p) {
+    var s = el("span"); s.appendChild(el("strong", null, String(p[0]))); s.appendChild(document.createTextNode(p[1])); box.appendChild(s);
+  });
+}
+function lists() {
+  var nl = document.getElementById("notesList");
+  NOTES.forEach(function (p) { var li = el("li", null, p[0]); li.appendChild(el("em", null, "→ " + p[1])); nl.appendChild(li); });
+  var ul = document.getElementById("newList");
+  ROWS.filter(function (r) { return r.create; }).forEach(function (r) {
+    var li = el("li", null, r.t); li.appendChild(el("em", null, r.s)); ul.appendChild(li);
+  });
+}
+function filters() {
+  var box = document.getElementById("filters");
+  var names = [null].concat(GROUPS.filter(function (g) { return g.filter; }).map(function (g) { return g.filter; }));
+  names.forEach(function (name) {
+    var b = el("button", "chip", name || "Tout"); b.type = "button";
+    b.setAttribute("aria-pressed", name === null ? "true" : "false");
+    b.addEventListener("click", function () {
+      Array.prototype.forEach.call(box.children, function (c) { c.setAttribute("aria-pressed", "false"); });
+      b.setAttribute("aria-pressed", "true"); draw(name);
+    });
+    box.appendChild(b);
+  });
+}
+summarize(); lists(); filters(); draw(null);
+</script>

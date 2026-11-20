@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Crashout Circuit · Administration</title>
+  <link rel="stylesheet" href="../client-phone/phone.css">
+  <link rel="stylesheet" href="./admin.css">
+</head>
+<body>
+  <main>
+    <header><p class="brand">CRASHOUT CIRCUIT</p><h1>Administration du salon</h1><p id="room"></p></header>
+    <nav aria-label="Salon"><a href="/">Table</a><a id="join" hidden>Lien joueurs</a><a id="oz" href="/oz" hidden>Console Oz</a></nav>
+    <p id="status" role="status">Connexion au salon…</p>
+    <section>
+      <h2>Partie</h2>
+      <div class="actions">
+        <button type="button" data-command="tutorial">Tutoriel</button>
+        <button type="button" data-command="quickRace">Course rapide</button>
+        <button type="button" data-command="pause">Pause / Reprendre</button>
+        <button type="button" data-command="home">Retour à l’accueil</button>
+        <button type="button" data-command="reset">Réinitialiser le salon</button>
+      </div>
+    </section>
+    <form id="settings">
+      <h2>Réglages</h2>
+      <label>Difficulté<select name="difficulty"><option value="easy">Facile</option><option value="medium">Moyen</option><option value="hard">Difficile</option></select></label>
+      <label>Ambiance<select name="theme"></select></label>
+      <label>Tours<input type="number" name="lapsToWin" min="1" max="99" required></label>
+      <label>Durée en secondes (0 = sans limite)<input type="number" name="sessionMaxSeconds" min="0" max="7200" required></label>
+      <button type="submit" class="primary">Enregistrer</button>
+    </form>
+    <section><h2>Places joueurs</h2><ul id="seats"></ul></section>
+  </main>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

@@ -1,15 +1,16 @@
 /**
  * Fait avancer la simulation des voitures et appelle les règles de collision, de réparation et de fin de
  * course.
- * Liens : server/GameRules.ts, server/geometry.ts, server/types.ts, server/config.ts,
- * server/raceSettings.ts.
- * Référencé notamment par server/GameServer.ts, scripts/acceptance.ts, scripts/autopilot.ts.
+ * Liens : server/rules/GameRules.ts, server/geometry.ts, server/types.ts, server/config.ts,
+ * server/rules/raceSettings.ts.
+ * Référencé notamment par server/net/GameServer.ts, scripts/acceptance.ts, scripts/game/autopilot.ts.
  */
+import { isPhoneStation } from './tableStations.js';
 import type { GameState, Team, Car } from './types.js';
 import { config } from './config.js';
-import { speedScale } from './raceSettings.js';
+import { speedScale } from './rules/raceSettings.js';
 import { nearestOnTrack } from './geometry.js';
-import { GameRules, CAR_RADIUS } from './GameRules.js';
+import { GameRules, CAR_RADIUS } from './rules/GameRules.js';
 
 const TEAMS: Team[] = ['A', 'B'];
 
@@ -65,6 +66,7 @@ export class PhysicsLoop {
       if (now >= s.sessionStartAt) {
         this.rules.updateAutomaticPilots(now);
         for (const team of TEAMS) {
+          if (s.soloTest && team === 'B') continue;
           const car = s.cars[team];
           const prev = { x: car.pos.x, y: car.pos.y };
           this.integrate(car, this.rules.inputs[team], now, dt);
@@ -96,7 +98,9 @@ export class PhysicsLoop {
     // Auto mode drives continuously; pedal mode accelerates only while held.
     const automatic = this.state.sessionMode === 'tangibles-test';
     const isPedal = !automatic && this.state.driveMode[car.team] === 'pedal';
-    const throttle = stunned ? 0 : (automatic || isPedal) ? input.throttle : 1;
+    // Sur téléphone, l'avance auto est demandée par un volant prêt et cesse à sa neutralisation.
+    const phonePilot = isPhoneStation(this.state, car.team, 'pilot');
+    const throttle = stunned ? 0 : (automatic || isPedal || phonePilot || this.state.soloTest) ? input.throttle : 1;
     const steer = stunned ? 0 : input.steer;
 
     const boost = now < car.boostUntil ? 1 + config.boostGain * car.boostK : 1;

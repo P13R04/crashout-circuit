@@ -6,15 +6,20 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
-// Multi-page app: table (root), oz (/oz)
+// Multi-page app: table (root), oz (/oz), phone (/play), wiimote (essai, voir docs/pilote-wiimote-decision.md)
 export default defineConfig({
   root: '.',
   build: {
     outDir: 'dist/clients',
     rollupOptions: {
       input: {
+        admin: resolve(__dirname, 'client-admin/index.html'),
         table:  resolve(__dirname, 'client-table/index.html'),
-              oz:     resolve(__dirname, 'client-oz/index.html'),
+        oz: resolve(__dirname, 'client-oz/index.html'),
+        test: resolve(__dirname, 'client-phone/test.html'),
+        spectator: resolve(__dirname, 'client-phone/spectator.html'),
+        phone: resolve(__dirname, 'client-phone/index.html'),
+        wiimote: resolve(__dirname, 'client-wiimote/index.html'),
       },
     },
   },

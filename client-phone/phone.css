@@ -1,0 +1,271 @@
+:root {
+  color-scheme: dark;
+  font: 1rem system-ui, sans-serif;
+  background: #10171f;
+  color: #f6f8fa;
+  --muted: #abb8c6;
+  --accent: #71e9f4;
+  --card: #1b2733;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+main {
+  width: min(100%, 36rem);
+  margin-inline: auto;
+  padding: max(1.5rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+    max(1.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+}
+.brand { color: var(--accent); margin: 0; font-size: .78rem; font-weight: 800; letter-spacing: .16em; }
+h1 { font-size: clamp(1.55rem, 5vw, 2.35rem); line-height: 1.08; margin: .6rem 0 1rem; }
+p { line-height: 1.45; }
+#notice { color: #ffd18a; min-height: 1.45em; margin: 0 0 .8rem; }
+#screen, form { display: grid; gap: .75rem; }
+label, .detail { color: var(--muted); }
+button, input {
+  font: inherit;
+  min-height: 48px;
+  border-radius: 12px;
+  color: inherit;
+  border: 1px solid #435569;
+  background: var(--card);
+  padding: .75rem 1rem;
+}
+input { text-transform: uppercase; letter-spacing: .17em; }
+button { cursor: pointer; font-weight: 650; touch-action: manipulation; }
+button:disabled { color: var(--muted); cursor: default; opacity: .7; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: #102026; border-color: var(--accent); }
+button.choice { display: flex; gap: .8rem; align-items: center; text-align: start; min-height: 64px; }
+button.choice small { margin-inline-start: auto; color: var(--muted); text-align: end; }
+[data-team="A"] { --accent: #71e9f4; }
+[data-team="B"] { --accent: #ff88b3; }
+.team-icon { color: var(--accent); font-size: 1.35rem; }
+
+[hidden] { display: none !important; }
+#notice:empty { display: none; }
+
+.pilot-screen button.hold { touch-action: none; user-select: none; -webkit-user-select: none; }
+.pilot-screen button.held { background: var(--accent); color: #102026; }
+
+.pilot-viewport { display: grid; gap: .45rem; }
+.pilot-viewport canvas { display: block; width: 100%; height: clamp(160px, 58dvh, 620px); border-radius: 10px; background: #16212a; }
+.pilot-viewport .view-controls { display: flex; flex-wrap: wrap; gap: .4rem; }
+.pilot-viewport .detail { margin: 0; }
+.pilot-viewport .detail:empty { display: none; }
+.pilot-viewport progress { width: min(100%, 16rem); accent-color: var(--accent); }
+
+main.spectator { width: min(100%, 82rem); padding-top: max(.75rem, env(safe-area-inset-top)); }
+.spectator .pilot-viewport canvas { height: clamp(180px, 72dvh, 820px); }
+.spectator label { display: grid; gap: .3rem; }
+.spectator select, .spectator-link {
+  min-height: 48px; padding: .7rem; border: 1px solid #435569; border-radius: 10px;
+  background: var(--card); color: inherit; font: inherit;
+}
+.spectator-link { display: grid; align-items: center; text-decoration: none; }
+#watch-status:empty { display: none; }
+
+body:has(.pilot-screen) { overflow: hidden; overscroll-behavior: none; }
+body:has(.pilot-screen) main > header { display: none; }
+body:has(.pilot-screen) #notice {
+  position: fixed; z-index: 8; margin: 0; text-align: center;
+  inset: max(4px, env(safe-area-inset-top)) 25% auto; pointer-events: none;
+}
+
+.pilot-screen {
+  --hud-top: max(9px, env(safe-area-inset-top));
+  --hud-left: max(10px, env(safe-area-inset-left));
+  --hud-right: max(10px, env(safe-area-inset-right));
+  --hud-bottom: max(9px, env(safe-area-inset-bottom));
+  position: fixed; inset: 0; display: block; overflow: hidden; isolation: isolate;
+  background: radial-gradient(ellipse at 50% 48%, #243d48, #101821 64%);
+  font-size: clamp(.75rem, 2.8dvh, .95rem);
+}
+.pilot-screen .pilot-viewport { position: absolute; inset: 0; display: block; }
+.pilot-screen .pilot-viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0; }
+.pilot-screen button, .pilot-screen select, .pilot-settings summary {
+  border: 1px solid #8093a7a0; border-radius: 9px; padding: .42rem .75rem; min-height: 44px;
+  background: #14212bea; color: #f5f8fb; font: inherit; font-weight: 700;
+}
+.pilot-screen button.primary, .pilot-screen .solo-start:enabled { background: var(--accent); color: #101c24; }
+.pilot-screen .pilot-hud {
+  position: absolute; top: var(--hud-top); left: var(--hud-left); display: grid; align-items: start;
+  justify-items: start; gap: 3px; padding: 7px; border-radius: 10px; background: #0c1626dc;
+}
+.pilot-screen .pilot-hud progress { height: 5px; width: min(100%, 9rem); }
+.pilot-race-status { position: absolute; bottom: calc(var(--hud-bottom) + 51px); width: 100%; text-align: center; }
+.pilot-actions { position: absolute; z-index: 5; top: var(--hud-top); right: var(--hud-right); display: flex; gap: 6px; }
+.pilot-settings { display: block; position: relative; }
+.pilot-settings summary { cursor: pointer; list-style: none; display: grid; place-items: center; }
+.pilot-settings summary::-webkit-details-marker { display: none; }
+.pilot-settings > div {
+  position: absolute; right: 0; top: calc(100% + 5px); width: max-content; max-width: 56vw;
+  display: grid; gap: 4px; padding: 8px; background: #101b28fa; border: 1px solid #627686; border-radius: 10px;
+}
+.pilot-settings label { display: grid; gap: 4px; }
+.pilot-instructions {
+  position: absolute; z-index: 3; inset: auto 25% var(--hud-bottom); display: grid; gap: 3px;
+  text-align: center; justify-items: center; pointer-events: none;
+}
+.pilot-instructions button { pointer-events: auto; }
+.pilot-instructions p { margin: 0; border-radius: 7px; padding: .22em .5em; background: #12202ae8; }
+.pilot-instructions p:empty { display: none; }
+.pilot-screen:not(.has-track) .pilot-instructions, .pilot-screen.portrait .pilot-instructions {
+  inset: 49% 12% auto; transform: translateY(-35%); gap: 8px;
+}
+.pilot-screen button.hold { position: absolute; z-index: 4; bottom: var(--hud-bottom); }
+.pilot-left, .pilot-repair { left: var(--hud-left); }
+.pilot-left:not([hidden]) ~ .pilot-repair { bottom: calc(var(--hud-bottom) + 50px); }
+.pilot-right { right: var(--hud-right); }
+.pilot-screen button.pilot-throttle { right: var(--hud-right); bottom: calc(var(--hud-bottom) + 50px); }
+
+.pilot-wheel {
+  --size: clamp(248px, 104dvh, 540px);
+  position: absolute; z-index: 2; top: 92%; left: 50%; width: var(--size); height: var(--size);
+  transform: translate(-50%, -50%) rotate(var(--steer, 0deg)); pointer-events: none;
+  transition: transform .055s linear; filter: drop-shadow(0 5px 6px #03070bbb);
+}
+.pilot-wheel span { position: absolute; display: block; }
+.wheel-ring {
+  inset: 2%; border-radius: 50%;
+  background: repeating-conic-gradient(#202b32 0 3deg, #161d25 3deg 7deg);
+  border: 2px solid #53626b;
+  mask-image: radial-gradient(transparent 0 58%, #000 60% 100%);
+}
+.wheel-spokes {
+  inset: 26% 9% 9%; background: linear-gradient(140deg, #515c65, #18242d 58%, #2f3b48);
+  clip-path: polygon(0 17%, 40% 36%, 60% 36%, 100% 17%, 97% 38%, 62% 60%, 59% 100%, 41% 100%, 38% 60%, 3% 38%);
+}
+.wheel-hub { inset: 38% 37%; border: 1px solid #61717d; border-radius: 38%; background: radial-gradient(circle at 40% 30%, #465965, #14212b); }
+.wheel-hub::before { content: ''; position: absolute; inset: 45% 30%; border-radius: 2px; background: var(--accent); }
+.wheel-mark { width: 7%; height: 10%; top: 0; left: 46.5%; border-radius: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+@media(prefers-reduced-motion: reduce) { .pilot-wheel { transition: none; } }
+.test-hub nav { display: grid; gap: .55rem; }
+.test-hub .spectator-link { gap: .25rem; }
+.test-hub small, #test-status { color: var(--muted); }
+
+.copilot-screen, .tangible-cards { display: grid; gap: .65rem; }
+.copilot-station { display: grid; gap: .65rem; }
+.copilot-vibration { width: 100%; margin-block-end: .75rem; }
+.copilot-vibration-status { margin: 0 0 .75rem; }
+.copilot-controls { display: flex; align-items: center; justify-content: center; gap: clamp(1rem, 5vw, 2rem); }
+.copilot-controls .station-button {
+  display: grid;
+  width: min(100%, 7.625rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  opacity: 1;
+}
+.copilot-controls .power { width: min(100%, 5.375rem); }
+.copilot-controls .station-button canvas { display: block; width: 100%; height: auto; pointer-events: none; }
+.copilot-controls .hold { touch-action: none; user-select: none; -webkit-user-select: none; }
+.copilot-screen #copilot-stock, .copilot-action, .pickup-alert { margin: 0; }
+.copilot-action { color: var(--muted); }
+.copilot-action:empty { display: none; }
+.pickup-alert {
+  position: fixed;
+  inset: max(.75rem, env(safe-area-inset-top)) 1rem auto;
+  z-index: 2;
+  text-align: center;
+  pointer-events: none;
+  font-weight: 750;
+}
+.pickup-alert:not(:empty) { padding: .55rem; border-radius: 6px; background: var(--accent); color: #102026; }
+.copilot-repair-progress { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
+.accessible-placement { display: grid; gap: .65rem; }
+.accessibility-switch { display: flex; align-items: center; gap: .75rem; min-height: 48px; color: inherit; cursor: pointer; }
+.accessibility-switch input { min-height: 0; width: 1.35rem; height: 1.35rem; margin: 0; accent-color: var(--accent); }
+.placement-dialog {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: max(.85rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+    max(.85rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: #f6f8fa;
+  background: #10171f;
+  border: 0;
+  font-size: 1rem;
+}
+.placement-dialog[open] { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: .65rem; }
+html:has(.placement-dialog[open]) { overflow: hidden; }
+.placement-dialog header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.placement-dialog h2, .placement-dialog p { margin: 0; }
+.placement-dialog .placement-instruction:empty { display: none; }
+.placement-dialog p[role="status"]:empty { position: absolute; }
+.placement-dialog .copilot-station { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+.placement-dialog .copilot-controls { gap: .4rem; }
+.placement-dialog .copilot-controls .station-button { width: 4.5rem; }
+.placement-dialog .copilot-controls .power { width: 3.5rem; }
+.placement-dialog .copilot-action { grid-column: 1 / -1; }
+.placement-map {
+  display: block;
+  width: 100%;
+  height: clamp(13rem, 48dvh, 42rem);
+  border-radius: 10px;
+  background: #16212c;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+@media (orientation: portrait) {
+  .placement-map { height: clamp(11rem, 56vw, 48dvh); }
+}
+.placement-buttons { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.placement-buttons button { min-height: 48px; }
+.placement-buttons button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #102026; }
+.placement-buttons .placement-confirm { min-height: 56px; }
+.placement-dialog .spectator-link { min-height: 48px; align-items: center; }
+.placement-dialog details { padding: 0 .65rem .35rem; border: 1px solid #435569; border-radius: 10px; }
+.placement-dialog summary { display: list-item; min-height: 48px; padding-block: .75rem; cursor: pointer; }
+.placement-dialog details[open] > div { margin-block: .45rem; }
+.placement-range { display: grid; gap: .25rem; margin-block: .5rem; }
+.placement-range input[type="range"] { width: 100%; min-height: 48px; padding: 0; accent-color: var(--accent); }
+.placement-dialog :focus-visible, .accessibility-switch input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.tangible-cards article { padding: .55rem .8rem; border: 1px solid #435569; border-radius: 10px; }
+.tangible-cards article h3, .tangible-cards article p { margin: .4rem 0; }
+.tangible-cards article div { display: flex; flex-wrap: wrap; gap: .4rem; }
+.tutorial-lesson { border-left: 3px solid var(--accent); background: var(--card); padding: .6rem .75rem; margin: 0; }
+
+.pilot-screen:has(.pilot-viewport:not([data-camera='cockpit'])) .pilot-wheel { display: none; }
+
+.gyro-access { border: 1px solid #435569; border-radius: 10px; padding: .75rem; }
+.gyro-access summary { cursor: pointer; min-height: 40px; padding-block: .5rem; font-weight: 650; }
+.gyro-access a { display: block; color: var(--accent); padding: .5rem 0; }
+/* Direction au doigt : bande large, pouce virtuel, recentrage au relâchement. */
+.steer-strip {
+  position: relative; display: flex; align-items: center; justify-content: space-between;
+  height: clamp(6.5rem, 26dvh, 10rem); padding-inline: 1.5rem;
+  border: 2px solid var(--accent); border-radius: 1.2rem; background: var(--card);
+  color: var(--accent); font-size: 2.2rem;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.steer-strip::before { content: ''; position: absolute; inset-block: 18%; left: 50%; width: 2px; background: #ffffff30; }
+.steer-strip.idle { opacity: .7; }
+.steer-strip.held { background: color-mix(in srgb, var(--accent) 18%, var(--card)); }
+.steer-thumb {
+  position: absolute; top: 50%; left: 50%; width: 4.5rem; height: 4.5rem; margin: -2.25rem 0 0 -2.25rem;
+  border-radius: 50%; background: var(--accent); opacity: .9; pointer-events: none;
+  box-shadow: 0 0 0 .4rem color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.pilot-screen.touch .pilot-viewport canvas { height: clamp(120px, 30dvh, 360px); }
+.pilot-screen button.hold { min-height: 4.5rem; font-size: 1.15rem; }
+
+/* Choix du mode de conduite : joystick ou volant gyroscope, toujours visible. */
+.mode-choice { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.mode-choice button { min-height: 3.25rem; }
+.mode-choice button[aria-pressed="true"] { background: var(--accent); color: #102026; border-color: var(--accent); }
+.mode-choice button[aria-pressed="true"]::before { content: '✓ '; }
+.mode-choice button:disabled { border-style: dashed; }
+.pilot-screen > p.detail { margin: 0; font-size: .9rem; }
+
+.pilot-screen .steer-strip { position: absolute; z-index: 4; left: var(--hud-left); bottom: var(--hud-bottom); width: clamp(150px, 29vw, 330px); height: 55px; }
+.pilot-screen:has(.steer-strip:not([hidden])) .pilot-repair { bottom: calc(var(--hud-bottom) + 65px); }

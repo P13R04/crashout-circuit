@@ -1,7 +1,7 @@
 /**
  * Construit les commandes de conduite, de POWER et de gestes envoyées par les adaptateurs de la table.
  * Liens : server/types.ts.
- * Référencé par client-table/GestureRecognizer.ts, client-table/main.ts.
+ * Référencé par client-table/gesture/GestureRecognizer.ts, client-table/main.ts.
  */
 import type { Team, Vec2, ItemKind } from '../server/types.js';
 

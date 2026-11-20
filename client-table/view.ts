@@ -1,16 +1,17 @@
 /**
  * Regroupe l’état d’affichage local de la table, ses messages de dessin, ses contacts et ses effets
  * temporaires.
- * Liens : server/layout.ts, server/geometry.ts, server/types.ts, client-table/themes.ts,
- * client-table/GestureLog.ts.
- * Référencé notamment par client-table/GestureRecognizer.ts, client-table/HUD.ts,
- * client-table/NeonEffects.ts.
+ * Liens : server/layout.ts, server/geometry.ts, server/types.ts, client-table/themes/themes.ts,
+ * client-table/gesture/GestureLog.ts.
+ * Référencé notamment par client-table/gesture/GestureRecognizer.ts, client-table/ui/HUD.ts,
+ * client-table/themes/neon/NeonEffects.ts.
  */
+import { noWiimote, type WiimoteView } from './wiimote/wiimoteView.js';
 import type { GameState, Team, Vec2, ItemKind } from '../server/types.js';
 import type { DividerCheck } from '../server/layout.js';
-import type { ThemeId } from './themes.js';
+import type { ThemeId } from './themes/themes.js';
 import type { SlingshotShot } from '../server/geometry.js';
-import type { GestureLogEntry } from './GestureLog.js';
+import type { GestureLogEntry } from './gesture/GestureLog.js';
 
 /** Décrit un retour visuel temporaire avec son origine, son équipe et sa durée. */
 export interface Effect {
@@ -64,6 +65,8 @@ export interface View {
   tangibleTouch: { points: Vec2[]; valid: boolean } | null;
   /** Joystick knob per team, normalized to the base radius (x right, y down), as drawn. */
   sticks: Record<Team, { x: number; y: number; active: boolean }>;
+  /** Manettes Wii branchées à l'ordinateur de la table, une par équipe ; écrites par TableWiimotes seulement. */
+  wiimotes: Record<Team, WiimoteView>;
   /** Smoothed HP shown on the bars. */
   hpShown: Record<Team, number>;
   /** Last mapError per team (performance.now()). */
@@ -108,7 +111,7 @@ export function showDividerRefusal(view: View, reason: Exclude<DividerCheck, 'ok
   view.mapNotice = { text: DIVIDER_REFUSAL[reason], reason, until: performance.now() + 4000, color: REFUSAL_COLOR };
 }
 
-export const TEAM_COLOR: Record<Team, string> = { A: '#00e5ff', B: '#ff4081' };
+export { STATION_TEAM_COLOR as TEAM_COLOR } from '../client-shared/ui/stationControls.js';
 export const TEAM_NAME: Record<Team, string> = { A: 'CYAN', B: 'ROSE' };
 
 /** Prépare l’état d’affichage local sans créer ni modifier l’état de jeu du serveur. */
@@ -117,7 +120,7 @@ export function createView(now: () => number): View {
     state: null,
     reducedMotion: false,
     tutorialMode: 'table',
-    theme: 'scrap',
+    theme: 'classic',
     visualTime: 0,
     now,
     effects: [],
@@ -127,6 +130,7 @@ export function createView(now: () => number): View {
     sling: null,
     tangibleTouch: null,
     sticks: { A: { x: 0, y: 0, active: false }, B: { x: 0, y: 0, active: false } },
+    wiimotes: { A: noWiimote(), B: noWiimote() },
     hpShown: { A: 100, B: 100 },
     mapErrorAt: { A: -1e9, B: -1e9 },
     pendingDivider: [],

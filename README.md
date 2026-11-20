@@ -2,7 +2,7 @@
 
 Prototype de course asymétrique pour une grande table multitouch et un ordinateur « magicien d’Oz » sur le même Wi-Fi. Deux équipes ont chacune un pilote et un copilote. Le serveur partage et valide l’état de jeu ; Oz remplace pour l’instant les capteurs des objets tangibles.
 
-## Lancer et connecter les deux écrans
+## Lancer et connecter les interfaces
 
 Node.js ≥ 20 et Chrome / Edge sont recommandés.
 
@@ -14,20 +14,45 @@ npm start
 
 - **Table** : `http://localhost:3000/` sur l’ordinateur relié à la table, en plein écran.
 - **Magicien d’Oz** : `http://<ip-de-la-table>:3000/oz` sur un ordinateur, une tablette ou un téléphone du même Wi-Fi. Accès direct par cette adresse, sans code ni connexion supplémentaire. L’adresse exacte est affichée au démarrage. `localhost` désigne toujours l’ordinateur sur lequel le navigateur est ouvert.
+- **Choix des appareils** : **COURSE** ouvre d’abord l’écran de préparation (phase `SETUP`). Chaque poste a sa fiche dans son coin : **Table**, **Téléphone** ou **Manette Wii** (pilotes seulement). Un poste sur **téléphone** affiche son propre QR code (`/play?room=…&seat=…`) et son état de connexion : le téléphone prend le poste dès le scan et affiche aussitôt une bande de direction tactile (le menu **Réglages → Direction** permet de passer du joystick au gyroscope ; en HTTP local, **Activer le gyroscope en HTTPS** reprend le même poste dans la connexion sécurisée, avec validation du certificat au premier accès). Un pilote sur **manette Wii** n’a pas de QR : la table, ouverte dans Chrome ou Edge, reprend la manette déjà autorisée (sinon bouton **Connecter la manette**), affiche son numéro (ordre de connexion, aussi allumé sur les LED de la manette) et sa batterie. Un pilote qui conduit hors de la table n’a plus ni direction ni pédale sur son poste de la table ; **CRÉER LE CIRCUIT** attend que tous les joueurs annoncés soient connectés. Un QR unique pour les spectateurs apparaît au centre quand ils sont ouverts : **Paramètres → Spectateurs → Ajouter des spectateurs** (QR, adresse et nombre de spectateurs connectés ; `CRASHOUT_SPECTATORS=1` les ouvre dès le lancement). Ouvrir les spectateurs protège aussi la table et Oz par le lien privé de l’hôte, repris dans le terminal ; seule la machine du serveur peut les ouvrir ou les fermer. Les choix sont conservés au retour à l’accueil.
+- **Téléphones sans QR** : ouvrir `/play` sur l’adresse de la séance, saisir le code affiché, puis choisir l’équipe et le rôle.
+- **Manette Wii (essai, #54)** : bouton **MANETTE WII** de l’accueil de la table, ou `http://localhost:3000/wiimote` (Chrome ou Edge de bureau, `localhost` ou HTTPS), pour piloter à la place du téléphone et lancer une partie solo sans variable d’environnement. Voir [la décision](docs/pilote-wiimote-decision.md) et [le protocole d’essai](docs/pilote-wiimote-protocole-essai.md).
 - Pour changer le port : `PORT=3100 npm start`.
 
 Le serveur doit rester ouvert pendant la séance. Les deux appareils doivent pouvoir communiquer sur le réseau local (un Wi-Fi invité qui isole les appareils ne convient pas). Ce prototype est prévu pour le réseau local de la séance ; il n’implémente pas de compte utilisateur.
 
-### Récupérer la version des tests utilisateurs
+### Session locale avec téléphones et cockpit 3D
 
-La préparation de séance se trouve sur **`feat/preparation-tests-utilisateurs`**. `main` ne contient pas encore l’identification initiale des quatre postes ni les dernières adaptations du tutoriel et de la console.
+Après `npm run build`, lancer `npm run start:local` pour la session normale (table sur `http://localhost:3001`, smartphones sur les liens réseau affichés). `npm run start:local-solo` ouvre un serveur séparé sur `http://localhost:3000` avec `/test`, le pilote clavier et les caméras spectateur d’essai. Les deux serveurs ont des accès hôte indépendants. Fermer la page du pilote solo libère sa place et ramène son lobby à l’accueil.
+
+Le QR local s’ouvre en HTTP pour éviter de bloquer la connexion sur le certificat. Le joystick fonctionne immédiatement ; le menu du pilote permet ensuite le passage en HTTPS pour le gyroscope, en conservant son poste. Le cockpit 3D, ses caméras et ses thèmes restent disponibles dans les deux modes de direction. Les commandes de réparation et de bonus sont propres à chaque rôle. Les postes pris sur téléphone disparaissent de la table ; avec les quatre postes connectés, la création réserve une surface de piste agrandie pour toute la manche. Une partie mixte garde les postes nécessaires sur la table.
+
+Les outils PC permettent aussi une **Course rapide** sans dessin préalable. `/admin` sur la machine hôte donne les réglages, l’exclusion d’un poste et le retour ou la remise à zéro du lobby. **COURSE** suit le parcours de préparation des appareils ; la console Oz reste disponible. Un rechargement ou un retour à l’accueil conserve les liens du salon sans redémarrer le serveur.
+
+### HTTPS pour les téléphones
+
+Les capteurs d’orientation demandent une connexion HTTPS de confiance. Avec `npm run start:local`, le copilote peut ouvrir **Lance-pierre** dans la carte, télécharger le certificat local au premier accès, puis choisir **Ouvrir en HTTPS pour l’inclinaison**. Le lien reprend sa place de copilote. [Spécification des capteurs web](https://www.w3.org/TR/orientation-event/#deviceorientation)
+
+**Tunnel HTTPS.** Après le build, ouvrir un tunnel avec `cloudflared tunnel --url http://localhost:3000`. Copier l’adresse HTTPS annoncée, puis lancer `CRASHOUT_PUBLIC_URL=https://votre-adresse.trycloudflare.com npm start` dans un autre terminal. Cette adresse peut être ouverte sur les téléphones sans installer de certificat. Les interfaces de la séance sont accessibles aux personnes qui disposent de l’URL du tunnel. [Documentation du tunnel](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
+
+**Certificat sur le réseau local.** Après `mkcert -install`, générer un certificat qui couvre les adresses réellement utilisées, par exemple `mkcert -key-file /chemin/table-key.pem -cert-file /chemin/table-cert.pem localhost 192.168.1.42`. Installer et approuver l’autorité mkcert (`rootCA.pem`, dossier indiqué par `mkcert -CAROOT`) sur chaque téléphone. Sur iOS, activer également la confiance totale pour cette autorité dans les réglages des certificats. [Documentation de mkcert](https://github.com/FiloSottile/mkcert#mobile-devices)
+
+```bash
+CRASHOUT_TLS_KEY=/chemin/table-key.pem CRASHOUT_TLS_CERT=/chemin/table-cert.pem npm start
+```
+
+Ouvrir l’adresse HTTPS annoncée au démarrage. Les deux chemins PEM sont nécessaires pour démarrer avec TLS.
+
+### Mettre à jour la version de séance
+
+La préparation de séance (identification des quatre postes, tutoriel à quatre, console Oz) est fusionnée dans `main`.
 
 Arrêter l’ancien serveur, puis, depuis le dossier du projet :
 
 ```bash
 git fetch origin
-git switch feat/preparation-tests-utilisateurs
-git pull --ff-only origin feat/preparation-tests-utilisateurs
+git switch main
+git pull --ff-only origin main
 npm ci
 npm run build
 npm start
@@ -44,13 +69,13 @@ npm run build:server
 npm run dev
 ```
 
-Ouvrir `http://localhost:5173/client-table/` et `http://localhost:5173/client-oz/`. Vite relaie les échanges et les API vers le serveur du port 3000. Après une modification du serveur, relancer `npm run build:server`.
+Ouvrir `http://localhost:5173/client-table/` , `http://localhost:5173/client-oz/` et `http://localhost:5173/client-phone/`. Vite relaie les échanges et les API vers le serveur du port 3000. Après une modification du serveur, relancer `npm run build:server`.
 
 ## Déroulement
 
 Les partenaires d’une équipe sont en diagonale : pilote cyan en bas à gauche et copilote cyan en haut à droite ; pilote rose en haut à gauche et copilote rose en bas à droite. Chaque poste fait face à son bord de table. Les dépôts tangibles et l’attribution des gestes suivent la position du copilote.
 
-1. Choisir **TUTORIEL** pour découvrir le jeu à quatre, ou **COURSE** pour créer directement un circuit. Le thème de séance est **Ferraille**. Le choix des ambiances et de la conduite reste réservé aux outils de développement.
+1. Choisir **TUTORIEL** pour découvrir le jeu à quatre, ou **COURSE** pour créer directement un circuit. Le thème de séance est **Grand Prix** (Ferraille, Néon, Circuit miniature et Castagne restent disponibles en préparation). Le choix des ambiances et de la conduite reste réservé aux outils de développement.
 2. Cyan place P1, Rose place P2 ; Cyan relie les deux points, puis Rose les relie dans sa moitié ; chacun peut commencer par P1 ou P2. La création est guidée et séquentielle. Le circuit suit les tracés, y compris les boucles et croisements ; les refus sont expliqués à l’écran.
 3. Toucher le bouton à icône de circuit : le revêtement se dessine progressivement, puis la ligne à damier fait plusieurs tours et ralentit jusqu’à sa position aléatoire. Quand elle est fixée, **▶** permet de lancer la course sur la table. Le lancement, la pause et la remise à zéro appartiennent aux joueurs.
 4. Le pilote conduit avec la bande gauche / droite. **Avec les outils de développement**, **Paramètres → Conduite**, séparément pour chaque équipe, bascule entre l’avance automatique et une pédale maintenue pour accélérer, à vitesse maximale réduite. Le pilote n’a plus de bouton pour utiliser les objets.
@@ -102,7 +127,7 @@ Les cinq thèmes gardent leurs matériaux et leurs bordures ; le cache du revêt
 
 L’annonce d’un tangible réserve tous les nouveaux contacts sur la carte jusqu’à sa pose ou son annulation (**A / Échap** dans Oz). Le bonus déjà armé reste en stock mais son geste est suspendu. Sans tangible attendu, un seul bonus peut être armé : la table affiche son symbole et reconnaît ce type de geste. Un troisième doigt parasite ne transforme pas un boost en lance-pierre. L’autre copilote peut utiliser ce bonus tout en gardant le sien, puis armer son propre stock après consommation du premier.
 
-Les deux contacts du boost ou de la fourche du lance-pierre peuvent arriver avec jusqu’à 1,6 s d’écart. Les contacts peuvent être simultanés, maintenus ou brièvement tapés. La fourche reste mémorisée si un appui se lève ; seul le relâchement du doigt qui tire déclenche le projectile. Une correction de position sur un seul doigt ne bloque plus un boost attendu. La déformation reste disponible sur le bord : une traction cohérente à deux doigts prend le pas sur des appuis immobiles, même avec un bonus armé. La prise utilise les bords effectivement dessinés, notamment dans l’intérieur des coudes.
+Les deux contacts du boost peuvent arriver avec jusqu’à 1,6 s d’écart ; ils peuvent être simultanés, maintenus ou brièvement tapés. Les trois doigts du lance-pierre doivent être posés : une pose décalée (environ une seconde entre les deux premiers appuis) est acceptée, mais un appui tapé puis levé avant la traction ne compte pas dans la fourche. Après une traction valide, lever l’un des trois doigts (la poche ou un appui) tire une seule fois, car les navigateurs ne garantissent pas l’ordre des levées ; une annulation du système ne tire jamais. Une correction de position sur un seul doigt ne bloque plus un boost attendu. La déformation reste disponible sur le bord : une traction cohérente à deux doigts prend le pas sur des appuis immobiles, même avec un bonus armé. La prise utilise les bords effectivement dessinés, notamment dans l’intérieur des coudes.
 
 Une voiture réparée attend **3 secondes** au point de reprise : trois feux rouges au-dessus du modèle, puis vert et départ. Les dégâts et mouvements ne reprennent pas pendant cette attente ; la pause fige aussi ces feux.
 
@@ -195,7 +220,7 @@ La branche `baptiste` est maintenant intégrée : dessin possible dans les deux 
 
 ## Commandes et extensions futures
 
-Le jeu reçoit des **actions de jeu**, indépendantes des périphériques. `client-shared/controls.ts` est l’interface commune aux adaptateurs clavier et tactile : direction, POWER et gestes. Les types de messages sont dans `server/types.ts` ; les objets fixes et la validation partagée sont dans `server/tangibles.ts` ; les règles et la consommation des stocks restent validées dans `server/GameRules.ts`.
+Le jeu reçoit des **actions de jeu**, indépendantes des périphériques. `client-shared/controls.ts` est l’interface commune aux adaptateurs clavier et tactile : direction, POWER et gestes. Les types de messages sont dans `server/types.ts` ; les objets fixes et la validation partagée sont dans `server/tangibles/tangibles.ts` ; les règles et la consommation des stocks restent validées dans `server/rules/GameRules.ts` (logique dans `server/rules/`).
 
 Un futur adaptateur mobile pourra convertir un gyroscope en direction normalisée `[-1, 1]` et utiliser la même interface, sans modifier la physique. Aucun contrôle mobile, appairage ni accès aux capteurs n’est implémenté à ce stade. Un futur lecteur de tangibles pourra envoyer les mêmes actions de présence, déplacement et retrait qu’Oz, après ajout de son rôle de connexion.
 
@@ -214,12 +239,13 @@ Deux doigts proches saisissant le même bord de piste déplacent sa section tant
 
 ## Vérification
 
-**Avant de fusionner une branche, lancer `npm run check`.** Cette commande vérifie les types des clients et du serveur, puis lance les tests d’acceptation, de gestes et de réseau, et enfin le build. La même commande tourne sur GitHub pour chaque pull request et chaque push sur `main` (`.github/workflows/check.yml`) ; une compilation ou un test cassé est signalé avant la fusion.
+**Avant de fusionner une branche, lancer `npm run check`.** Cette commande vérifie les types des clients et du serveur, la taille des fichiers (`npm run check:sizes`), puis lance les tests d’acceptation, de gestes, de réseau, d’audio, de création de circuit, de session publique et de ramassables, et enfin le build. La même commande tourne sur GitHub pour chaque pull request et chaque push sur `main` (`.github/workflows/check.yml`) ; une compilation ou un test cassé est signalé avant la fusion.
 
 `npm run verify` exécute tous les contrôles ci-dessous et compile les deux applications.
 
 ```bash
 npm run typecheck
+npm run check:sizes
 npm run test:acceptance
 npm run test:gestures
 npm run test:network
@@ -246,6 +272,23 @@ scripts/         tests des règles et du protocole réseau
 prototypes/      laboratoire historique, conservé sans modification
 ```
 
+### Taille des fichiers et organisation du code
+
+Aucun fichier `.ts` (hors `prototypes/`) ne dépasse 500 lignes (cible 300) et aucun dossier ne contient plus de 12 fichiers `.ts` : `npm run check:sizes` le contrôle dans `check` et `verify` (liste de base dans `scripts/quality/file-sizes.baseline.json`, aujourd’hui vide). Les dossiers sont rangés par responsabilité (`server/rules`, `server/track`, `server/tangibles`, `server/modes`, `server/net`, `client-table/gesture`, `renderer`, `themes`, `ui`, `sound`, `app`, `scripts/gestures`, `game`, `rendering`…). Les gros fichiers d’origine sont des **façades** qui délèguent à des modules du même dossier.
+
+| Façade | Modules |
+|---|---|
+| `server/rules/GameRules.ts` | `server/rules/session/` et `server/rules/gameplay/` |
+| `server/track/MapGenerator.ts` | `server/track/generation/` |
+| `server/types.ts` | `server/protocol/` (état de partie, messages réseau) |
+| `client-table/gesture/GestureRecognizer.ts` | `client-table/gesture/` et `client-table/gesture/actions/` |
+| `client-table/renderer/Renderer.ts` | `client-table/renderer/` |
+| `client-table/main.ts` | `client-table/app/` |
+| `client-oz/map/OzMap.ts` | `client-oz/map/` |
+| `scripts/acceptance.ts` | `scripts/acceptance/` (`track/`, `race/`, `tutorial/`, `tangibles/`) |
+
+Les règles de contribution et les skills IA du dépôt (`limiter-taille-fichiers`, `clean-architecture`) sont dans `AGENTS.md` et `.claude/skills/`. Le [guide du code](docs/guide-du-code.md) décrit chaque fichier.
+
 Les anciennes règles expérimentales fantôme / destruction restent dans le moteur pour référence, mais ne sont plus exposées comme boutons ou commandes de la table. Les spécifications historiques de `.kiro/` et le laboratoire ne décrivent donc pas toujours les commandes actuelles ; ce README décrit le prototype fonctionnel.
 
 ### Audio
@@ -269,6 +312,6 @@ Les fichiers JSON stricts restent sans commentaires pour être lisibles par Node
 | `package.json` | Commandes de lancement, de compilation et de test ; référence les fichiers de `scripts/`, Vite et les deux configurations TypeScript. |
 | `package-lock.json` | Versions exactes des dépendances de `package.json`, utilisées par `npm ci` et la CI. |
 | `config.json` | Valeurs de la course et de la table, chargées par `server/config.ts` puis utilisées par `GameRules.ts` et `PhysicsLoop.ts`. |
-| `client-table/audio/sources.json` | Provenance et licence des extraits audio référencés dans `AudioAssets.ts` et contrôlés par `scripts/audio.ts`. |
+| `client-table/audio/sources.json` | Provenance et licence des extraits audio référencés dans `AudioAssets.ts` et contrôlés par `scripts/rendering/audio.ts`. |
 
 `tsconfig.json` et `tsconfig.server.json` acceptent les commentaires JSONC ; leur en-tête précise leur partage entre clients, tests et serveur. Les dossiers `dist/` et `node_modules/` sont produits par les outils, et `prototypes/` reste la référence historique.

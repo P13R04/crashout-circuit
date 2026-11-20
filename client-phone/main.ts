@@ -1,0 +1,227 @@
+/**
+ * Affiche le choix de séance, d'équipe et de rôle sur téléphone.
+ * Liens : client-phone/session.ts, client-shared/seatLabels.ts.
+ */
+import { TEAM_LABEL, playerTeam, roleLabel, SEAT_IDS } from '../client-shared/seatLabels.js';
+import type { Phase, Seat, SeatId, Team } from '../server/types.js';
+import { CopilotScreen } from './copilot/CopilotScreen.js';
+import { requestVibration } from './copilot/pickupVibration.js';
+import { PilotScreen } from './pilot/PilotScreen.js';
+import { actionButton as button } from './ui/press.js';
+import { PhoneSession } from './session.js';
+
+const title = document.querySelector<HTMLHeadingElement>('#title')!;
+const notice = document.querySelector<HTMLParagraphElement>('#notice')!;
+const screen = document.querySelector<HTMLElement>('#screen')!;
+const params = new URLSearchParams(location.search);
+const initial = params.get('room') ?? '';
+const wanted = SEAT_IDS.find(id => id === params.get('seat')) ?? null;
+const session = new PhoneSession(render, wanted);
+let vibrationResult = '';
+const VIBRATION_TEST_MS = 500;
+const VIBRATION_STATUS = {
+  accepted: 'Demande acceptée. Si tu ne sens rien, passe le téléphone en mode Vibreur et réessaie.',
+  refused: 'Demande refusée par le navigateur. Garde la page au premier plan et réessaie.',
+  unavailable: 'Vibration web indisponible dans ce navigateur. Les bonus sont signalés à l’écran.',
+};
+const vibrationStatus = document.createElement('p');
+vibrationStatus.className = 'detail copilot-vibration-status';
+vibrationStatus.setAttribute('role', 'status');
+const testVibration = button('Tester la vibration', () => {
+  vibrationResult = VIBRATION_STATUS[requestVibration(VIBRATION_TEST_MS)];
+  renderVibrationTest();
+}, 'copilot-vibration');
+screen.before(testVibration, vibrationStatus);
+const WAITING: Record<Phase, string> = {
+  SETUP: 'Votre poste est réservé. Attendez le départ sur la table.',
+  LOBBY: 'En attente du départ sur la table.',
+  MAP: 'Les équipes dessinent le circuit sur la table.',
+  READY: 'Le circuit est prêt. Attendez le départ sur la table.',
+  RACE: 'Partie en cours.',
+  PAUSED: 'Partie en pause.',
+  RESULT: 'Partie terminée. Consultez le résultat sur la table.',
+};
+let team: Team | null = null;
+let screenKey = '';
+
+let playerScreen: PilotScreen | CopilotScreen | null = null;
+let activeSeat: SeatId | null = null;
+
+/** Ajoute un pictogramme et un statut textuel à un choix d'équipe ou de rôle. */
+function choice(label: string, icon: string, detail: string, color: Team, action: () => void, disabled: boolean) {
+  const el = button(label, action, 'choice');
+  const symbol = document.createElement('span');
+  symbol.className = 'team-icon';
+  symbol.setAttribute('aria-hidden', 'true');
+  symbol.textContent = icon;
+  const status = document.createElement('small');
+  status.textContent = detail;
+  el.prepend(symbol);
+  el.append(status);
+  el.dataset.team = color;
+  el.disabled = disabled;
+  return el;
+}
+
+/** Affiche un formulaire lorsque le QR code n'a pas fourni de code valide. */
+function codeForm(): HTMLElement {
+  const form = document.createElement('form');
+  const label = document.createElement('label');
+  label.htmlFor = 'room';
+  label.textContent = 'Code affiché sur la table';
+  const input = document.createElement('input');
+  input.id = 'room';
+  input.value = initial;
+  input.autocapitalize = 'characters';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.maxLength = 5;
+  input.required = true;
+  const submit = button('Rejoindre', () => {}, 'primary');
+  submit.type = 'submit';
+  form.append(label, input, submit);
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    void session.open(input.value);
+  });
+  return form;
+}
+
+/** Affiche les équipes et indique combien de postes sont disponibles. */
+function teams(seats: Record<SeatId, Seat>, enabled: boolean): HTMLElement[] {
+  return (['A', 'B'] as const).map(t => {
+    const free = SEAT_IDS.filter(id => playerTeam(id) === t && !seats[id].taken).length;
+    const detail = free === 0 ? 'Équipe complète' : `${free} place${free === 1 ? '' : 's'} libre${free === 1 ? '' : 's'}`;
+    return choice(`Équipe ${TEAM_LABEL[t]}`, t === 'A' ? '◆' : '●', detail, t, () => { team = t; render(); },
+      free === 0 || !enabled);
+  });
+}
+
+/** Affiche les rôles libres et indique les places réservées hors ligne. */
+function roles(seats: Record<SeatId, Seat>, selected: Team, enabled: boolean): HTMLElement[] {
+  const choices = SEAT_IDS.filter(id => playerTeam(id) === selected).map(id => {
+    const detail = seats[id].connected ? 'Pris' : seats[id].taken ? 'Réservé' : 'Libre';
+    return choice(roleLabel(id), id.endsWith('-pilot') ? '◈' : '✚', detail, selected,
+      () => session.join(id), !enabled || seats[id].taken || session.state?.phase === 'SETUP' && session.state.seatDevices[id] !== 'phone');
+  });
+  return [...choices, button('Changer d’équipe', () => { team = null; render(); })];
+}
+
+/** Affiche la place attribuée, l'avancement et l'action de changement avant le départ. */
+function showSeat(seat: SeatId, state: Phase): void {
+  const selected = playerTeam(seat);
+  document.body.dataset.team = selected;
+  title.textContent = `${roleLabel(seat)} · Équipe ${TEAM_LABEL[selected]}`;
+  const info = document.createElement('p');
+  info.className = 'detail';
+  info.textContent = WAITING[state];
+  screen.replaceChildren(info);
+  if (['LOBBY', 'SETUP', 'MAP', 'READY'].includes(state)) {
+    const change = button('Changer de place', () => session.leave());
+    change.disabled = !session.online || session.pending === 'leave';
+    screen.append(change);
+  }
+}
+
+/** Prépare le test et conserve son résultat pour distinguer le navigateur du moteur de vibration. */
+function renderVibrationTest(): void {
+  const copilot = session.canPlay && session.seat?.endsWith('-copilot') && session.state?.phase !== 'RESULT';
+  const supported = typeof navigator.vibrate === 'function';
+  if (!copilot) vibrationResult = '';
+  testVibration.hidden = !copilot || !supported;
+  const message = supported ? vibrationResult : VIBRATION_STATUS.unavailable;
+  if (vibrationStatus.textContent !== message) vibrationStatus.textContent = message;
+  vibrationStatus.hidden = !copilot || !message;
+}
+
+/** Actualise uniquement la partie de l'interface concernée par les changements d'état. */
+function render(): void {
+  if (notice.textContent !== session.notice) notice.textContent = session.notice;
+  const { state, seat, room, online, pending } = session;
+  renderVibrationTest();
+  if (seat && state && (seat.endsWith('-pilot') || ['RACE', 'PAUSED'].includes(state.phase))) {
+    if (!playerScreen || activeSeat !== seat) {
+      playerScreen?.close();
+      activeSeat = seat;
+      const team = playerTeam(seat);
+      playerScreen = seat.endsWith('-pilot')
+        ? new PilotScreen(session, team, state.soloTest, params.get('keyboard') === '1' && state.soloTest && state.developerTools)
+        : new CopilotScreen(session, seat);
+      title.textContent = state.soloTest ? 'Pilote solo' : `${roleLabel(seat)} · Équipe ${TEAM_LABEL[team]}`;
+      document.body.dataset.team = team;
+      screen.replaceChildren(playerScreen.root);
+    }
+    playerScreen.update(state);
+    return;
+  }
+  if (playerScreen) {
+    playerScreen.close();
+    playerScreen = null;
+    activeSeat = null;
+    screenKey = '';
+  }
+  const key = JSON.stringify([room, team, online, seat, pending, session.gyroUrl, state?.soloTest, state?.developerTools, state?.seatDevices, seat ? state?.phase : state?.seats]);
+  if (key === screenKey) return;
+  screenKey = key;
+  delete document.body.dataset.team;
+  if (!room) {
+    title.textContent = 'Rejoindre la partie';
+    screen.replaceChildren(codeForm());
+  } else if (!state) {
+    title.textContent = 'Connexion à la séance';
+    screen.replaceChildren();
+  } else if (seat) {
+    showSeat(seat, state.phase);
+  } else if (state.soloTest) {
+    title.textContent = 'Essai pilote solo';
+    const taken = state.seats['A-pilot'].taken;
+    screen.replaceChildren(choice('Rejoindre comme pilote', '◈', taken ? 'Réservé' : 'Libre', 'A',
+      () => session.join('A-pilot'), taken || !online || pending !== null));
+    if (state.developerTools) {
+      const tests = document.createElement('a');
+      tests.href = '/test';
+      tests.className = 'spectator-link';
+      tests.textContent = 'Tous les modes de test';
+      screen.append(tests);
+    }
+  } else if (team) {
+    document.body.dataset.team = team;
+    title.textContent = `Choisir un rôle · ${TEAM_LABEL[team]}`;
+    screen.replaceChildren(...roles(state.seats, team, online && pending === null));
+  } else {
+    title.textContent = 'Choisir une équipe';
+    screen.replaceChildren(...teams(state.seats, online));
+  }
+  if (room && !seat && !team && session.gyroUrl && params.get('keyboard') !== '1') {
+    const details = document.createElement('details');
+    details.className = 'gyro-access';
+    const label = document.createElement('summary');
+    label.textContent = 'Utiliser le gyroscope';
+    const description = document.createElement('p');
+    description.textContent = 'Ouvre le lien sécurisé avant de choisir ta place. Au premier accès, le téléphone doit approuver le certificat local.';
+    const cert = document.createElement('a');
+    cert.href = '/certificat-local.cer';
+    cert.textContent = 'Télécharger le certificat local';
+    const secure = document.createElement('a');
+    secure.href = session.gyroUrl;
+    secure.textContent = 'Ouvrir le jeu en HTTPS';
+    details.append(label, description, cert, secure);
+    screen.append(details);
+  }
+  if (room && session.canWatch && !seat && !team) {
+    const watch = document.createElement('a');
+    watch.href = '/watch?room=' + room;
+    watch.className = 'spectator-link';
+    watch.textContent = 'Regarder la course';
+    screen.append(watch);
+  }
+}
+
+document.addEventListener('visibilitychange', () => { if (!document.hidden) session.resume(); });
+render();
+void session.open(initial);
+
+window.addEventListener('pagehide', () => session.suspend());
+window.addEventListener('pageshow', event => {
+  if (event.persisted && session.room) void session.open(session.room);
+});

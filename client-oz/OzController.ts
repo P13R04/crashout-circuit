@@ -1,11 +1,12 @@
 /**
  * Suit les modifications locales des tangibles, leur confirmation par le serveur et les annulations de la
  * console.
- * Liens : server/layout.ts, server/types.ts, server/tangibles.ts, client-shared/tangibleGeometry.ts.
- * Référencé par client-oz/main.ts, scripts/acceptance.ts, scripts/public-session.ts.
+ * Liens : server/layout.ts, server/types.ts, server/tangibles/tangibles.ts, client-shared/tangibleGeometry.ts.
+ * Référencé par client-oz/main.ts, scripts/acceptance.ts, scripts/game/public-session.ts.
  */
+import { tablePanels } from '../server/tableStations.js';
 import type { GameState, Tangible, Team } from '../server/types.js';
-import { tangibleArc, tangibleDefinition, validTangiblePose, type TangibleId } from '../server/tangibles.js';
+import { tangibleArc, tangibleDefinition, validTangiblePose, type TangibleId } from '../server/tangibles/tangibles.js';
 import { type TangiblePose } from '../client-shared/tangibleGeometry.js';
 import { depotPose, inTangibleDepot } from '../server/layout.js';
 
@@ -57,7 +58,7 @@ export class OzController {
   /** Réconcilie les modifications locales avec l’état reçu et réinitialise la sélection au retour aux menus. */
   applyState(state: GameState): void {
     this.synchronized = true;
-    if (state.phase === 'LOBBY' || state.phase === 'MAP') {
+    if (state.phase === 'LOBBY' || state.phase === 'SETUP' || state.phase === 'MAP') {
       this.pending.clear(); this.history = []; this.preparing = false; this.firstPylonPlaced = false; this.endGesture();
       this.selectedId = 1; this.draftAngle = 0; this.notice = '';
     }
@@ -112,7 +113,7 @@ export class OzController {
     const definition = tangibleDefinition(id);
     if (!this.enabled || !this.state || !definition) return false;
     const before = this.state.tangibles[id];
-    if (!validTangiblePose(definition.kind, pose, this.state.params)) {
+    if (!validTangiblePose(definition.kind, pose, this.state.params, tablePanels(this.state))) {
       this.notice = 'Gardez l’objet hors des postes joueurs et des bords.';
       this.changed(); return false;
     }

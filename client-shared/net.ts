@@ -1,7 +1,7 @@
 /**
  * Gère les connexions WebSocket, les reconnexions et la conservation de la géométrie entre deux états reçus.
  * Liens : server/types.ts.
- * Référencé par client-oz/main.ts, client-table/main.ts, scripts/public-session.ts.
+ * Référencé par client-oz/main.ts, client-table/main.ts, scripts/game/public-session.ts.
  */
 import type { GameState, TrackGeometry, ServerMessage } from '../server/types.js';
 
@@ -14,7 +14,7 @@ export class StateSync {
   private haveOffset = false;
 
   /** Conserve la dernière géométrie reçue et ajuste l’horloge locale à celle du serveur. */
-  apply(state: GameState, serverT: number): GameState {
+  apply<T extends Pick<GameState, 'track' | 'trackVersion'>>(state: T, serverT: number): T {
     // Keep the smallest observed (serverT − localNow): it carries the least network delay.
     const sample = serverT - Date.now();
     if (!this.haveOffset || sample < this.offset) { this.offset = sample; this.haveOffset = true; }

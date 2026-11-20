@@ -43,6 +43,12 @@
     #race-options input,#race-options select { font:inherit; background:#122044; color:#fff;border:1px solid #64748b;border-radius:6px;padding:7px; }
     #race-options input[type=checkbox] { width:18px;height:18px;vertical-align:middle; }
     #race-options :disabled { opacity:.4; }
+    #spectator-options { margin:14px 0; padding-top:12px; border-top:1px solid #ffffff18; }
+    #spectators-share { display:flex; flex-direction:column; align-items:center; gap:8px; margin-top:12px; }
+    #spectators-qr { position:static; inset:auto; transform:none; flex:none; width:180px; height:180px; background:#fff; border-radius:8px; image-rendering:pixelated; }
+    #spectators-count { font-size:13px; margin:0; }
+    #spectators-link { font-size:11px; color:#b9cbd0; margin:0; word-break:break-all; text-align:center; user-select:all; }
+    #spectators-notice { color:#ffca8b; font-size:12px; margin:10px 0 0; }
     .setting-label { font-size: 12px; color: #b9cbd0; margin-bottom: 10px; }
     #audio-options { margin:14px 0; padding-top:12px; border-top:1px solid #ffffff18; }
     #audio-options label { display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0; }
@@ -99,6 +105,7 @@
       </div>
       <!-- Réglages partagés de vitesse, de tours et de durée, envoyés par RaceSettings. -->
       <div id="race-options" role="group" aria-label="Course">
+        <button type="button" id="quick-race" hidden>Course rapide</button>
         <p class="setting-label">Course</p>
         <label>Difficulté <select id="race-difficulty"><option value="easy">Facile</option><option value="medium">Moyen</option><option value="hard">Difficile</option></select></label>
         <label>Tours <input id="race-laps" type="number" min="1" max="99" step="1" value="3" /></label>
@@ -112,6 +119,17 @@
         <label>Ambiance <input id="audio-ambience" aria-label="Volume de l’ambiance" type="range" min="0" max="100" step="1" value="22" /></label>
         <label>Musique <input id="audio-music" aria-label="Volume de la musique" type="range" min="0" max="100" step="1" value="12" /></label>
         <button id="audio-test" type="button">Écouter</button></details>
+      </div>
+      <!-- Ouverture de la séance aux spectateurs, pilotée par spectatorSettings.ts : QR code et nombre de spectateurs. -->
+      <div id="spectator-options" role="group" aria-label="Spectateurs">
+        <p class="setting-label">Spectateurs</p>
+        <button id="spectators-toggle" type="button" aria-pressed="false">Ajouter des spectateurs</button>
+        <div id="spectators-share" hidden>
+          <canvas id="spectators-qr" width="180" height="180" role="img" aria-label="QR code de la page des spectateurs"></canvas>
+          <p id="spectators-count" role="status"></p>
+          <p id="spectators-link"></p>
+        </div>
+        <p id="spectators-notice" role="status" hidden></p>
       </div>
       <!-- Catalogue visuel de themes.ts, masqué pendant une séance publique. -->
       <div id="theme-settings" hidden><p class="setting-label">Ambiance</p>
@@ -127,6 +145,11 @@
         <button id="test-invincible" aria-label="Invincibles" aria-pressed="false" title="Rendre les deux véhicules invincibles">Invincibles</button>
         <button id="test-items" aria-label="Objets libres" aria-pressed="false" title="Utiliser les deux gestes sans limite de stock">Objets libres</button>
       </div>
+      <div id="session-links" style="display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.8rem;color:#a6e9f0">
+        <a id="player-join-link" hidden target="_blank" rel="noopener" style="color:inherit">Lien joueurs</a>
+        <a id="oz-link" href="/oz" hidden target="_blank" rel="noopener" style="color:inherit">Console Oz</a>
+      </div>
+      <a href="/admin" target="_blank" rel="noopener" style="color:#a6e9f0">Administration</a>
       <button type="button" id="settings-home">⌂ Accueil</button>
     </div>
   </details>
