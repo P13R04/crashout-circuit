@@ -1,4 +1,4 @@
-/** Vérifie qu'un pilote déjà connecté peut passer du QR HTTP au gyroscope HTTPS sans bloquer son poste. */
+/** Vérifie qu'un pilote ou un copilote peut reprendre son poste en passant du QR HTTP au capteur HTTPS. */
 import assert from 'node:assert/strict';
 import { PhoneSession } from '../../client-shared/playerSession.js';
 
@@ -21,7 +21,6 @@ class TestSocket extends EventTarget {
   }
 }
 globals.WebSocket = TestSocket;
-globals.location = new URL('http://192.168.1.5:3001/play?room=ABCDE&seat=A-pilot');
 globals.history = { replaceState: (_state: unknown, _title: string, url: string) => {
   globals.location = new URL(url, globals.location as URL);
 } };
@@ -36,28 +35,33 @@ globals.fetch = async () => new Response(JSON.stringify({
 }));
 
 const token = '4d6b34d0-ce98-4ba0-a038-73bfa74f935d';
-const http = new PhoneSession(() => {}, 'A-pilot');
-await http.open('ABCDE');
-const first = sockets.at(-1)!;
-assert.equal(first.sent.at(-1)?.seat, 'A-pilot', 'le QR de poste prend la place annoncée');
-first.receive({ type: 'Joined', seat: 'A-pilot', token });
-const secure = new URL(http.secureJoinUrl);
-assert.equal(secure.protocol, 'https:');
-assert.equal(secure.searchParams.get('seat'), 'A-pilot');
-assert.equal(secure.searchParams.get('input'), 'gyro');
-assert.ok(!secure.search.includes(token), 'le jeton reste hors de la requête HTTP');
-assert.equal(new URLSearchParams(secure.hash.slice(1)).get('resume'), token);
-http.suspend();
+for (const seat of ['A-pilot', 'A-copilot'] as const) {
+  stored.clear();
+  globals.location = new URL(`http://192.168.1.5:3001/play?room=ABCDE&seat=${seat}`);
+  const http = new PhoneSession(() => {}, seat);
+  await http.open('ABCDE');
+  const first = sockets.at(-1)!;
+  assert.equal(first.sent.at(-1)?.seat, seat, 'le QR de poste prend la place annoncée');
+  first.receive({ type: 'Joined', seat, token });
+  const secure = new URL(http.secureJoinUrl);
+  assert.equal(secure.protocol, 'https:');
+  assert.equal(secure.searchParams.get('seat'), seat);
+  assert.equal(secure.searchParams.get('input'), 'gyro');
+  assert.ok(!secure.search.includes(token), 'le jeton reste hors de la requête HTTP');
+  assert.equal(new URLSearchParams(secure.hash.slice(1)).get('resume'), token);
+  http.suspend();
 
-// Les deux origines n'ont aucun stockage en commun : seul le lien doit permettre la reprise.
-stored.clear();
-globals.location = secure;
-const https = new PhoneSession(() => {}, 'A-pilot');
-await https.open('ABCDE');
-const second = sockets.at(-1)!;
-assert.equal(second.sent.at(-1)?.token, token, 'reprendre le même poste, sans redemander une place déjà prise');
-assert.equal((globals.location as URL).hash, '', 'effacer le jeton de la barre d’adresse');
-second.receive({ type: 'Joined', seat: 'A-pilot', token });
-assert.equal(https.canPlay, true);
-https.suspend();
-console.log('✓ Passage HTTP → HTTPS : poste du QR, réservation conservée entre origines, jeton privé effacé et pilote confirmé');
+  // Les deux origines n'ont aucun stockage en commun : seul le lien doit permettre la reprise.
+  stored.clear();
+  globals.location = secure;
+  const https = new PhoneSession(() => {}, seat);
+  await https.open('ABCDE');
+  const second = sockets.at(-1)!;
+  assert.equal(new URL(second.url).protocol, 'wss:');
+  assert.equal(second.sent.at(-1)?.token, token, 'reprendre le même poste, sans redemander une place déjà prise');
+  assert.equal((globals.location as URL).hash, '', 'effacer le jeton de la barre d’adresse');
+  second.receive({ type: 'Joined', seat, token });
+  assert.equal(https.canPlay, true);
+  https.suspend();
+}
+console.log('✓ Passage HTTP → HTTPS : réservations pilote et copilote reprises, WebSocket sécurisé et jeton effacé');

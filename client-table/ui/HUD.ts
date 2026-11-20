@@ -6,7 +6,8 @@
  * Référencé par client-table/themes/neon/NeonEffects.ts, client-table/themes/neon/NeonObjects.ts, client-table/renderer/Renderer.ts.
  */
 import { tablePanels } from '../../server/tableStations.js';
-import type { GameState, Team, Car } from '../../server/types.js';
+import type { GameState, Team } from '../../server/types.js';
+import { drawPowerControl, drawRepairControl, powerInk } from '../../client-shared/ui/stationControls.js';
 import {
   PANEL_H, panelWidth, padLocal, STEER_AREA_LOCAL, PEDAL_LOCAL, POWER_BTN_LOCAL, ITEM_SLOT_LOCAL, steerArea,
   type PanelLayout,
@@ -20,21 +21,6 @@ import { drawRemotePilot, remotePilot } from './remotePilot.js';
 
 /** Désigne le contexte Canvas 2D partagé par les fonctions de dessin du module. */
 type Ctx = CanvasRenderingContext2D;
-
-/** Dessine la couronne de progression utilisée par une commande circulaire. */
-function ring(ctx: Ctx, x: number, y: number, r: number, frac: number, color: string, width = 8): void {
-  ctx.lineWidth = width;
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.stroke();
-  if (frac > 0) {
-    ctx.strokeStyle = color;
-    ctx.beginPath();
-    ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, frac));
-    ctx.stroke();
-  }
-}
 
 /** Dessine le pictogramme du bonus pour le stock copilote et les retours de ramassage. */
 export function drawItemIcon(ctx: Ctx, kind: 'slingshot' | 'boost', x: number, y: number, r: number, color: string): void {
@@ -172,14 +158,11 @@ export class HUD {
 
   /** Affiche POWER, le stock et l’état d’armement du copilote. */
   private drawCopilot(ctx: Ctx, panel: PanelLayout, state: GameState, view: View, now: number): void {
-    const look=themeLook(view.theme),car=state.cars[panel.team],color=TEAM_COLOR[panel.team],armed=car.itemArmed&&!!car.heldItem,b=POWER_BTN_LOCAL;
+    const car=state.cars[panel.team],color=TEAM_COLOR[panel.team],armed=car.itemArmed&&!!car.heldItem,b=POWER_BTN_LOCAL;
     const locked=!!armedPickup(state)&&!armed;
-    const ink=armed?NEON.gold:car.heldItem&&!locked?color:'#586078';
+    const ink = powerInk(color, !!car.heldItem, armed, locked);
     if(car.heldItem)glow(ctx,b.x,b.y,52,ink,armed?.25:.12);
-    ctx.fillStyle=armed?'#ffce661f':car.heldItem?color+'24':look.button;
-    ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();
-    if(view.theme==='toy'){ctx.strokeStyle='#ffffff25';ctx.lineWidth=3;ctx.beginPath();ctx.arc(b.x,b.y-2,b.r-5,Math.PI,Math.PI*1.8);ctx.stroke();}
-    ring(ctx,b.x,b.y,b.r,1,ink,armed?4:2);icon(ctx,'power',b.x,b.y,30,ink);
+    drawPowerControl(ctx, b, { theme: view.theme, teamColor: color, ink, stocked: !!car.heldItem, armed });
     if(car.heldItem){
       drawItemIcon(ctx,car.heldItem,ITEM_SLOT_LOCAL.x,ITEM_SLOT_LOCAL.y,12,ink);
       ctx.strokeStyle=ink;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(b.x,-30);ctx.lineTo(b.x,-25);ctx.stroke();
@@ -196,27 +179,18 @@ export class HUD {
   private drawPad(ctx: Ctx, panel: PanelLayout, state: GameState, view: View): void {
     const key = `${panel.team}-${panel.role}`;
     const held = view.localPads[key] || state.repairPads[key]?.held;
-    const car: Car = state.cars[panel.team];
+    const car = state.cars[panel.team];
     const color = TEAM_COLOR[panel.team];
     const { x, y, r } = padLocal(panel.role,state.driveMode[panel.team]);
     if (held) glow(ctx, x, y, r + 12, NEON.mint, .25);
-    const look=themeLook(view.theme);
-    ctx.fillStyle = held ? 'rgba(97,244,186,0.12)' : car.disabled ? 'rgba(255,64,64,0.2)' : look.button;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-    ring(ctx, x, y, r - 5, state.repairProgress[panel.team], '#61f4ba', 6);
-    ctx.strokeStyle = held ? '#61f4ba' : color;
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
-    icon(ctx, 'wrench', x, y - 8, 30, held ? '#61f4ba' : car.disabled ? '#ff7070' : '#a9b6cd');
     // The pair shows which partner is holding; the outer ring shows joint progress.
     const partner = panel.role === 'pilot' ? 'copilot' : 'pilot';
     const partnerKey = `${panel.team}-${partner}`;
     const partnerHeld = view.localPads[partnerKey] || state.repairPads[partnerKey]?.held;
-    for (const [dx, on] of [[-11, held], [11, partnerHeld]] as const) {
-      ctx.fillStyle = on ? '#61f4ba' : '#ffffff15';
-      ctx.strokeStyle = on ? '#61f4ba' : '#8190aa'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(x + dx, y + 24, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    }
+    drawRepairControl(ctx, { x, y, r }, {
+      theme: view.theme, teamColor: color, disabledCar: car.disabled,
+      held: !!held, partnerHeld: !!partnerHeld, progress: state.repairProgress[panel.team],
+    });
     // One slow halo attracts attention only when repair is needed; no flashing text.
     if (car.disabled) {
       ctx.globalAlpha = view.reducedMotion ? .5 : .35 + .2 * Math.sin(view.visualTime / 450);

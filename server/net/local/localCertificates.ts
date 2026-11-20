@@ -5,6 +5,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, w
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+const REQUEST_CONFIG = '[req]\ndistinguished_name = dn\n[dn]\n';
+
 function openssl(args: string[]): void {
   execFileSync('openssl', args, { stdio: ['ignore', 'ignore', 'pipe'] });
 }
@@ -15,11 +17,14 @@ export function localAuthority(root = join(homedir(), '.local', 'share', 'crasho
   if (!existsSync(authority)) {
     const staged = mkdtempSync(join(root, 'authority-'));
     try {
-      openssl(['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-sha256', '-days', '3650',
+      const config = join(staged, 'request.cnf');
+      writeFileSync(config, REQUEST_CONFIG);
+      openssl(['req', '-config', config, '-x509', '-newkey', 'rsa:2048', '-nodes', '-sha256', '-days', '3650',
         '-subj', '/CN=Crashout Circuit Local Test CA',
         '-addext', 'basicConstraints=critical,CA:TRUE,pathlen:0',
         '-addext', 'keyUsage=critical,keyCertSign,cRLSign', '-keyout', join(staged, 'ca-key.pem'),
         '-out', join(staged, 'ca.pem')]);
+      rmSync(config);
       try { renameSync(staged, authority); } catch (error) { if (!existsSync(authority)) throw error; }
     } finally { rmSync(staged, { recursive: true, force: true }); }
   }
@@ -35,15 +40,16 @@ export function signLocalCertificate(authority: ReturnType<typeof localAuthority
     const key = join(dir, 'key.pem'), cert = join(dir, 'cert.pem');
     const extensions = join(dir, 'extensions.cnf');
     writeFileSync(extensions, [
+      REQUEST_CONFIG, '[server]',
       'basicConstraints=critical,CA:FALSE', 'keyUsage=critical,digitalSignature,keyEncipherment',
       'extendedKeyUsage=serverAuth',
       'subjectAltName=DNS:localhost,IP:127.0.0.1' + addresses.map(ip => ',IP:' + ip).join(''),
     ].join('\n') + '\n');
-    openssl(['req', '-new', '-newkey', 'rsa:2048', '-nodes', '-sha256', '-subj', '/CN=localhost',
+    openssl(['req', '-config', extensions, '-new', '-newkey', 'rsa:2048', '-nodes', '-sha256', '-subj', '/CN=localhost',
       '-keyout', key, '-out', request]);
     openssl(['x509', '-req', '-in', request, '-CA', authority.cert, '-CAkey', authority.key,
       '-set_serial', '0x' + randomBytes(16).toString('hex'), '-days', '30', '-sha256',
-      '-extfile', extensions, '-out', cert]);
+      '-extfile', extensions, '-extensions', 'server', '-out', cert]);
     return { key: readFileSync(key), cert: readFileSync(cert) };
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }

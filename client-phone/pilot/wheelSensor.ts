@@ -1,11 +1,9 @@
 /** Convertit les mesures autorisées du navigateur en commandes de volant calibrées. */
 import { WHEEL, wheelAngle, neutralAngle, steerFromAngle, smoothSteer, throttleFromPitch } from './gyro.js';
 import type { DriveSample } from './gyro.js';
+import { orientationSource, screenAngle, type OrientationSource } from '../sensors/orientation.js';
 
 type Reading = NonNullable<ReturnType<typeof wheelAngle>>;
-type OrientationWithPermission = typeof DeviceOrientationEvent & {
-  requestPermission?: () => Promise<'granted' | 'denied'>;
-};
 
 export type WheelStatus = 'inactive' | 'permission' | 'waiting' | 'calibrating' | 'ready' | 'missing' | 'denied' | 'http';
 
@@ -76,10 +74,11 @@ export class WheelSensor {
   }
 
   /** Identifie les navigateurs qui peuvent fournir les mesures. */
-  private supportedSensor(): OrientationWithPermission | null {
+  private supportedSensor(): OrientationSource | null {
     if (!window.isSecureContext) { this.status = 'http'; return null; }
-    if (typeof DeviceOrientationEvent === 'undefined') { this.status = 'missing'; return null; }
-    return DeviceOrientationEvent;
+    const sensor = orientationSource();
+    if (!sensor) this.status = 'missing';
+    return sensor;
   }
 
   /** Branche le capteur et un seul événement de changement d'orientation de l'écran. */
@@ -97,8 +96,7 @@ export class WheelSensor {
   private onOrientation = (event: DeviceOrientationEvent): void => {
     if (document.hidden || !this.landscape() || this.status === 'missing') return;
     const now = performance.now();
-    const angle = screen.orientation?.angle ?? window.orientation ?? 0;
-    const reading = wheelAngle(event.beta, event.gamma, angle);
+    const reading = wheelAngle(event.beta, event.gamma, screenAngle());
     if (!reading) {
       this.sample = null;
       if (!this.neutral) this.calibration.length = 0;

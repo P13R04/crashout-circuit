@@ -3,13 +3,15 @@
  * Liens : server/tangibles/tangibles.ts, server/tangibles/tangibleTouch.ts, server/tangibles/tangibleGeometry.ts.
  * Fonctions appelées par les méthodes de GameRules (server/rules/GameRules.ts), qui garde l'état et délègue ici.
  */
-import type { Vec2, Wall, Tangible, SeatId, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TangiblePlacementMode, TangibleTouchPlacedMsg } from '../../types.js';
+import type { Vec2, Wall, Tangible, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TangiblePlacementMode, TangibleTouchPlacedMsg } from '../../types.js';
 import { tablePanels } from '../../tableStations.js';
 import { config } from '../../config.js';
 import { inTangibleDepot, depotPose } from '../../layout.js';
 import { TUTORIAL_OBSTACLE_PREFIX } from '../../modes/Tutorial.js';
 import { tangibleArc, tangibleDefinition, validTangiblePose } from '../../tangibles/tangibles.js';
 import { tangibleTouchPose, TANGIBLE_WAIT_MS } from '../../tangibles/tangibleTouch.js';
+import type { TangiblePose } from '../../tangibles/tangibleGeometry.js';
+import type { TangibleId } from '../../tangibles/tangibles.js';
 import type { GameRules } from '../GameRules.js';
 
 /** Change la méthode de pose des tangibles et annule une éventuelle annonce en cours. */
@@ -26,12 +28,12 @@ export function parkedTangible(rules: GameRules, id:number): Tangible {
 }
 
 /** Retire l’ancien effet de l’objet et crée une autorisation unique pour ses prochains contacts. */
-export function prepareTangiblePlacement(rules: GameRules, id: number, by?: SeatId): void {
+export function prepareTangiblePlacement(rules: GameRules, id: number): void {
   if (rules.state.tangiblePlacementMode !== 'touch' || !tangibleDefinition(id)
     || !['READY','RACE'].includes(rules.state.phase)) return;
   rules.state.tangibles[id]=parkedTangible(rules, id);
   rebuildTangibles(rules);
-  rules.state.tangiblePlacement = {id:id as 1|2|3, token:++rules.placementToken, expiresAt:rules.now+TANGIBLE_WAIT_MS, ...(by ? { by } : {})};
+  rules.state.tangiblePlacement = {id:id as 1|2|3, token:++rules.placementToken, expiresAt:rules.now+TANGIBLE_WAIT_MS};
   rules.host.broadcastFull();
 }
 
@@ -58,11 +60,18 @@ export function onTangibleTouchPlaced(rules: GameRules, msg: TangibleTouchPlaced
   if(!pose)return;
   // The single-use grant is consumed atomically; delayed/replayed packets cannot move it.
   s.tangiblePlacement=null;
+  applyTouchTangible(rules, msg.id, pose);
+}
+
+/** Installe une pose déjà validée, qu'elle provienne de contacts physiques ou distants. */
+export function applyTouchTangible(rules: GameRules, id: TangibleId, pose: TangiblePose): void {
+  const s = rules.state;
+  const definition = tangibleDefinition(id)!;
   const parked=inTangibleDepot({x:pose.x*s.params.logicalWidth,y:pose.y*s.params.logicalHeight});
-  s.tangibles[msg.id]={...pose,kind:definition.kind,team:null,active:!parked,status:parked?'parked':'placed',dockTeam:null,placementOrigin:{...pose}};
-  rules.tangibleLog.push({t:rules.now,type:'TangibleMoved',id:msg.id,...pose,active:!parked});
+  s.tangibles[id]={...pose,kind:definition.kind,team:null,active:!parked,status:parked?'parked':'placed',dockTeam:null,placementOrigin:{...pose}};
+  rules.tangibleLog.push({t:rules.now,type:'TangibleMoved',id,...pose,active:!parked});
   rebuildTangibles(rules);
-  rules.tutorial?.onTangiblePlaced(msg.id);
+  rules.tutorial?.onTangiblePlaced(id);
   rules.host.broadcastFull();
 }
 

@@ -7,7 +7,7 @@
 import { connectWs, StateSync, type Connection } from './net.js';
 import { readSession } from './sessionInfo.js';
 import { SEAT_IDS } from './seatLabels.js';
-import type { GameState, JoinRejectedMsg, SeatId, ServerMessage } from '../server/types.js';
+import type { GameState, JoinRejectedMsg, RemotePlacementResultMsg, RemotePlacementTarget, SeatId, ServerMessage } from '../server/types.js';
 
 const STORAGE = 'crashout-player';
 const REJECTION: Record<JoinRejectedMsg['reason'], string> = {
@@ -28,9 +28,11 @@ export class PhoneSession {
   private reservation: Reservation | null = null;
   private generation = 0;
   private confirmed = false;
+  private placementId = 0;
   readonly sync = new StateSync();
   state: GameState | null = null;
   stateTime = 0;
+  lastPlacement: RemotePlacementResultMsg | null = null;
   seat: SeatId | null = null;
   room = '';
   online = false;
@@ -130,6 +132,14 @@ export class PhoneSession {
     if (this.canPlay) this.conn?.send(message);
   }
 
+  /** Envoie la confirmation d'une pose et retourne son identifiant pour retrouver la réponse. */
+  requestPlacement(target: RemotePlacementTarget): number | null {
+    if (!this.canPlay || !this.conn?.isOpen()) return null;
+    const requestId = ++this.placementId;
+    this.send({ type: 'RemotePlacement', requestId, target });
+    return requestId;
+  }
+
   /** Envoie la demande de place après le choix de l'équipe et du rôle. */
   join(seat: SeatId): void {
     if (!this.online || this.pending) return;
@@ -183,6 +193,10 @@ export class PhoneSession {
   /** Applique les confirmations privées et les états partagés. */
   private onMessage(msg: ServerMessage): void {
     switch (msg.type) {
+      case 'RemotePlacementResult':
+        if (!this.canPlay) return;
+        this.lastPlacement = msg;
+        break;
       case 'State':
         this.state = this.sync.apply(msg.state, msg.t);
         this.stateTime = msg.t;

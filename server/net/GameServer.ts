@@ -170,6 +170,13 @@ export class GameServer {
     }
     const seat = this.playerSeats.seatOf(client.id);
     if (!seat) return;
+    if (msg.type === 'RemotePlacement') {
+      if (!Number.isSafeInteger(msg.requestId) || msg.requestId <= 0) return;
+      const reason = this.rules.placeRemotely(seat, msg.target);
+      this.sendTo(client.ws, { type: 'RemotePlacementResult', t: Date.now(), requestId: msg.requestId,
+        ...(reason ? { ok: false, reason } as const : { ok: true } as const) });
+      return;
+    }
     const held = handlePlayerCommand(this.rules, seat, msg);
     if (msg.type !== 'PadHold' || typeof msg.on !== 'boolean') return;
     if (held) this.mobilePads.add(seat);

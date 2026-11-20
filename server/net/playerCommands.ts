@@ -5,6 +5,7 @@
 import type { ClientMessage, SeatId, Team } from '../types.js';
 import { isThemeId } from '../protocol/theme.js';
 import type { GameRules } from '../rules/GameRules.js';
+import { tangibleDefinition } from '../tangibles/tangibles.js';
 
 /** Déduit l'équipe d'une place attribuée. */
 export function seatTeam(seat: SeatId): Team {
@@ -31,6 +32,12 @@ export function handlePlayerCommand(rules: GameRules, seat: SeatId, msg: ClientM
   const team = seatTeam(seat);
   const pilot = isPilotSeat(seat);
   switch (msg.type) {
+    case 'SetAccessibility':
+      if (!pilot && typeof msg.on === 'boolean' && Boolean(rules.state.seats[seat].accessible) !== msg.on) {
+        rules.state.seats[seat].accessible = msg.on;
+        rules.host.broadcastFull();
+      }
+      break;
     case 'PilotInput':
       if (pilot) rules.onPilotInput(team, msg);
       break;
@@ -40,11 +47,9 @@ export function handlePlayerCommand(rules: GameRules, seat: SeatId, msg: ClientM
     case 'Power':
       if (!pilot) rules.onPower(team, { ...msg, team, role: 'copilot' });
       break;
-    case 'TangiblePrepare':
-    case 'TangiblePlacementCancel':
     case 'TangibleControl':
     case 'TangibleRemoved':
-      if (!pilot) applyCopilotTangible(rules, seat, msg);
+      if (!pilot) applyCopilotTangible(rules, msg);
       break;
     case 'PadHold':
       if (typeof msg.on !== 'boolean') return false;
@@ -56,30 +61,16 @@ export function handlePlayerCommand(rules: GameRules, seat: SeatId, msg: ClientM
 
 /** Neutralise les entrées lors d'une déconnexion ou d'un transfert de place. */
 export function releasePlayerControls(rules: GameRules, seat: SeatId): void {
-  if (rules.state.tangiblePlacement?.by === seat) rules.cancelTangiblePlacement();
   const pad = rules.state.repairPads[seat];
   if (isPilotSeat(seat)) rules.inputs[pad.team] = { throttle: 0, steer: 0 };
   pad.held = false;
   pad.startedAt = 0;
 }
 
-/** Autorise la pose partagée sans annuler une annonce faite par un autre opérateur. */
-function applyCopilotTangible(rules: GameRules, seat: SeatId, msg: Extract<ClientMessage,
-  { type: 'TangiblePrepare' | 'TangiblePlacementCancel' | 'TangibleControl' | 'TangibleRemoved' }>): void {
-  const pending = rules.state.tangiblePlacement;
-  switch (msg.type) {
-    case 'TangiblePrepare':
-      if (!pending) rules.prepareTangiblePlacement(msg.id, seat);
-      break;
-    case 'TangiblePlacementCancel':
-      if (pending?.by === seat) rules.cancelTangiblePlacement();
-      break;
-    case 'TangibleControl':
-      if (pending?.id === msg.id && pending.by !== seat) return;
-      if (msg.action === 'activate' || msg.action === 'deactivate') rules.onTangibleControl(msg);
-      break;
-    case 'TangibleRemoved':
-      if (pending?.id !== msg.id || pending.by === seat) rules.onTangibleRemoved(msg);
-      break;
-  }
+/** Autorise les commandes des objets déjà posés et protège les poses Oz en cours. */
+function applyCopilotTangible(rules: GameRules, msg: Extract<ClientMessage,
+  { type: 'TangibleControl' | 'TangibleRemoved' }>): void {
+  if (!tangibleDefinition(msg.id) || rules.state.tangiblePlacement?.id === msg.id) return;
+  if (msg.type === 'TangibleRemoved') rules.onTangibleRemoved(msg);
+  else if (msg.action === 'activate' || msg.action === 'deactivate') rules.onTangibleControl(msg);
 }

@@ -31,7 +31,7 @@ Les outils PC permettent aussi une **Course rapide** sans dessin préalable. `/a
 
 ### HTTPS pour les téléphones
 
-En HTTP sur le Wi-Fi, Safari iOS ne donne pas accès aux capteurs d’orientation. Le serveur n’annonce qu’une adresse réseau (la carte Wi-Fi ou Ethernet, sans les adaptateurs WSL, VirtualBox ou VPN) et affiche « capteurs iOS indisponibles » si aucune adresse HTTPS n’est configurée. [Documentation du navigateur](https://developer.mozilla.org/fr/docs/Web/API/DeviceOrientationEvent/requestPermission_static)
+Les capteurs d’orientation demandent une connexion HTTPS de confiance. Avec `npm run start:local`, le copilote peut ouvrir **Lance-pierre** dans la carte, télécharger le certificat local au premier accès, puis choisir **Ouvrir en HTTPS pour l’inclinaison**. Le lien reprend sa place de copilote. [Spécification des capteurs web](https://www.w3.org/TR/orientation-event/#deviceorientation)
 
 **Tunnel HTTPS.** Après le build, ouvrir un tunnel avec `cloudflared tunnel --url http://localhost:3000`. Copier l’adresse HTTPS annoncée, puis lancer `CRASHOUT_PUBLIC_URL=https://votre-adresse.trycloudflare.com npm start` dans un autre terminal. Cette adresse peut être ouverte sur les téléphones sans installer de certificat. Les interfaces de la séance sont accessibles aux personnes qui disposent de l’URL du tunnel. [Documentation du tunnel](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
 

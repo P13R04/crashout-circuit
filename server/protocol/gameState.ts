@@ -23,6 +23,7 @@ export interface Seat {
   taken: boolean;
   connected: boolean;
   name?: string;
+  accessible?: boolean;
 }
 /** Choisit l'appareil avec lequel un poste est joué : la table, un téléphone ou une manette Wii (pilote seulement). */
 export type SeatDevice = 'table' | 'phone' | 'wiimote';
@@ -37,7 +38,7 @@ export type DriveMode = 'auto' | 'pedal';
 /** Distingue la pose calculée par les contacts de la pose manuelle sur la carte Oz. */
 export type TangiblePlacementMode = 'manual' | 'touch';
 /** Décrit l’annonce de pose avec son objet, son jeton unique et son expiration. */
-export interface TangiblePlacementRequest { id: TangibleId; token: number; expiresAt: number; by?: SeatId }
+export interface TangiblePlacementRequest { id: TangibleId; token: number; expiresAt: number }
 
 /** Conserve la pose et l’activation d’un objet réel indépendamment des effets qu’il produit. */
 export interface Tangible {
@@ -67,6 +68,7 @@ export interface Car {
   heldItem: ItemKind | null;
   itemArmed: boolean;
   itemArmVersion: number;
+  lastPickup?: { at: number; kind: ItemKind };
   itemArmExpiry: number; // legacy wire field; 0, armed stock has no deadline
   speed: number;         // signed forward speed, px/s (server-internal, broadcast for HUD)
   slowUntil: number;     // arc slow-down expiry

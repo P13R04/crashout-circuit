@@ -6,6 +6,7 @@
  */
 import { STEERING } from '../../client-shared/pilot/steeringCurve.js';
 import { CADENCE } from '../../client-shared/pilot/inputCadence.js';
+import { screenGravity } from '../sensors/orientation.js';
 
 export { steerFromAngle, smoothSteer } from '../../client-shared/pilot/steeringCurve.js';
 export { shouldSendInput, driveSample } from '../../client-shared/pilot/inputCadence.js';
@@ -21,17 +22,13 @@ const radians = Math.PI / 180;
 
 /** Projette la verticale dans le repère de l'écran, indépendamment du cap magnétique. */
 export function wheelAngle(beta: number | null, gamma: number | null, orientation: number): Angles | null {
-  if (beta === null || gamma === null || !Number.isFinite(beta) || !Number.isFinite(gamma)) return null;
-  if (!Number.isFinite(orientation)) return null;
-  // La rotation alpha se fait autour de la verticale terrestre et n'affecte pas ce vecteur.
-  const b = beta * radians, g = gamma * radians, s = orientation * radians;
-  const x = -Math.cos(b) * Math.sin(g), y = Math.sin(b), z = Math.cos(b) * Math.cos(g);
-  const horizontal = x * Math.cos(s) - y * Math.sin(s);
-  const vertical = x * Math.sin(s) + y * Math.cos(s);
+  const gravity = screenGravity(beta, gamma, orientation);
+  if (!gravity) return null;
+  const { horizontal, vertical, normal } = gravity;
   if (Math.hypot(horizontal, vertical) < .15) return null; // Le volant est presque à plat.
   return {
     wheel: Math.atan2(-horizontal, vertical) / radians,
-    pitch: Math.atan2(z, Math.hypot(horizontal, vertical)) / radians,
+    pitch: Math.atan2(normal, Math.hypot(horizontal, vertical)) / radians,
   };
 }
 

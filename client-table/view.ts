@@ -111,7 +111,7 @@ export function showDividerRefusal(view: View, reason: Exclude<DividerCheck, 'ok
   view.mapNotice = { text: DIVIDER_REFUSAL[reason], reason, until: performance.now() + 4000, color: REFUSAL_COLOR };
 }
 
-export const TEAM_COLOR: Record<Team, string> = { A: '#00e5ff', B: '#ff4081' };
+export { STATION_TEAM_COLOR as TEAM_COLOR } from '../client-shared/ui/stationControls.js';
 export const TEAM_NAME: Record<Team, string> = { A: 'CYAN', B: 'ROSE' };
 
 /** Prépare l’état d’affichage local sans créer ni modifier l’état de jeu du serveur. */

@@ -5,6 +5,7 @@
 import { TEAM_LABEL, playerTeam, roleLabel, SEAT_IDS } from '../client-shared/seatLabels.js';
 import type { Phase, Seat, SeatId, Team } from '../server/types.js';
 import { CopilotScreen } from './copilot/CopilotScreen.js';
+import { requestVibration } from './copilot/pickupVibration.js';
 import { PilotScreen } from './pilot/PilotScreen.js';
 import { actionButton as button } from './ui/press.js';
 import { PhoneSession } from './session.js';
@@ -16,6 +17,21 @@ const params = new URLSearchParams(location.search);
 const initial = params.get('room') ?? '';
 const wanted = SEAT_IDS.find(id => id === params.get('seat')) ?? null;
 const session = new PhoneSession(render, wanted);
+let vibrationResult = '';
+const VIBRATION_TEST_MS = 500;
+const VIBRATION_STATUS = {
+  accepted: 'Demande acceptée. Si tu ne sens rien, passe le téléphone en mode Vibreur et réessaie.',
+  refused: 'Demande refusée par le navigateur. Garde la page au premier plan et réessaie.',
+  unavailable: 'Vibration web indisponible dans ce navigateur. Les bonus sont signalés à l’écran.',
+};
+const vibrationStatus = document.createElement('p');
+vibrationStatus.className = 'detail copilot-vibration-status';
+vibrationStatus.setAttribute('role', 'status');
+const testVibration = button('Tester la vibration', () => {
+  vibrationResult = VIBRATION_STATUS[requestVibration(VIBRATION_TEST_MS)];
+  renderVibrationTest();
+}, 'copilot-vibration');
+screen.before(testVibration, vibrationStatus);
 const WAITING: Record<Phase, string> = {
   SETUP: 'Votre poste est réservé. Attendez le départ sur la table.',
   LOBBY: 'En attente du départ sur la table.',
@@ -28,7 +44,7 @@ const WAITING: Record<Phase, string> = {
 let team: Team | null = null;
 let screenKey = '';
 
-let pilot: PilotScreen | CopilotScreen | null = null;
+let playerScreen: PilotScreen | CopilotScreen | null = null;
 let activeSeat: SeatId | null = null;
 
 /** Ajoute un pictogramme et un statut textuel à un choix d'équipe ou de rôle. */
@@ -107,28 +123,40 @@ function showSeat(seat: SeatId, state: Phase): void {
   }
 }
 
+/** Prépare le test et conserve son résultat pour distinguer le navigateur du moteur de vibration. */
+function renderVibrationTest(): void {
+  const copilot = session.canPlay && session.seat?.endsWith('-copilot') && session.state?.phase !== 'RESULT';
+  const supported = typeof navigator.vibrate === 'function';
+  if (!copilot) vibrationResult = '';
+  testVibration.hidden = !copilot || !supported;
+  const message = supported ? vibrationResult : VIBRATION_STATUS.unavailable;
+  if (vibrationStatus.textContent !== message) vibrationStatus.textContent = message;
+  vibrationStatus.hidden = !copilot || !message;
+}
+
 /** Actualise uniquement la partie de l'interface concernée par les changements d'état. */
 function render(): void {
   if (notice.textContent !== session.notice) notice.textContent = session.notice;
   const { state, seat, room, online, pending } = session;
+  renderVibrationTest();
   if (seat && state && (seat.endsWith('-pilot') || ['RACE', 'PAUSED'].includes(state.phase))) {
-    if (!pilot || activeSeat !== seat) {
-      pilot?.close();
+    if (!playerScreen || activeSeat !== seat) {
+      playerScreen?.close();
       activeSeat = seat;
       const team = playerTeam(seat);
-      pilot = seat.endsWith('-pilot')
+      playerScreen = seat.endsWith('-pilot')
         ? new PilotScreen(session, team, state.soloTest, params.get('keyboard') === '1' && state.soloTest && state.developerTools)
         : new CopilotScreen(session, seat);
       title.textContent = state.soloTest ? 'Pilote solo' : `${roleLabel(seat)} · Équipe ${TEAM_LABEL[team]}`;
       document.body.dataset.team = team;
-      screen.replaceChildren(pilot.root);
+      screen.replaceChildren(playerScreen.root);
     }
-    pilot.update(state);
+    playerScreen.update(state);
     return;
   }
-  if (pilot) {
-    pilot.close();
-    pilot = null;
+  if (playerScreen) {
+    playerScreen.close();
+    playerScreen = null;
     activeSeat = null;
     screenKey = '';
   }

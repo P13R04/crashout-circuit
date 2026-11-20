@@ -50,17 +50,17 @@ function consumeItem(rules: GameRules, team: Team): void {
  * Valide le geste reçu puis consomme le stock armé pour créer une vraie pierre.
  * La pierre part de la poche vers la fourche ; une traction trop courte conserve le bonus armé pour réessayer.
  */
-export function onSlingshot(rules: GameRules, msg: SlingshotMsg): void {
+export function onSlingshot(rules: GameRules, msg: SlingshotMsg): boolean {
   rules.tickTangiblePlacement(rules.now);
-  if (rules.state.tangiblePlacement) return;
-  if (rules.state.phase !== 'RACE' || !msg.anchor || !msg.pouch) return;
+  if (rules.state.tangiblePlacement) return false;
+  if (rules.state.phase !== 'RACE' || !msg.anchor || !msg.pouch) return false;
   const anchor = { x: msg.anchor.x, y: msg.anchor.y };
   const pouch = { x: msg.pouch.x, y: msg.pouch.y };
-  if (![anchor.x, anchor.y, pouch.x, pouch.y].every(Number.isFinite)) return;
+  if (![anchor.x, anchor.y, pouch.x, pouch.y].every(Number.isFinite)) return false;
   const shot = slingshotShot(anchor, pouch, config);
-  if (!shot.valid) return;
+  if (!shot.valid) return false;
   const owner = resolveArmedTeam(rules, 'slingshot', anchor);
-  if (!owner) return;
+  if (!owner) return false;
   const team = gestureTeam(rules, anchor, msg.team);
   consumeItem(rules, owner);
   const now = rules.now;
@@ -73,6 +73,7 @@ export function onSlingshot(rules: GameRules, msg: SlingshotMsg): void {
     team,
   });
   rules.host.feedback('stoneWarning', shot.target.x, shot.target.y, team);
+  return true;
 }
 
 /** Fait progresser les pierres et applique leurs dégâts aux voitures atteintes. */
@@ -94,21 +95,22 @@ export function updateStones(rules: GameRules, now: number): void {
 }
 
 /** Valide les deux contacts puis consomme le bonus armé pour créer une zone d’accélération. */
-export function onBoostGate(rules: GameRules, msg: BoostGateMsg): void {
+export function onBoostGate(rules: GameRules, msg: BoostGateMsg): boolean {
   rules.tickTangiblePlacement(rules.now);
-  if (rules.state.tangiblePlacement) return;
-  if (rules.state.phase !== 'RACE' || !msg.a || !msg.b) return;
+  if (rules.state.tangiblePlacement) return false;
+  if (rules.state.phase !== 'RACE' || !msg.a || !msg.b) return false;
   const a = { x: msg.a.x, y: msg.a.y };
   const b = { x: msg.b.x, y: msg.b.y };
-  if (![a.x, a.y, b.x, b.y].every(Number.isFinite)) return;
+  if (![a.x, a.y, b.x, b.y].every(Number.isFinite)) return false;
   const len = dist(a, b);
-  if (len < config.boostLenMinPx - 1e-6 || len > config.boostLenMaxPx + 1e-6) return;
+  if (len < config.boostLenMinPx - 1e-6 || len > config.boostLenMaxPx + 1e-6) return false;
   const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   const owner = resolveArmedTeam(rules, 'boost', mid);
-  if (!owner) return;
+  if (!owner) return false;
   const team = gestureTeam(rules, mid, msg.team);
   consumeItem(rules, owner);
   addBoostGate(rules, team, a, b);
+  return true;
 }
 
 /** Oriente et installe la zone d’accélération dans le sens local du circuit. */

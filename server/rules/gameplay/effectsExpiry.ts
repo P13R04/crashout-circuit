@@ -47,6 +47,7 @@ export function afterMove(rules: GameRules, team: Team, prev: Vec2, now: number)
       const expected = rules.tutorial?.forcedItem(team);
       if (p.respawnAt === 0 && (!expected || p.kind===expected) && dist(car.pos, p.pos) <= PICKUP_RADIUS) {
         car.heldItem = p.kind;
+        car.lastPickup = { at: now, kind: p.kind };
         p.respawnAt = now + (s.tutorial ? TUTORIAL_PICKUP_RESPAWN_S : config.pickupRespawnS) * 1000;
         rules.host.feedback('pickup', p.pos.x, p.pos.y, team, p.kind);
         break;

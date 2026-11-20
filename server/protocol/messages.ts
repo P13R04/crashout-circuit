@@ -5,6 +5,7 @@
  */
 import type { TangibleId } from '../tangibles/tangibles.js';
 import type { Vec2, Team, Phase, ItemKind, Difficulty, TangiblePlacementMode, Tangible, GameState, SeatId, SeatDevice } from './gameState.js';
+import type { RemotePlacementMsg, RemotePlacementResultMsg, SetAccessibilityMsg } from './placementMessages.js';
 
 /** Associe un type de commande à son horodatage réseau. */
 export interface BaseMsg {
@@ -291,6 +292,8 @@ export interface PhaseChangeMsg extends BaseMsg {
 export type ClientMessage =
   | JoinMsg
   | LeaveMsg
+  | SetAccessibilityMsg
+  | RemotePlacementMsg
   | StartSoloMsg
   | RaceSettingsMsg
   | SetThemeMsg
@@ -329,4 +332,5 @@ export type ClientMessage =
   | TestToggleMsg;
 
 /** Réunit les états, phases et retours que les interfaces peuvent recevoir du serveur. */
-export type ServerMessage = StateMsg | FeedbackMsg | PhaseChangeMsg | PongMsg | JoinedMsg | JoinRejectedMsg | LeftMsg;
+export type ServerMessage = StateMsg | FeedbackMsg | PhaseChangeMsg | PongMsg | JoinedMsg | JoinRejectedMsg | LeftMsg
+  | RemotePlacementResultMsg;

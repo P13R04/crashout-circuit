@@ -14,8 +14,8 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { createLocalNetwork } from '../../../server/net/local/localNetwork.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'crashout-local-test-'));
-const child = spawn(process.execPath, ['dist/server/index.js'], {
-  env: { ...process.env, PORT: '0', CRASHOUT_LOCAL_NETWORK: '1', CRASHOUT_LOCAL_HTTPS_PORT: '0',
+const child = spawn(process.execPath, ['scripts/start-local.mjs'], {
+  env: { ...process.env, PORT: '0', CRASHOUT_LOCAL_HTTPS_PORT: '0',
     CRASHOUT_LOCAL_CA_DIR: dir, CRASHOUT_SOLO_TEST: '0', CRASHOUT_DEV_TOOLS: '0',
     CRASHOUT_PUBLIC_URL: 'https://ancienne-adresse.test' },
 });

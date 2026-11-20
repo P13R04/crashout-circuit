@@ -7,10 +7,12 @@
  * Façade : l'état de la partie et les points d'entrée restent ici ; la logique est découpée par responsabilité dans server/rules/ (chaque méthode délègue à une fonction du même nom).
  */
 import { startSoloRace } from './session/soloRace.js';
-import type { GameState, Team, SeatId, Vec2, ItemKind, Car, Wall, TrackGeometry, Tangible, StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg, PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg, TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg, TrackPresentation, SetSeatDeviceMsg, SetWiimoteMsg } from '../types.js';
+import type { GameState, Team, Vec2, ItemKind, Car, Wall, TrackGeometry, Tangible, StrokeDrawMsg, MapDividerMsg, PadHoldMsg, SlingshotMsg, BoostGate, BoostGateMsg, AbilityMsg, BorderPullMsg, PilotInputMsg, PowerMsg, TangibleControlMsg, TangibleMovedMsg, TangibleRemovedMsg, TestToggleMsg, TangiblePlacementMode, TangibleTouchPlacedMsg, RaceSettingsMsg, TrackPresentation, SetSeatDeviceMsg, SetWiimoteMsg } from '../types.js';
 import { AutomaticPilot } from '../modes/AutomaticPilot.js';
 import { Tutorial } from '../modes/Tutorial.js';
 import type { RulesHost, TangibleLogEntry } from './session/rulesTypes.js';
+import type { PlacementFailure, RemotePlacementTarget, SeatId } from '../types.js';
+import { placeRemotely } from './gameplay/remotePlacement.js';
 import * as trackCreation from './session/trackCreation.js';
 import * as raceStart from './session/raceStart.js';
 import * as tutorialFlow from './session/tutorialFlow.js';
@@ -143,11 +145,11 @@ export class GameRules {
   /** Arme le stock du copilote si aucun autre bonus ne réserve déjà le geste partagé. */
   onPower(team: Team, _msg?: PowerMsg): void { armedItems.onPower(this, team, _msg); }
   /** Valide le geste reçu puis consomme le stock armé pour créer une vraie pierre. */
-  onSlingshot(msg: SlingshotMsg): void { armedItems.onSlingshot(this, msg); }
+  onSlingshot(msg: SlingshotMsg): boolean { return armedItems.onSlingshot(this, msg); }
   /** Fait progresser les pierres et applique leurs dégâts aux voitures atteintes. */
   updateStones(now: number): void { armedItems.updateStones(this, now); }
   /** Valide les deux contacts puis consomme le bonus armé pour créer une zone d’accélération. */
-  onBoostGate(msg: BoostGateMsg): void { armedItems.onBoostGate(this, msg); }
+  onBoostGate(msg: BoostGateMsg): boolean { return armedItems.onBoostGate(this, msg); }
   /** Vérifie si le déplacement de la voiture traverse la surface active de la zone. */
   carHitsBoostGate(prev: Vec2, pos: Vec2, g: BoostGate): boolean { return armedItems.carHitsBoostGate(this, prev, pos, g); }
   /** Déduit l’intensité d’accélération de l’espacement des deux contacts. */
@@ -171,13 +173,15 @@ export class GameRules {
   /** Construit la pose inactive de l’objet à sa place dans la réserve neutre. */
   parkedTangible(id:number): Tangible { return tangiblesRules.parkedTangible(this, id); }
   /** Retire l’ancien effet de l’objet et crée une autorisation unique pour ses prochains contacts. */
-  prepareTangiblePlacement(id: number, by?: SeatId): void { tangiblesRules.prepareTangiblePlacement(this, id, by); }
+  prepareTangiblePlacement(id: number): void { tangiblesRules.prepareTangiblePlacement(this, id); }
   /** Supprime l’annonce de pose sans modifier les objets déjà présents. */
   cancelTangiblePlacement(): void { tangiblesRules.cancelTangiblePlacement(this); }
   /** Annule une annonce périmée ou devenue incompatible avec la phase de jeu. */
   tickTangiblePlacement(now: number): void { tangiblesRules.tickTangiblePlacement(this, now); }
   /** Valide le jeton et les contacts puis installe le tangible à la pose recalculée par le serveur. */
   onTangibleTouchPlaced(msg: TangibleTouchPlacedMsg): void { tangiblesRules.onTangibleTouchPlaced(this, msg); }
+  /** Applique la confirmation d'une pose ou d'un bonus d'un copilote en mode accessibilité. */
+  placeRemotely(seat: SeatId, target: RemotePlacementTarget): PlacementFailure | null { return placeRemotely(this, seat, target); }
   /** Active, désactive ou range le tangible demandé par la console. */
   onTangibleControl(msg: TangibleControlMsg): void { tangiblesRules.onTangibleControl(this, msg); }
   /** Valide et applique une pose manuelle reçue de la console lorsque ce mode est actif. */
